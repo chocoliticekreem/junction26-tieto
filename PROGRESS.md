@@ -27,6 +27,11 @@
 - 09:12 J: implementer round 2 for 2297 pushed to mock-repo (`ju26-issue-2297-r2`, 171/171 tests); re-review blocked by the API limit (PR #17).
 - 09:18 Bench results merged (PR #19): cold 19/24, 0 escapes, questions 9 to 1, 2297 94 % routed away; provenance in metrics/README.md.
 - 09:20 Concept card and demo script filled with real numbers; docs/submission.md written.
+- 09:22 Bait plants no longer explain themselves in comments (PR #21).
+- 09:24 Stryker.NET cross-check on 2283 (PR #22): our mutants agree where they overlap; full suite kills all 6 own-test survivors; Stryker found 2 full-suite survivors we lacked.
+- 09:39 Track record page redesigned with headline tiles, per-area trust charts, T2/T4/T6/T7; receipt exportable as a PR comment (PR #23).
+- 09:52 Mutation receipts two-tier (own tests, then full suite) plus logical-operator and linq-first operators; 2283 now matches Stryker (2 full-suite survivors); four reviews re-run offline from fixtures, verdicts unchanged (PR #24). Deliverables corrected (PR #25).
+- 09:40 Anson asked how to cut API cost; answered (batch API for bench, lower effort on the two Opus lenses, subset re-runs, no Haiku router re-run). Waiting for his go before implementing.
 
 ## In progress (started ~05:38, parallel subagents in worktrees)
 | Track | Model | Scope |
@@ -39,8 +44,8 @@
 | F1 bench | opus | 36 deterministic plants, manifest, `bench generate` |
 
 ## Next
-- Polish backlog while the API is blocked: strip explanatory comments from bait plants; per-area trust chart; PR-comment export of a receipt; Playwright pass on real data.
-- When Anson raises the limit: bench re-run on the final pipeline, 2297 round-2 review (BLOCKED.md item 1).
+- Track N running since 09:57: SQL migration sandbox adapter in throwaway Postgres (polish item 6), deterministic, no API.
+- On Anson's go: batch mode and per-lens effort for the bench, then the final-pipeline bench re-run and 2297 round 2 (about $12-18 after the limit is raised).
 
 ## Decisions
 - CHALLENGE.md (added by Anson) outranks SPEC.md on scope and judging. Added from it: MIT LICENSE, top-level README, docs/submission.md (pending numbers), self-check answered in PROGRESS.md with evidence, time to merge and escapes in measurement. No tech side challenge is genuinely used (no CRACI CI, no Modal, no Codex, no Entire), so none will be ticked.
@@ -70,4 +75,4 @@
 | Peer review in 3 minutes | ready | demo script: 2-minute flow plus walkthrough |
 
 ## Time elapsed
-- 09:20: 3 h 48 m. Definition of done: met except items that need the API limit raised or a named human (the A/B merge; bench re-run on the final pipeline). See BLOCKED.md.
+- 09:58: 4 h 26 m. Definition of done: met except the items that need the API limit raised or a named human (A/B merge, bench re-run on the final pipeline). See BLOCKED.md.
