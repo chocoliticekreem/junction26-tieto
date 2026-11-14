@@ -1,0 +1,140 @@
+diff --git a/src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs b/src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs
+index 470c93fc..48255574 100644
+--- a/src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs
++++ b/src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs
+@@ -710,6 +710,12 @@ public class TypeCollector
+         bool? suppressSourceGeneration = (bool?)contractAttr?.NamedArguments.FirstOrDefault(kvp => kvp.Key == Constants.SuppressSourceGenerationPropertyName).Value.Value;
+         bool? allowPrivateAttribute = (bool?)contractAttr?.NamedArguments.FirstOrDefault(kvp => kvp.Key == Constants.AllowPrivatePropertyName).Value.Value;
+ 
++        // A type that opted out of source generation is serialized by the dynamic resolvers, which validate it at run time.
++        if (suppressSourceGeneration is true)
++        {
++            return null;
++        }
++
+         if (contractAttr is null)
+         {
+             ////this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.TypeMustBeMessagePackObject, ((BaseTypeDeclarationSyntax)type.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(), type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));
+diff --git a/tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs b/tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs
+index 3aa556f9..3cc1b7ea 100644
+--- a/tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs
++++ b/tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs
+@@ -7,9 +7,9 @@ using Microsoft.CodeAnalysis.Testing;
+ using VerifyCS = CSharpCodeFixVerifier<MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer, MessagePack.Analyzers.CodeFixes.MessagePackCodeFixProvider>;
+ 
+ /// <summary>
+-/// Verifies that the analyzer keeps validating <c>[MessagePackObject(SuppressSourceGeneration = true)]</c> types
++/// Verifies that the analyzer does not fail on <c>[MessagePackObject(SuppressSourceGeneration = true)]</c> types
+ /// (https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234).
+-/// Opting out of source generation only skips generation; the type is still serialized at run time, so its contract must still be checked.
++/// Such types are serialized by the dynamic resolvers, which validate the contract at run time, so the analyzer skips them.
+ /// </summary>
+ public class SuppressSourceGenerationAnalyzerTests
+ {
+@@ -18,13 +18,13 @@ using MessagePack;
+ ";
+ 
+     [Fact]
+-    public async Task MemberWithoutKeyIsReported()
++    public async Task MemberWithoutKeyIsNotReported()
+     {
+         string input = Preamble + @"
+ [MessagePackObject(SuppressSourceGeneration = true)]
+ public class Foo
+ {
+-    public string {|MsgPack004:Member|} { get; set; }
++    public string Member { get; set; }
+ }
+ ";
+ 
+@@ -36,10 +36,10 @@ public class Foo
+     }
+ 
+     [Fact]
+-    public async Task AllowPrivateRequiredIsReported()
++    public async Task AllowPrivateRequiredIsNotReported()
+     {
+         string input = Preamble + @"
+-[{|MsgPack015:MessagePackObject(SuppressSourceGeneration = true)|}]
++[MessagePackObject(SuppressSourceGeneration = true)]
+ public class Foo
+ {
+     [Key(0)]
+@@ -55,7 +55,7 @@ public class Foo
+     }
+ 
+     [Fact]
+-    public async Task MemberTypeMustBeMessagePackObjectIsReported()
++    public async Task MemberTypeMustBeMessagePackObjectIsNotReported()
+     {
+         string input = Preamble + @"
+ public class Other
+@@ -66,7 +66,7 @@ public class Other
+ public class Foo
+ {
+     [Key(0)]
+-    public Other {|MsgPack003:Member|} { get; set; }
++    public Other Member { get; set; }
+ }
+ ";
+ 
+@@ -78,7 +78,7 @@ public class Foo
+     }
+ 
+     [Fact]
+-    public async Task DuplicateIntKeysAreReportedWithoutAnalyzerFailure()
++    public async Task DuplicateIntKeysDoNotFailAnalyzer()
+     {
+         string input = Preamble + @"
+ [MessagePackObject(SuppressSourceGeneration = true)]
+@@ -87,8 +87,8 @@ public class Foo
+     [Key(0)]
+     public string Member1 { get; set; }
+ 
+-    {|MsgPack005:[Key(0)]
+-    public string Member2 { get; set; }|}
++    [Key(0)]
++    public string Member2 { get; set; }
+ }
+ ";
+ 
+@@ -100,7 +100,7 @@ public class Foo
+     }
+ 
+     [Fact]
+-    public async Task DuplicateStringKeysAreReportedWithoutAnalyzerFailure()
++    public async Task DuplicateStringKeysDoNotFailAnalyzer()
+     {
+         string input = Preamble + @"
+ [MessagePackObject(SuppressSourceGeneration = true)]
+@@ -109,8 +109,8 @@ public class Foo
+     [Key(""a"")]
+     public string Member1 { get; set; }
+ 
+-    {|MsgPack005:[Key(""a"")]
+-    public string Member2 { get; set; }|}
++    [Key(""a"")]
++    public string Member2 { get; set; }
+ }
+ ";
+ 
+@@ -122,7 +122,7 @@ public class Foo
+     }
+ 
+     [Fact]
+-    public async Task MixedKeyKindsAreReportedWithoutAnalyzerFailure()
++    public async Task MixedKeyKindsDoNotFailAnalyzer()
+     {
+         string input = Preamble + @"
+ [MessagePackObject(SuppressSourceGeneration = true)]
+@@ -131,8 +131,8 @@ public class Foo
+     [Key(0)]
+     public string Member1 { get; set; }
+ 
+-    {|MsgPack005:[Key(""Member2"")]
+-    public string Member2 { get; set; }|}
++    [Key(""Member2"")]
++    public string Member2 { get; set; }
+ }
+ ";
+ 
