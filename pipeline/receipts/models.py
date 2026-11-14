@@ -155,10 +155,13 @@ class Mutant(BaseModel):
     id: str
     file: str
     line: int
-    operator: Literal["negate-condition", "remove-guard", "off-by-one", "swap-boolean", "delete-statement"]
+    operator: Literal["logical-operator", "negate-condition", "remove-guard", "linq-first",
+                      "off-by-one", "swap-boolean", "delete-statement"]
     original: str
     mutated: str
-    status: Literal["killed", "survived", "compile-error", "timeout"]
+    # killed: the change's own tests catch it; killed-by-suite: they miss it, the full test
+    # project catches it; survived: the full test project misses it.
+    status: Literal["killed", "killed-by-suite", "survived", "compile-error", "timeout"]
     killing_tests: list[str] = []
 
 

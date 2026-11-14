@@ -41,6 +41,9 @@ test("change page shows receipts, collapsed hunches, not-checked list and log ex
   await expect(page.getByTestId("finding")).toHaveCount(1);
   await expect(page.getByTestId("finding").getByTestId("evidence-card")).toHaveCount(1);
   await expect(page.getByTestId("finding").getByTestId("mutant-table")).toContainText("survived");
+  const suiteOnly = page.getByTestId("finding").getByTestId("mutant-table").getByText("caught by existing suite");
+  await expect(suiteOnly).toHaveCount(1);
+  await expect(suiteOnly).toHaveAttribute("title", "caught by the existing suite, not by the change's tests");
 
   // Hunches collapsed by default, visually labelled when opened.
   await expect(page.getByTestId("hunches-toggle")).toContainText("2 unverified hunches withheld");
