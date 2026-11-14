@@ -27,7 +27,7 @@ async function waitFor(selector: string): Promise<Element | null> {
 async function revealEvidence(id: string) {
   const selector = `#evidence-${CSS.escape(id)}`;
   let card = document.querySelector(selector);
-  for (const toggle of ['[data-testid="receipts-toggle"]', '[data-testid="finding-toggle"]']) {
+  for (const toggle of ['[data-testid="tech-toggle"]', '[data-testid="receipts-toggle"]', '[data-testid="show-all-findings"]', '[data-testid="finding-toggle"]']) {
     if (card) break;
     document.querySelectorAll<HTMLElement>(toggle).forEach((t) => {
       if (!isOpen(t)) t.click();

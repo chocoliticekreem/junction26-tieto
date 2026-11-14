@@ -15,12 +15,15 @@ export function VerdictSummary({
   ctx,
   compact,
   className,
+  hideRaw,
 }: {
   verdict: VerdictKind;
   reason: string;
   ctx?: HumanizeCtx;
   compact?: boolean;
   className?: string;
+  /** Leave the pipeline's raw reason out; the page renders it elsewhere (the technical drawer). */
+  hideRaw?: boolean;
 }) {
   const h = humanizeVerdict(verdict, reason, ctx);
   return (
@@ -47,7 +50,7 @@ export function VerdictSummary({
           {h.reasons[0]}
         </p>
       )}
-      {h.mapped && (
+      {h.mapped && !hideRaw && (
         <Disclosure label={<span className="inline-flex items-center gap-1"><Info className="size-3" /> pipeline reason</span>} testId="verdict-raw-toggle" className="mt-1">
           <p className="font-mono text-[11px] leading-5 text-muted-foreground [overflow-wrap:anywhere]" data-testid="verdict-reason" title={h.raw}>
             {h.raw}

@@ -18,12 +18,14 @@ export function Section({
   icon?: React.ReactNode;
 }) {
   return (
-    <section id={id} className={cn("min-w-0 space-y-2.5 scroll-mt-16", className)}>
-      <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
-        {icon && <span className="text-muted-foreground [&>svg]:size-3.5">{icon}</span>}
-        {title}
-        {count !== undefined && <span className="font-mono text-xs font-normal tabular-nums text-muted-foreground">{count}</span>}
-      </h2>
+    <section id={id} className={cn("min-w-0 space-y-2.5 scroll-mt-28", className)}>
+      {title !== null && (
+        <h2 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+          {icon && <span className="text-muted-foreground [&>svg]:size-3.5">{icon}</span>}
+          {title}
+          {count !== undefined && <span className="font-mono text-xs font-normal tabular-nums text-muted-foreground">{count}</span>}
+        </h2>
+      )}
       {children}
     </section>
   );

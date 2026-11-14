@@ -4,19 +4,19 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
+// Journey order: what needs me -> what the reviewer knows -> why trust the reviewer.
 const links = [
-  { href: "/", label: "Inbox" },
-  { href: "/questions", label: "Questions" },
-  { href: "/context", label: "Context" },
-  { href: "/track-record", label: "Track record" },
+  { href: "/", label: "Your queue", match: ["/", "/change", "/decision", "/questions"] },
+  { href: "/context", label: "Product context", match: ["/context"] },
+  { href: "/track-record", label: "How we know it works", match: ["/track-record"] },
 ];
 
 export function NavLinks() {
   const pathname = usePathname();
   return (
-    <nav className="order-last -mb-2.5 flex w-full gap-1 overflow-x-auto text-sm sm:order-none sm:mb-0 sm:w-auto">
+    <nav className="order-last -mb-2.5 flex w-full gap-1 overflow-x-auto text-sm sm:order-none sm:mb-0 sm:w-auto" aria-label="Main">
       {links.map((l) => {
-        const active = l.href === "/" ? pathname === "/" || pathname.startsWith("/change") || pathname.startsWith("/decision") : pathname.startsWith(l.href);
+        const active = l.match.some((m) => (m === "/" ? pathname === "/" : pathname.startsWith(m)));
         return (
           <Link
             key={l.href}

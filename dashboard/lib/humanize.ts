@@ -142,6 +142,39 @@ export function humanizeRefusal(verdict: VerdictKind): string | undefined {
   return undefined;
 }
 
+/** "3 of 3 independent readers found two readings", parsed from a refusal; undefined when no refusal says so. */
+export function readerVote(refused: { what: string; why: string }[]): { saw: number; of: number } | undefined {
+  for (const r of refused) {
+    const m = r.why.match(/(\d+) of (\d+) independent readers found two readings/);
+    if (m) return { saw: Number(m[1]), of: Number(m[2]) };
+  }
+  return undefined;
+}
+
+/** The first sentence of a long interpretation summary; the rest is returned for a "More" disclosure. */
+export function firstSentence(text: string): { lead: string; rest: string } {
+  const t = text.trim();
+  // A sentence ends at ". " unless the dot belongs to an abbreviation such as "e.g." or "i.e.".
+  const re = /[.!?](?=\s|$)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(t))) {
+    const end = m.index + 1;
+    if (end < 24) continue;
+    if (/\b(e\.g|i\.e|etc|vs|cf)\.$/i.test(t.slice(0, end))) continue;
+    return { lead: t.slice(0, end), rest: t.slice(end).trim() };
+  }
+  return { lead: t, rest: "" };
+}
+
+/** The requirement text a refusal quotes ("the requirement says: '...'"), if any. */
+export function quotedRequirement(refused: { why: string }[]): string | undefined {
+  for (const r of refused) {
+    const m = r.why.match(/the requirement says:\s*'([^']+)'/i);
+    if (m) return m[1].trim();
+  }
+  return undefined;
+}
+
 /** Why an A/B page is shown for a change whose verdict is not decision-A-B. */
 export function abMismatchMessage(verdict: VerdictKind, bothBlocked: boolean): string {
   if (verdict === "blocked" && bothBlocked) return "Both readings were built and checked, but neither can be merged yet: they share a proven defect.";

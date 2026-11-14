@@ -13,7 +13,7 @@ export function SiteHeader({ human }: { human: string | null }) {
             <ReceiptText className="size-3.5" />
           </span>
           <span className="text-sm font-semibold tracking-tight">Receipts</span>
-          <span className="hidden text-xs text-muted-foreground md:inline">auditable AI code review</span>
+          <span className="hidden text-xs text-muted-foreground md:inline">AI review you can audit</span>
         </Link>
         <NavLinks />
         <div className="ml-auto flex items-center gap-1.5">

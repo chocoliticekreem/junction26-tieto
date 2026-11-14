@@ -19,14 +19,16 @@ const tone: Record<PlainSentence["key"], string> = {
 };
 
 /** The receipt in five short sentences a non-engineer can read in 30 seconds; each one links to its evidence. */
-export function PlainSummary({ items, className }: { items: PlainSentence[]; className?: string }) {
+export function PlainSummary({ items, className, bare }: { items: PlainSentence[]; className?: string; bare?: boolean }) {
   return (
-    <section className={cn("rounded-lg border bg-card px-4 py-3.5 shadow-[0_1px_0_oklch(0_0_0/3%)]", className)} data-testid="plain-summary" aria-label="in plain words">
-      <div className="flex items-center gap-1.5 text-xs font-semibold tracking-tight">
-        <MessageSquareQuote className="size-3.5 text-muted-foreground" aria-hidden />
-        In plain words
-      </div>
-      <ol className="mt-2 space-y-1.5">
+    <section className={cn(!bare && "rounded-lg border bg-card px-4 py-3.5 shadow-[0_1px_0_oklch(0_0_0/3%)]", className)} data-testid="plain-summary" aria-label="in plain words">
+      {!bare && (
+        <div className="flex items-center gap-1.5 text-xs font-semibold tracking-tight">
+          <MessageSquareQuote className="size-3.5 text-muted-foreground" aria-hidden />
+          In plain words
+        </div>
+      )}
+      <ol className={cn("space-y-1.5", !bare && "mt-2")}>
         {items.map((s) => {
           const Icon = icon[s.key];
           const t = s.key === "wrong" && s.text.startsWith("Nothing was proven wrong") ? "text-ok-foreground" : tone[s.key];

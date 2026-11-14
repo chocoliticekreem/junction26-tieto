@@ -3,7 +3,7 @@ import { BookOpenText, CircleCheck, MessageCircleQuestion, PencilLine } from "lu
 import { lensLabel } from "@/lib/humanize";
 import type { RunContext, RunContextCitation } from "@/lib/types";
 import { Disclosure } from "./disclosure";
-import { EmptyState, Panel, Section } from "./section";
+import { Panel, Section } from "./section";
 import { cn } from "@/lib/utils";
 
 function citationText(c: RunContextCitation): React.ReactNode {
@@ -31,22 +31,53 @@ function citationText(c: RunContextCitation): React.ReactNode {
   }
 }
 
-/** What the reviewer was told about the product for this change, and which claims that knowledge changed. */
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
+
+/** The one line a decision-maker sees: "Used 10 notes about your product · 1 held back". */
+export function contextOneLiner(context: RunContext): string {
+  const held = context.citations.filter((c) => c.effect === "suppressed-unconfirmed").length;
+  const dropped = context.citations.filter((c) => c.effect === "withdrawn").length;
+  const parts = [`Used ${plural(context.entries.length, "note")} about your product`];
+  if (held) parts.push(`${held} held back`);
+  if (dropped) parts.push(`${dropped} withdrawn`);
+  if (!held && !dropped) parts.push(context.citations.length ? `${plural(context.citations.length, "finding")} shaped by it` : "nothing changed by it");
+  return parts.join(" · ");
+}
+
+/** What the reviewer was told about the product for this change, collapsed to one line until opened. */
 export function ProductContext({ context, areas }: { context?: RunContext; areas: string[] }) {
   const title = "What it knew about your product";
   if (!context) {
     return (
-      <Section title={title} icon={<BookOpenText />} id="product-context">
-        <EmptyState>
-          <span data-testid="context-predates">This run predates context recording.</span> Newer runs list the product conventions the reviewer was given and which findings they changed.
-        </EmptyState>
-      </Section>
+      <div id="product-context" className="scroll-mt-28 text-sm text-muted-foreground" data-testid="product-context">
+        <BookOpenText className="mr-1.5 inline size-3.5 align-[-2px]" aria-hidden />
+        {title}: <span data-testid="context-predates">This run predates context recording.</span>
+      </div>
     );
   }
+  return (
+    <Disclosure
+      label={
+        <span className="text-sm text-foreground">
+          <BookOpenText className="mr-1.5 inline size-3.5 align-[-2px] text-muted-foreground" aria-hidden />
+          <span className="font-medium">{title}:</span> <span className="text-muted-foreground">{contextOneLiner(context)}</span>
+        </span>
+      }
+      testId="product-context-toggle"
+      className="scroll-mt-28"
+    >
+      <ProductContextBody context={context} areas={areas} />
+    </Disclosure>
+  );
+}
+
+function ProductContextBody({ context, areas }: { context: RunContext; areas: string[] }) {
   const confirmed = context.status === "confirmed";
   const shownAreas = context.areas.length ? context.areas : areas;
   return (
-    <Section title={title} icon={<BookOpenText />} id="product-context">
+    <Section title={null} id="product-context" className="rounded-lg border bg-card/60 px-3.5 py-3">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span
           className={cn(
