@@ -4,6 +4,8 @@ import { ChevronRight, FlaskConical, Info, MessageCircleQuestion, Split } from "
 import { loadRun, pendingQuestions, readDecision, signOffRefusal } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
 import { humanizeTitle, lensLabel } from "@/lib/humanize";
+import { isReadOnly } from "@/lib/readonly";
+import { DemoNote } from "@/components/demo-note";
 import { plainSummary } from "@/lib/plain-summary";
 import { receiptMarkdown } from "@/lib/receipt-markdown";
 import { CopyReceiptButton } from "@/components/copy-receipt-button";
@@ -50,6 +52,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
   if (!run) notFound();
   const { receipt: r } = run;
   const human = await currentHuman();
+  const readOnly = isReadOnly();
   const decision = readDecision(changeId);
   const pending = pendingQuestions([run]).filter((q) => q.change_id === changeId);
   const ctx = { changeId, runTs: run.runTs, commands: run.commands, evidence: run.evidence, mutants: run.mutants, tests: run.tests };
@@ -65,6 +68,13 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
   const decide = summary.find((s) => s.key === "decide")!;
   const routingCounts = (["deep", "light", "regeneration"] as const).map((d) => `${Object.values(r.routing).filter((v) => v === d).length} ${d}`).join(" · ");
   const hasReadings = (r.interpretations?.length ?? 0) > 0;
+  // Other reviews of the same ticket: the open-model rerun, and the re-review after an implementer fix.
+  const base = changeId.replace(/@.*$/, "").replace(/-r\d+$/, "");
+  const related = [
+    { id: base, label: "Original review" },
+    { id: `${base}@verda`, label: "Same change on an EU-hosted open model" },
+    { id: `${base}-r2@verda`, label: "Round 2, after the fix" },
+  ].filter((x) => x.id !== changeId && loadRun(x.id));
   const proven = provenLines(run.evidence);
   const techSummary = [`${run.evidence.length} receipts`, `${r.hunches.length} hunches`, run.mutants.length ? `${run.mutants.length} mutants` : null, routingTotal ? `${routingTotal} files routed` : null, "full requirement", "copy as PR comment"]
     .filter(Boolean)
@@ -78,6 +88,15 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
         </Link>
         <ChevronRight className="size-3" aria-hidden />
         <span className="font-mono">{changeId}</span>
+        {related.length > 0 && (
+          <span className="ml-auto flex flex-wrap gap-3" data-testid="related-runs">
+            {related.map((x) => (
+              <Link key={x.id} href={`/change/${encodeURIComponent(x.id)}`} className="rounded-sm text-primary hover:underline">
+                {x.label} →
+              </Link>
+            ))}
+          </span>
+        )}
       </nav>
 
       <PageTitle eyebrow={r.requirement_id} title={r.requirement_title}>
@@ -172,7 +191,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
                     <p className="font-mono text-[11px] text-muted-foreground">
                       {lensLabel[q.lens] ?? q.lens} lens · {q.area} · {q.id}
                     </p>
-                    <QuestionForm q={q} human={human} />
+                    <QuestionForm q={q} human={human} readOnly={readOnly} />
                   </div>
                 ))}
               </div>
@@ -200,7 +219,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
                   <Split data-icon="inline-start" /> Choose A or B
                 </Button>
               ) : (
-                <SignOffButton changeId={changeId} human={human} decision={decision} refusal={signOffRefusal(r)} verdict={r.verdict} />
+                <SignOffButton changeId={changeId} human={human} decision={decision} refusal={signOffRefusal(r)} verdict={r.verdict} readOnly={readOnly} />
               )}
               {hasReadings && r.verdict !== "decision-A-B" && (
                 <Link href={decisionHref} className="text-sm text-primary underline-offset-4 hover:underline" data-testid="go-decision">
@@ -208,6 +227,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
                 </Link>
               )}
             </div>
+            {readOnly && !decision && <DemoNote />}
             {!decision && r.verdict !== "blocked" && (
               <p className="text-xs text-muted-foreground">
                 Signing records your name, the receipts you relied on, and the gaps above. <Term k="signoff">The AI never approves on its own.</Term>

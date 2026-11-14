@@ -12,7 +12,9 @@ export function MergeButtons({
   decision,
   interpretations,
   blocked = {},
+  readOnly = false,
 }: {
+  readOnly?: boolean;
   changeId: string;
   human: string | null;
   decision?: Decision;
@@ -75,7 +77,7 @@ export function MergeButtons({
               <Button
                 key={i.label}
                 onClick={() => void merge(i.label)}
-                disabled={!human || busy !== null || locked}
+                disabled={readOnly || !human || busy !== null || locked}
                 size="lg"
                 variant={locked ? "outline" : "default"}
                 className={locked ? "cursor-not-allowed border-dashed px-4 text-[15px] text-muted-foreground opacity-100" : "px-4 text-[15px]"}

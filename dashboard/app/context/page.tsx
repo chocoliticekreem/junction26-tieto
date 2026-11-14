@@ -2,6 +2,8 @@ import { BookOpenText, CircleCheck, MessageCircleQuestion, PencilLine } from "lu
 import { parseContextDoc, splitAreas } from "@/lib/context-doc";
 import { readContextMarkdown, readContextStatus, readLedger } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
+import { isReadOnly } from "@/lib/readonly";
+import { DemoNote } from "@/components/demo-note";
 import { ConfirmContextButton } from "@/components/confirm-context-button";
 import { Slip } from "@/components/mascot";
 import { AreaChips, ContextDoc } from "@/components/context-doc";
@@ -17,6 +19,7 @@ export default async function ContextPage() {
   const ledger = readLedger().slice().reverse();
   const human = await currentHuman();
   const confirmed = status.status === "confirmed";
+  const readOnly = isReadOnly();
 
   return (
     <div className="space-y-8">
@@ -55,7 +58,14 @@ export default async function ContextPage() {
             </p>
           )}
         </div>
-        <ConfirmContextButton human={human} status={status} />
+        {readOnly && !confirmed ? (
+          <div className="flex flex-col items-end gap-1.5">
+            <ConfirmContextButton human={human} status={status} readOnly />
+            <DemoNote />
+          </div>
+        ) : (
+          <ConfirmContextButton human={human} status={status} />
+        )}
       </Panel>
 
       <Section title="Answers you gave" count={ledger.length} icon={<MessageCircleQuestion />}>

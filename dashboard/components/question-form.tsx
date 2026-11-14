@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { Question } from "@/lib/types";
 
-export function QuestionForm({ q, human }: { q: Question; human: string | null }) {
+export function QuestionForm({ q, human, readOnly = false }: { q: Question; human: string | null; readOnly?: boolean }) {
   const router = useRouter();
   const [free, setFree] = useState("");
   const [busy, setBusy] = useState(false);
@@ -32,7 +32,7 @@ export function QuestionForm({ q, human }: { q: Question; human: string | null }
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         {q.options.map((o) => (
-          <Button key={o} variant="outline" size="sm" disabled={busy || !human} onClick={() => void answer(o)} data-testid="answer-option" className="h-auto max-w-full py-1 text-left whitespace-normal">
+          <Button key={o} variant="outline" size="sm" disabled={readOnly || busy || !human} onClick={() => void answer(o)} data-testid="answer-option" className="h-auto max-w-full py-1 text-left whitespace-normal">
             {o}
           </Button>
         ))}
@@ -52,7 +52,7 @@ export function QuestionForm({ q, human }: { q: Question; human: string | null }
           rows={1}
           data-testid="answer-free"
         />
-        <Button type="submit" size="sm" variant="secondary" disabled={busy || !human || !free.trim()} data-testid="answer-submit">
+        <Button type="submit" size="sm" variant="secondary" disabled={readOnly || busy || !human || !free.trim()} data-testid="answer-submit">
           Answer{human ? ` as ${human}` : ""}
         </Button>
       </form>

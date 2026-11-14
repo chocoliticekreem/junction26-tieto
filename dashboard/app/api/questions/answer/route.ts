@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
 import { appendLedger, loadRun, readLedger } from "@/lib/data";
 import { nowIso, requireHuman } from "@/lib/human";
+import { readOnlyRefusal } from "@/lib/readonly";
 import type { LedgerEntry } from "@/lib/types";
 
 export async function POST(req: Request) {
+  const readOnly = readOnlyRefusal();
+  if (readOnly) return readOnly;
   const auth = await requireHuman();
   if ("error" in auth) return auth.error;
   const body = await req.json().catch(() => ({}));

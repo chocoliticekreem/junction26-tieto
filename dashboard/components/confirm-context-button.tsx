@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { ContextStatus } from "@/lib/types";
 
-export function ConfirmContextButton({ human, status }: { human: string | null; status: ContextStatus }) {
+export function ConfirmContextButton({ human, status, readOnly = false }: { human: string | null; status: ContextStatus; readOnly?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +26,7 @@ export function ConfirmContextButton({ human, status }: { human: string | null; 
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <Button onClick={() => void confirm()} disabled={busy || !human} size="lg" className="px-4 text-[15px]" data-testid="confirm-context">
+      <Button onClick={() => void confirm()} disabled={readOnly || busy || !human} size="lg" className="px-4 text-[15px]" data-testid="confirm-context">
         {human ? `Confirm as ${human}` : "Pick your name to confirm"}
       </Button>
       {error && <span className="text-xs text-bad-foreground">{error}</span>}
