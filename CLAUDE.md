@@ -22,3 +22,10 @@ Deadline: final submission Sun 15 Nov 2026, 10:00 Helsinki time (UTC+2). Peer re
 - Mock and fallback paths first; a missing key never blocks the build. Log what is missing in `BLOCKED.md` for Anson.
 - Verify before claiming done: run the pipeline on real branches, read the output, run Playwright on the dashboard.
 - Parallelise with subagents. Dashboard and visual work: model `fable`. Pipeline, sandboxes, measurement and reviews: model `opus`. Bulk or mechanical work (mock clones, fixtures, docs): model `sonnet`.
+
+## How to run
+- Pipeline: `cd pipeline && uv sync && uv run receipts setup`, then `uv run receipts review --change ju26-issue-2283 --req REQ-2283`.
+- Offline demo: `MOCK_LLM=1` replays `fixtures/llm/`; a missing fixture or key is recorded as "not checked", never invented.
+- Tests: `cd pipeline && uv run pytest`; `cd dashboard && npm run lint && npx tsc --noEmit && npx playwright test`.
+- Dashboard: `cd dashboard && npm run dev` (http://localhost:3000). It reads `runs/`, `context/`, `decisions/` only.
+- Shared data contract: `pipeline/receipts/models.py` (mirrored in `dashboard/lib/types.ts`); run layout: `pipeline/receipts/runstore.py`.
