@@ -6,6 +6,7 @@ import { currentHuman } from "@/lib/human";
 import { abMismatchMessage, firstSentence, humanizeTitle, humanizeVerdict, quotedRequirement, readerVote } from "@/lib/humanize";
 import { Disclosure } from "@/components/disclosure";
 import { EvidenceCard } from "@/components/evidence-card";
+import { Slip } from "@/components/mascot";
 import { MergeButtons } from "@/components/merge-buttons";
 import { ReceiptBar, ResultIcon } from "@/components/pills";
 import { EmptyState, PageTitle, Panel, Section } from "@/components/section";
@@ -234,9 +235,12 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
 
         <StoryStep id="choose" n={3} title="Your choice">
           <Panel className="space-y-3 p-5 sm:p-6" data-testid="choice-panel">
-            <p className="text-lg font-medium leading-7 tracking-tight">
-              {decision ? `Decided: ${decision.who} picked reading ${decision.choice}.` : bothBlocked ? "Neither reading can be merged yet: both share a proven defect." : "Pick the reading that matches what you meant. The merge is recorded under your name."}
-            </p>
+            <div className="flex items-start gap-4">
+              <Slip pose={decision ? "stamp-signed" : bothBlocked ? "stamp-blocked" : "thinking"} size={72} className="-my-2 -ml-1" decorative />
+              <p className="text-lg font-medium leading-7 tracking-tight">
+                {decision ? `Decided: ${decision.who} picked reading ${decision.choice}.` : bothBlocked ? "Neither reading can be merged yet: both share a proven defect." : "Pick the reading that matches what you meant. The merge is recorded under your name."}
+              </p>
+            </div>
             <MergeButtons changeId={changeId} human={human} decision={decision} interpretations={interps} blocked={blocked} blockedHuman={blockedHuman} />
           </Panel>
         </StoryStep>

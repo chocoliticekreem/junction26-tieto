@@ -4,9 +4,9 @@ import { humanizeVerdict } from "@/lib/humanize";
 import { impactQueueClause } from "@/lib/impact-summary";
 import { decideSentence, wrongSentence } from "@/lib/plain-summary";
 import type { Decision, RunBundle } from "@/lib/types";
+import { Slip } from "@/components/mascot";
 import { StaggerList } from "@/components/motion";
 import { QueueCard, type QueueCardData } from "@/components/queue-card";
-import { EmptyState } from "@/components/section";
 
 export const dynamic = "force-dynamic";
 
@@ -96,16 +96,22 @@ export default function QueuePage() {
           <p className="mt-1 text-[15px] text-muted-foreground">AI-written changes, reviewed with proof. You make the call.</p>
         </div>
         {cards.length > 0 && (
-          <div className="rounded-full border bg-card px-3 py-1 text-sm font-medium tabular-nums" data-testid="need-you">
-            {needYou === 0 ? "Nothing needs you" : `${needYou} need${needYou === 1 ? "s" : ""} you`}
+          <div className="flex items-end gap-3">
+            <Slip pose={needYou === 0 ? "empty" : "reviewing"} size={64} className="-mb-1" decorative />
+            <div className="rounded-full border bg-card px-3 py-1 text-sm font-medium tabular-nums" data-testid="need-you">
+              {needYou === 0 ? "Nothing needs you" : `${needYou} need${needYou === 1 ? "s" : ""} you`}
+            </div>
           </div>
         )}
       </div>
 
       {cards.length === 0 && (
-        <EmptyState>
-          No changes reviewed yet. Run <code className="font-mono">uv run receipts review --change ju26-issue-2283 --req REQ-2283</code> and reload.
-        </EmptyState>
+        <div className="flex items-center gap-4 rounded-lg border border-dashed bg-card/50 px-4 py-4 text-sm text-muted-foreground">
+          <Slip pose="empty" size={72} decorative />
+          <p>
+            No changes reviewed yet. Run <code className="font-mono">uv run receipts review --change ju26-issue-2283 --req REQ-2283</code> and reload.
+          </p>
+        </div>
       )}
 
       <Group title="Needs your decision" blurb="Nothing is proven wrong. Read the receipt, then sign off or send it back." cards={needs} testId="group-needs" />

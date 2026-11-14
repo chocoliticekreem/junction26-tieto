@@ -5,6 +5,7 @@ import { readContextMarkdown, readContextStatus, readLedger } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
 import { stripHtmlComments } from "@/lib/humanize";
 import { ConfirmContextButton } from "@/components/confirm-context-button";
+import { Slip } from "@/components/mascot";
 import { EmptyState, Panel, Section } from "@/components/section";
 import { cn } from "@/lib/utils";
 
@@ -19,11 +20,14 @@ export default async function ContextPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Product context</h1>
-        <p className="mt-1 max-w-3xl text-[15px] text-muted-foreground">
-          What the reviewer knows about your product: the conventions it must respect, and the answers you gave it. Until you confirm this, it treats these notes as hints; once confirmed, as facts.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Product context</h1>
+          <p className="mt-1 max-w-3xl text-[15px] text-muted-foreground">
+            What the reviewer knows about your product: the conventions it must respect, and the answers you gave it. Until you confirm this, it treats these notes as hints; once confirmed, as facts.
+          </p>
+        </div>
+        <Slip pose="reviewing" size={72} className="hidden sm:block" decorative />
       </div>
 
       <Panel className="flex flex-wrap items-center justify-between gap-3 p-4 sm:p-5" data-testid="context-status-bar">
