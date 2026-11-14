@@ -10,9 +10,10 @@ load_dotenv(ROOT / ".env")
 load_dotenv(os.environ.get("RECEIPTS_ENV_FILE", ROOT / ".env.local"), override=True)
 
 PIPELINE = ROOT / "pipeline"
-MOCK_REPO = ROOT / "mock-repo"  # bare clone of the Tieto sample repo
-WORK = ROOT / "work"  # git worktrees and build outputs, gitignored
-RUNS = ROOT / "runs"
+# Env overrides let several git worktrees of this project share one clone and one build cache.
+MOCK_REPO = Path(os.environ.get("RECEIPTS_MOCK_REPO") or ROOT / "mock-repo")  # bare clone
+WORK = Path(os.environ.get("RECEIPTS_WORK") or ROOT / "work")  # git worktrees, gitignored
+RUNS = Path(os.environ.get("RECEIPTS_RUNS") or ROOT / "runs")
 CONTEXT = ROOT / "context"
 DECISIONS = ROOT / "decisions"
 METRICS = ROOT / "metrics"
