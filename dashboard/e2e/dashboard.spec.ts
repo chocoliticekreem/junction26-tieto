@@ -102,6 +102,9 @@ test("Proven block lists passing positive receipts and opens the evidence card o
 test("SQL adapter change page shows the schema diff and row counts behind the block", async ({ page }) => {
   await page.goto("/change/sql-bad-down");
   await expect(page.getByTestId("verdict-pill").first()).toHaveText("Blocked");
+  await expect(page.getByTestId("verdict-headline")).toHaveText("Blocked: 1 defect proven by running the migration");
+  await expect(page.getByTestId("verdict-reason")).toHaveCount(0);
+  await page.getByTestId("verdict-raw-toggle").click();
   await expect(page.getByTestId("verdict-reason")).toContainText("F-sql-reversible");
   const finding = page.getByTestId("finding");
   await expect(finding).toHaveCount(1);
@@ -172,7 +175,9 @@ test("sign-off is refused on a blocked change, in the UI and the API", async ({ 
   await signIn(page);
   await page.goto(`/change/${encodeURIComponent("mock/2283/logic")}`);
   await expect(page.getByTestId("sign-off")).toBeDisabled();
-  await expect(page.getByTestId("sign-off-refused")).toContainText("blocked (A verified finding");
+  await expect(page.getByTestId("sign-off")).toHaveText("Sign-off locked");
+  await expect(page.getByTestId("sign-off-refused")).toHaveText("Blocked: a proven defect must be fixed first");
+  await expect(page.getByTestId("sign-off-refused")).toHaveAttribute("title", /blocked \(A verified finding/);
   const res = await page.request.post("/api/decisions/sign-off", { data: { change_id: "mock/2283/logic" } });
   expect(res.status()).toBe(409);
   expect((await res.json()).error).toContain("A verified finding: two edge tests");
@@ -261,6 +266,22 @@ test("sign-off writes a decision record", async ({ page }) => {
   expect(md).toContain(`**Signed off by: ${HUMAN}** at ${decision.ts}`);
   await page.goto("/");
   await expect(page.getByTestId("inbox-row").filter({ hasText: "ju26-issue-2283" })).toContainText(`signed off by ${HUMAN}`);
+});
+
+test("machine strings never reach the default view: verdict reasons, lock reasons, HTML comments", async ({ page }) => {
+  for (const url of ["/change/sql-bad-down", "/change/ju26-issue-2297", "/decision/ju26-issue-2297"]) {
+    await page.goto(url);
+    await expect(page.locator("body")).not.toContainText("backed by receipts:");
+    await expect(page.locator("body")).not.toContainText("not decision-A-B");
+    await expect(page.locator("body")).not.toContainText("lens output from recorded fixtures");
+  }
+  await page.goto("/change/sql-bad-down");
+  await expect(page.getByTestId("trust-receipt")).toContainText("Down migration doesn't restore the schema");
+  await expect(page.getByTestId("verdict-stamp")).toHaveText("Blocked");
+  await page.goto("/context");
+  await expect(page.getByTestId("context-markdown")).not.toContainText("<!--");
+  await expect(page.getByTestId("context-markdown")).not.toContainText("seeded convention");
+  await expect(page.getByTestId("context-markdown")).toContainText("their authors cannot act on them.");
 });
 
 test("context page renders markdown and confirms as the human", async ({ page }) => {

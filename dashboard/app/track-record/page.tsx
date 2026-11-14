@@ -196,7 +196,9 @@ export default function TrackRecordPage() {
 
   return (
     <div className="space-y-8">
-      <PageTitle title="Track record" eyebrow="metrics/ from the bench, cold and warm" />
+      <PageTitle title="Track record">
+        <p className="mt-1 text-sm text-muted-foreground">How the reviewer scores on a bench with known answers, cold (empty ledger) and warm.</p>
+      </PageTitle>
 
       {nothing && (
         <EmptyState>
@@ -207,7 +209,7 @@ export default function TrackRecordPage() {
 
       {tiles.length > 0 && (
         <section className="space-y-2" data-testid="headline">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {tiles.map((t) => (
               <StatTile key={t.label} {...t} />
             ))}
@@ -235,10 +237,10 @@ export default function TrackRecordPage() {
         <Section title="Questions per change">
           {qSeries.length ? <LineChart series={qSeries} yLabel="questions" /> : <EmptyState>Needs T5 with “seq”, “questions” and “mode” columns.</EmptyState>}
           {q && (
-            <div className="overflow-x-auto rounded-md border" data-testid="t5-summary">
+            <div className="overflow-x-auto rounded-lg border bg-card" data-testid="t5-summary">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b text-left text-muted-foreground">
+                  <tr className="border-b bg-muted/40 text-left text-muted-foreground">
                     <th className="px-3 py-1.5 font-medium">total</th>
                     {q.modes.map((m) => (
                       <th key={m} className="px-3 py-1.5 text-right font-medium">
@@ -306,9 +308,9 @@ export default function TrackRecordPage() {
                   const toHuman = num(g("files_to_human"));
                   const total = num(g("files_total"));
                   return (
-                    <div key={String(r[t4ChangeCol])} className="rounded-md border px-3 py-2.5">
+                    <div key={String(r[t4ChangeCol])} className="rounded-lg border bg-card px-3.5 py-3 shadow-[0_1px_0_oklch(0_0_0/3%)]">
                       <div className="font-mono text-xs text-muted-foreground">{String(r[t4ChangeCol])}</div>
-                      <div className="mt-0.5 text-xl font-semibold tabular-nums">
+                      <div className="mt-1 font-mono text-xl font-semibold tabular-nums">
                         {toHuman ?? "—"}
                         <span className="text-sm font-normal text-muted-foreground"> of {total ?? "—"} files to a human</span>
                       </div>

@@ -1,8 +1,9 @@
 import type { CommandReceipt, Evidence, Finding, Mutant, TestRun } from "@/lib/types";
+import { lensLabel } from "@/lib/humanize";
 import { EvidenceCard } from "./evidence-card";
-import { Mono, ResultPill, SeverityPill } from "./pills";
+import { ResultIcon, SeverityPill } from "./pills";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ShieldAlert } from "lucide-react";
 
 interface Ctx {
   changeId: string;
@@ -13,27 +14,41 @@ interface Ctx {
   tests: TestRun[];
 }
 
+const planLabel: Record<Finding["receipt_plan"]["kind"], string> = {
+  test: "a test",
+  mutation: "a mutant",
+  "byte-diff": "a byte diff",
+  regeneration: "regeneration",
+  "ledger-citation": "a ledger entry",
+  "code-citation": "a code citation",
+};
+
 export function FindingCard({ f, ctx }: { f: Finding; ctx: Ctx }) {
   const evidence = (f.evidence_ids ?? []).map((id) => ctx.evidence.find((e) => e.id === id)).filter((e): e is Evidence => !!e);
   return (
-    <Collapsible className="border-l-2 border-l-bad-foreground pl-3" data-testid="finding">
-      <CollapsibleTrigger className="group flex w-full items-start gap-2 text-left" data-testid="finding-toggle">
-        <ChevronRight className="mt-1 size-3 shrink-0 text-muted-foreground transition-transform group-aria-expanded:rotate-90" />
+    <Collapsible className="rounded-lg border bg-card shadow-[0_1px_0_oklch(0_0_0/3%)]" data-testid="finding">
+      <CollapsibleTrigger className="group flex w-full items-start gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors duration-150 hover:bg-muted/50" data-testid="finding-toggle">
+        <ShieldAlert className="mt-0.5 size-4 shrink-0 text-bad-foreground" aria-hidden />
         <span className="min-w-0 flex-1 space-y-1">
-          <span className="block text-sm leading-5 [overflow-wrap:anywhere] group-aria-[expanded=false]:line-clamp-1">{f.claim}</span>
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
+          <span className="block text-sm leading-5 [overflow-wrap:anywhere] group-aria-[expanded=false]:line-clamp-2">{f.claim}</span>
+          <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
             <SeverityPill severity={f.severity} />
-            <Mono>{f.location}</Mono>
+            <span className="font-mono text-[11px]">{f.location}</span>
             {evidence.map((ev) => (
-              <ResultPill key={ev.id} result={ev.result} className="font-mono" />
+              <span key={ev.id} className="inline-flex items-center gap-1">
+                <ResultIcon result={ev.result} />
+                <span className="font-mono text-[11px]">{ev.id}</span>
+              </span>
             ))}
           </span>
         </span>
+        <ChevronRight className="mt-1 size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 group-aria-expanded:rotate-90" />
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <div className="mt-2 space-y-2 pl-5">
+        <div className="space-y-2 border-t px-3 py-2.5">
           <div className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-            <span className="font-mono">{f.lens}</span> · <span className="font-mono">{f.id}</span> · {f.receipt_plan.kind}: {f.receipt_plan.detail}
+            {lensLabel[f.lens] ?? f.lens} lens · proved by {planLabel[f.receipt_plan.kind] ?? f.receipt_plan.kind}: {f.receipt_plan.detail}
+            <span className="ml-2 font-mono text-[11px]">{f.id}</span>
           </div>
           {evidence.length > 0 ? (
             evidence.map((ev) => <EvidenceCard key={ev.id} ev={ev} ctx={ctx} defaultOpen />)
@@ -50,20 +65,23 @@ export function HunchList({ hunches }: { hunches: Finding[] }) {
   if (hunches.length === 0) return null;
   return (
     <Collapsible>
-      <CollapsibleTrigger className="group inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" data-testid="hunches-toggle">
-        <ChevronRight className="size-3 transition-transform group-aria-expanded:rotate-90" />
+      <CollapsibleTrigger className="group inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground" data-testid="hunches-toggle">
+        <ChevronRight className="size-3 transition-transform duration-150 group-aria-expanded:rotate-90" />
         <span>
           <span className="font-mono tabular-nums">{hunches.length}</span> unverified {hunches.length === 1 ? "hunch" : "hunches"} withheld
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <ul className="mt-2 space-y-2 border-l-2 border-dashed pl-3" data-testid="hunches-list">
+        <ul className="mt-2 space-y-2 rounded-lg border border-dashed px-3 py-2" data-testid="hunches-list">
           {hunches.map((h) => (
             <li key={h.id} className="text-sm text-muted-foreground" data-testid="hunch">
               <p className="italic [overflow-wrap:anywhere]">{h.claim}</p>
-              <div className="mt-0.5 text-xs [overflow-wrap:anywhere]">
-                <span className="rounded-sm border border-dashed px-1 py-px text-[10px] uppercase tracking-wide">unverified hunch — no receipt</span> <Mono>{h.location}</Mono>{" "}
-                · <span className="font-mono">{h.lens}</span> · <span className="font-mono">{h.id}</span> · planned receipt: {h.receipt_plan.kind} — {h.receipt_plan.detail}
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs [overflow-wrap:anywhere]">
+                <span className="rounded-full border border-dashed px-1.5 py-px text-[10px] tracking-wide">unverified hunch — no receipt</span>
+                <span className="font-mono text-[11px]">{h.location}</span>
+                <span>
+                  {lensLabel[h.lens] ?? h.lens} · would need {planLabel[h.receipt_plan.kind] ?? h.receipt_plan.kind}: {h.receipt_plan.detail}
+                </span>
               </div>
             </li>
           ))}

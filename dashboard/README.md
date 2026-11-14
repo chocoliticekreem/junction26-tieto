@@ -112,5 +112,14 @@ a context file, a ledger with one answer, and metrics. They validate against `mo
 copies them to `e2e/.tmp/` and creates a bare repo with `main`, `review/ju26-issue-2297/A` and `.../B`, so the
 Merge A test produces a real `--no-ff` commit authored by the named human. `e2e/screenshots.spec.ts` writes
 desktop (1440) and mobile (390) screenshots of every page to `e2e/screenshots/`. `e2e/receipt-markdown.spec.ts` unit-tests
-the PR-comment generator without a server. `e2e/screenshots/real-*.png` are taken by hand against the repo's real
-`runs/` and `metrics/` (`npm run build && npm run start -- -p 3111`, then a Playwright script).
+the PR-comment generator without a server; `e2e/humanize.spec.ts` unit-tests the plain-language mapper. `e2e/screenshots/real-*.png`
+(and `real-*-dark.png`) are taken by hand against the repo's real `runs/` and `metrics/` (`npm run build && npm run start -- -p 3111`,
+then a Playwright script at 1440 and 390, light and dark).
+
+## Plain language
+
+Every machine string the pipeline writes (verdict reasons such as `max routed risk 7 >= 5; not every receipt is green (gentest-2, mutation)`,
+evidence titles, sandbox step names) is rendered through `lib/humanize.ts` before a human sees it. The raw text stays one hover or
+click away (a `title` tooltip, or the "pipeline reason" disclosure). Shapes the mapper does not know fall back to the raw text, so a
+new pipeline string is never hidden, only unpolished. Add a case to `humanizeVerdict` / `humanizeTitle` and a test in
+`e2e/humanize.spec.ts` when the pipeline grows a new shape.

@@ -18,7 +18,7 @@ MessagePack-CSharp is a high-performance binary serializer for .NET with a Rosly
 
 ## Deliberate conventions
 
-- Analyzer diagnostics for types declared in **referenced assemblies** are deliberately not reported: their authors cannot act on them. (source: ledger Q-bait-1, answered by Anson)
+- Analyzer diagnostics for types declared in **referenced assemblies** are deliberately not reported: their authors cannot act on them. (source: ledger Q-bait-1, answered by Anson) <!-- seeded convention for the bait bench case -->
 - Generated files under `tests/**/Snapshots/*.verified.cs` are verified by regeneration, never hand-edited. (source: doc/analyzers/index.md)
 - `MessagePackSecurity.UntrustedData` is the default for deserializing external input; relaxing it is a security change, not a convenience. (source: README.md)
 

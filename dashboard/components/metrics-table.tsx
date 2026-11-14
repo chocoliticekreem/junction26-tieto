@@ -54,10 +54,10 @@ export function MetricsTableView({ t, testId, rows, wrap = false }: { t: Metrics
   const numeric = t.columns.map((_, ci) => data.every((r) => r[ci] === null || typeof r[ci] === "number") && data.some((r) => typeof r[ci] === "number"));
   return (
     <div className="space-y-2">
-      <div className="overflow-x-auto rounded-md border">
+      <div className="overflow-x-auto rounded-lg border bg-card">
         <Table data-testid={testId}>
           <TableHeader>
-            <TableRow className="hover:bg-transparent">
+            <TableRow className="bg-muted/40 hover:bg-muted/40">
               {t.columns.map((c, i) => (
                 <TableHead key={c} className={`h-auto py-1.5 align-bottom leading-tight whitespace-normal [overflow-wrap:normal] ${numeric[i] ? "text-right" : ""}`}>
                   {c.replace(/_/g, " ")}
@@ -91,10 +91,10 @@ export function MetricsTableView({ t, testId, rows, wrap = false }: { t: Metrics
 
 export function StatTile({ label, value, unit, definition, testId }: { label: string; value: string; unit?: string; definition: string; testId?: string }) {
   return (
-    <div className="min-w-0 rounded-md border px-3 py-2.5" data-testid={testId ?? "stat-tile"} title={definition}>
+    <div className="min-w-0 rounded-lg border bg-card px-3.5 py-3 shadow-[0_1px_0_oklch(0_0_0/3%)] transition-colors duration-150 hover:border-foreground/25" data-testid={testId ?? "stat-tile"} title={definition}>
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5">
-        <span className="text-2xl font-semibold tracking-tight whitespace-nowrap tabular-nums" data-testid="stat-value">
+      <div className="mt-1 flex flex-wrap items-baseline gap-x-1.5">
+        <span className="font-mono text-2xl font-semibold tracking-tight whitespace-nowrap tabular-nums" data-testid="stat-value">
           {value}
         </span>
         {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
