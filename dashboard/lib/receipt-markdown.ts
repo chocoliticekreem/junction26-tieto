@@ -98,7 +98,7 @@ export function receiptMarkdown(run: RunBundle, decision?: Decision): string {
     out.push("**Signed off by: — (pending)**");
   }
   out.push("");
-  out.push(`<sub>Receipts run ${r.run_ts} on ${r.head_sha.slice(0, 10)} · change ${code(r.change_id)}</sub>`);
+  out.push(`<sub>PullReceipts run ${r.run_ts} on ${r.head_sha.slice(0, 10)} · change ${code(r.change_id)}</sub>`);
   out.push("");
   return out.join("\n");
 }
