@@ -383,3 +383,62 @@ test("log API refuses path traversal", async ({ request }) => {
   expect(body.truncated).toBe(true);
   expect(body.text.split("\n")).toHaveLength(3);
 });
+
+test("plain-words summary and product context on the change page; predates fallback without context.json", async ({ page }) => {
+  await page.goto("/change/ju26-issue-2283");
+  const summary = page.getByTestId("plain-summary");
+  await expect(summary).toBeVisible();
+  await expect(summary.getByTestId("plain-purpose")).toContainText("This change is about: fix IndexOutOfRangeException on closed generic struct from referenced assembly.");
+  await expect(summary.getByTestId("plain-proved")).toContainText("We wrote 2 tests from the issue description alone. They failed before the change and pass after it");
+  await expect(summary.getByTestId("plain-wrong")).toContainText("1 part of the new code is never tested");
+  await expect(summary.getByTestId("plain-unchecked")).toContainText("We did not check 3 things");
+  // "sign-off writes a decision record" ran earlier in this serial file, so the last line reports the decision.
+  await expect(summary.getByTestId("plain-decide")).toContainText(`Decided: ${HUMAN} signed this off on`);
+  await expect(summary.getByTestId("plain-proved").locator("a")).toHaveAttribute("href", "#proven");
+  await expect(summary.getByTestId("plain-wrong").locator("a")).toHaveAttribute("href", "#findings");
+
+  // The one-time strip and its dismissal.
+  await expect(page.getByTestId("how-to-read")).toContainText("How to read this page");
+  await page.getByTestId("how-to-read-dismiss").click();
+  await expect(page.getByTestId("how-to-read")).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("plain-summary")).toBeVisible();
+  await expect(page.getByTestId("how-to-read")).toHaveCount(0);
+
+  // Glossary terms: hover shows the definition, headings keep their words.
+  await expect(page.getByRole("heading", { name: "Findings" })).toBeVisible();
+  await page.getByTestId("term-finding").first().hover();
+  await expect(page.getByRole("tooltip").filter({ hasText: "A problem with a receipt behind it" })).toBeVisible();
+
+  // Product context from context.json: draft pill, nudge, entries, the ledger badge and a citation.
+  await expect(page.getByTestId("run-context-status")).toHaveText("draft");
+  await expect(page.getByTestId("run-context-nudge")).toHaveAttribute("href", "/context");
+  const citation = page.getByTestId("context-citation");
+  await expect(citation).toHaveCount(1);
+  await expect(citation).toContainText("Your context says");
+  await expect(citation).toContainText("their authors cannot act on them");
+  await expect(citation).toContainText("not confirmed yet, so this stays a hunch");
+  await expect(citation).toContainText("silently skips closed generic structs");
+  await expect(page.getByTestId("context-entry")).toHaveCount(0);
+  await page.getByTestId("context-entries-toggle").click();
+  await expect(page.getByTestId("context-entry")).toHaveCount(2);
+  await expect(page.getByTestId("context-entry-ledger")).toHaveCount(1);
+  await expect(page.getByTestId("context-predates")).toHaveCount(0);
+
+  // A run without context.json says so instead of pretending.
+  await page.goto("/change/ju26-issue-2297");
+  await expect(page.getByTestId("context-predates")).toHaveText("This run predates context recording.");
+  await expect(page.getByTestId("context-citation")).toHaveCount(0);
+  // "Merge A" ran earlier in this serial file; the undecided A/B wording is covered in plain-summary.spec.ts.
+  await expect(page.getByTestId("plain-decide")).toContainText(`Decided: ${HUMAN} picked reading A on`);
+  await expect(page.getByTestId("plain-decide").locator("a")).toHaveAttribute("href", "#trust-receipt");
+});
+
+test("inbox legend explains the three verdicts in plain words", async ({ page }) => {
+  await page.goto("/");
+  const legend = page.getByTestId("verdict-legend");
+  await expect(legend).toContainText("a defect is proven; fix it first");
+  await expect(legend).toContainText("nothing proven wrong; a person decides");
+  await expect(legend).toContainText("two readings; a person picks one");
+  await expect(legend.getByTestId("verdict-pill")).toHaveCount(3);
+});

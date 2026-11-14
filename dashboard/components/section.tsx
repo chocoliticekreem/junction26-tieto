@@ -10,7 +10,7 @@ export function Section({
   id,
   icon,
 }: {
-  title: string;
+  title: React.ReactNode;
   count?: number;
   children: React.ReactNode;
   className?: string;

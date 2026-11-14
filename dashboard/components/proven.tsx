@@ -47,7 +47,7 @@ export function Proven({ lines }: { lines: ProvenLine[] }) {
   const shown = showAll ? lines : lines.slice(0, MAX_LINES);
   const hidden = lines.length - shown.length;
   return (
-    <section className="rounded-lg border border-ok-foreground/20 bg-ok/40 px-3.5 py-3 text-sm dark:bg-ok/30" data-testid="proven" aria-label="proven">
+    <section id="proven" className="scroll-mt-16 rounded-lg border border-ok-foreground/20 bg-ok/40 px-3.5 py-3 text-sm dark:bg-ok/30" data-testid="proven" aria-label="proven">
       <div className="text-xs font-semibold text-ok-foreground">Proven</div>
       <ul className="mt-1.5 space-y-1">
         {shown.map((l) => (
