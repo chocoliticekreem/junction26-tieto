@@ -42,4 +42,4 @@ helped one issue and not the other). The headline tile "0.81 to 0.28" compares 3
 - **Bait comments.** The justification comments are stripped from the 2283 and 2234 bait plants (the 2129 comment copies text the codebase itself uses for the same convention), so this run measures the ledger, not the comment.
 - **Mutation fates are two-tier** (PR #24): a mutant the change's own tests miss is re-run against the full suite before it counts as a survivor.
 - **Planted defects are a proxy.** In production the measure is reverts and incidents per area, fed back into trust levels.
-- **The security lens caught 0 of 4 security plants on its own.** Three were caught by tests the other lenses wrote, which is why receipts matter more than lens labels. It is still a weak lens and is reported as one.
+- **The security lens caught 0 of 4 security plants on its own.** All four were caught by tests the other lenses wrote (T2: logic-edge), which is why receipts matter more than lens labels. It is still a weak lens and is reported as one.
