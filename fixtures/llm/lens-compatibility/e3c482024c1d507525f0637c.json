@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "New analyzer diagnostics MsgPack019-022 are declared as Errors and added to SupportedDiagnostics, but the diff shows no entries in AnalyzerReleases.Unshipped.md and no docs/MsgPack019.md etc. (help links point to missing pages). The analyzer release tracking (RS2000-series) would warn or error on the build.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:318",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build MessagePack.SourceGenerator with head code and check for RS2000/RS2002 diagnostics. Confirm AnalyzerReleases.Unshipped.md lists MsgPack019-022."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Existing hand-written formatter registration is changed in GeneratorUtilities. Any class carrying the new attribute is now excluded from the hand-written formatter list. Only the diagnostics path ever reports on the new attribute, and it runs inside the generator. The analyzer's SupportedDiagnostics now list the MsgPack019-022 descriptors, but the diff shows no analyzer code reporting them. The result: no diagnostic is reported in analyzer-only/IDE scenarios and the AnalyzerReleases docs are out of sync.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:378",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the analyzer alone (without the generator) over a non-partial [GeneratedMessagePackFormatter] class and assert MsgPack019 is reported. If it is not, the descriptor is declared but never raised by the analyzer."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless wire format for the new feature emits string keys but IntKey is the member index. Members are sorted ordinally by name, with no ordering guarantee relative to the existing contractless resolver (which uses declaration/reflection order). Maps are keyed by name so deserialization is unaffected, but bytes of the generated formatter differ in key order from ContractlessStandardResolver output for the same type. Mixed-version peers using map key order sensitivity are unaffected, but byte-for-byte snapshots differ.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a sample class {int Zeta; int Alpha;} with ContractlessStandardResolver and with the generated formatter; compare bytes and key order."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Generated partial class is emitted with no accessibility, and the template drops 'sealed'. If the nesting/namespace emitter and user declarations conflict (for example user declared 'public sealed partial class' or a struct-like generic formatter), the generated partial may produce CS0262 or conflicting-modifier errors. Also, existing generated resolver registration and the formatter's GetQualifiedName for nested user classes could collide. The new members it emits (for example fields for string-key byte arrays) could collide with user members of the same name in the user-declared class.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.cs:37",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with a user class declared 'public sealed partial class' and one that defines a member named like the generated fields (e.g. 'GetBytes'/'____keys'). Check it compiles."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "ObjectSerializationInfo is registered in the generated resolver for the user-declared formatter, and also (as the same DataType) may collide with a type that is already collected via [MessagePackObject], yielding two formatters for the same type in the resolver (duplicate registration or duplicate GetFormatter cases). Existing users who add the attribute for a type already covered would get compile errors in the generated resolver.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:72",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Snapshot test: a [MessagePackObject] type T in the same project plus a [GeneratedMessagePackFormatter] class for T; check that the generated resolver compiles with a single registration."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18023,
+  "output_tokens": 1590,
+  "ms": 12660,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

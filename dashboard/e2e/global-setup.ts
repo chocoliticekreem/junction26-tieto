@@ -29,10 +29,24 @@ function createBareRepo(bare: string) {
   fs.rmSync(work, { recursive: true, force: true });
 }
 
+/** The merge route refuses a branch whose sha differs from the one its side run reviewed. */
+function pinSideRunShas(bare: string) {
+  for (const side of ["A", "B"]) {
+    const sha = execFileSync("git", ["-C", bare, "rev-parse", `review/ju26-issue-2297/${side}`], { encoding: "utf8" }).trim();
+    const changeDir = path.join(E2E_TMP, "runs", `ju26-issue-2297__${side}`);
+    const ts = fs.readFileSync(path.join(changeDir, "latest"), "utf8").trim();
+    const file = path.join(changeDir, ts, "receipt.json");
+    const receipt = JSON.parse(fs.readFileSync(file, "utf8"));
+    fs.writeFileSync(file, JSON.stringify({ ...receipt, head_sha: sha }, null, 2) + "\n");
+  }
+}
+
 export default function globalSetup() {
   fs.rmSync(E2E_TMP, { recursive: true, force: true });
   fs.mkdirSync(E2E_TMP, { recursive: true });
   fs.cpSync(path.resolve(__dirname, "fixtures"), E2E_TMP, { recursive: true });
   fs.mkdirSync(path.join(E2E_TMP, "decisions"), { recursive: true });
-  createBareRepo(path.join(E2E_TMP, "mock-repo.git"));
+  const bare = path.join(E2E_TMP, "mock-repo.git");
+  createBareRepo(bare);
+  pinSideRunShas(bare);
 }

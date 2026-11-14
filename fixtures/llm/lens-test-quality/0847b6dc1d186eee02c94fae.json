@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Diagnostic MsgPack022 (SerializedMemberNotSupported) and the attributed-mode diagnostics (MemberNeedsKey, BothStringAndIntKeyAreNull, DoNotMixStringAndIntKeys, KeysMustBeUnique, NoDeserializingConstructor) have no test. The only diagnostic tests cover MsgPack019, 020 and 021. Deleting the `!IsPublicReadWrite(member)` guard in CreateAttributedMembers would go unnoticed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:200",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:200 remove-guard: if (!IsPublicReadWrite(member)) { report; return null; } -> guard removed; expected to survive because no test has a [DataContract]/[MessagePackObject] type with a private or read-only serialized member, and ExternalWidget only has public read-write members"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The [MessagePackObject] attributed path (Key int/string, IgnoreMember, keyAsPropertyName) is untested end to end. The only attributed execution test uses [DataContract] with Order. Mutating the keyAsPropertyName computation, the IgnoreAttribute skip, or the Key handling would not fail any test. The requirement says attributes are honoured when present.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:137",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:137 negate-condition: if (keyAsPropertyName) -> if (!keyAsPropertyName); expected to survive because no ExternalTypes type carries [MessagePackObject], since that assembly cannot reference MessagePack"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests never cover DataContract with Name-only DataMember (string keys), a mix of string and int keys, or a duplicate key. The DataContract test checks only the array header and a round trip, so a wrong key mapping would still pass. Contractless member ordering (OrderBy Name) is not asserted either.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:122",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:122 off-by-one: order >= 0 -> order > 0; expected to survive because the tests use Order 3 and 7 only, never Order 0"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test for registration in the generated resolver asserts only the formatter types. The change to the hand-written formatter exclusion in GeneratorUtilities (the !GeneratedMessagePackFormatterAttribute guard) is not covered by a test that would fail without it. A double registration might produce duplicate resolver entries or a compile error, but only at build time, and no snapshot or generator test covers it.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: && !symbol.GetAttributes().Any(...GeneratedMessagePackFormatter...) -> removed; check whether ExecutionTests still build and pass, and add a generator snapshot test that asserts a single registration"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No snapshot or generator test checks the emitted source of the partial class. The three diagnostic tests use only hand-written members. The positive generation path (partial class emission, with the StringKey and int-key templates) is verified only by ExecutionTests, which are excluded from MapModeExecutionTests. Mutating the template ternary to always emit 'internal sealed class' would be caught only by a compile error.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.tt:18",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a generator snapshot test with [GeneratedMessagePackFormatter] over a type in a referenced assembly, then rerun the generator snapshot tests"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Missing negative cases: no test for a formatted type that is generic, inaccessible, or lacks an accessible parameterless constructor (a class with only a parameterized ctor). The GeneratedFormatterDataTypeNotSupported test covers only abstract. The NoDeserializingConstructor path is untested, and the diagnostic is created without arguments. The generator-side diagnostics pipeline is unit-tested only for MsgPack019, 020 and 021.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:67",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:67 remove-guard: if (isClass && !type.InstanceConstructors.Any(...)) -> removed; expected to survive because no test uses a type without a parameterless ctor"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 24302,
+  "output_tokens": 1905,
+  "ms": 13114,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

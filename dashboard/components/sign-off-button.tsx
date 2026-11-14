@@ -5,7 +5,17 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { Decision } from "@/lib/types";
 
-export function SignOffButton({ changeId, human, decision }: { changeId: string; human: string | null; decision?: Decision }) {
+export function SignOffButton({
+  changeId,
+  human,
+  decision,
+  refusal,
+}: {
+  changeId: string;
+  human: string | null;
+  decision?: Decision;
+  refusal?: string;
+}) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -15,6 +25,19 @@ export function SignOffButton({ changeId, human, decision }: { changeId: string;
       <span className="text-sm text-muted-foreground" data-testid="signed-off">
         {decision.choice === "sign-off" ? "Signed off" : `Merged ${decision.choice}`} by {decision.who}
       </span>
+    );
+  }
+
+  if (refusal) {
+    return (
+      <div className="flex max-w-sm flex-col items-end gap-1">
+        <Button disabled size="sm" data-testid="sign-off">
+          Sign-off not available
+        </Button>
+        <span className="text-right text-xs text-muted-foreground" data-testid="sign-off-refused">
+          {refusal}
+        </span>
+      </div>
     );
   }
 

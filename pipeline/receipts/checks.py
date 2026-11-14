@@ -20,6 +20,7 @@ import re
 from pathlib import Path
 
 from . import compat, config, sandbox
+from .intake import classify
 from .models import Evidence, Finding, Mutant, NotChecked, ReceiptPlan, TestRun
 from .mutants import MutantSpec, generate
 from .stages import ReviewContext, StageResult
@@ -30,6 +31,10 @@ TEST_PROJECT_DIR = str(Path(config.TEST_PROJECT).parent)
 RESOURCES_PREFIX = f"{TEST_PROJECT_DIR}/Resources/"
 COMPAT_PREFIXES = ("src/MessagePack/", "src/MessagePack.Annotations/")
 COMPAT_NOT_CHECKED = "compatibility byte diff (base vs head serialized bytes)"
+CODEGEN_AREAS = {"codegen-templates", "source-generator"}
+CODEGEN_NOT_CHECKED = "generated formatter bytes (source generator output, base vs head)"
+CODEGEN_WHY = ("generated formatter bytes not compared: the harness exercises runtime resolvers, "
+               "not source-generated formatters")
 
 
 # Requirement tests ---------------------------------------------------------------------------
@@ -346,6 +351,7 @@ def run_regeneration(ctx: ReviewContext) -> tuple[list[Evidence], bool]:
     unmapped = sorted(p for p, cs in mapping.items() if not cs)
     failing_mapped = sorted({c.name for cs in mapping.values() for c in cs
                              if c.outcome != "passed"})
+    failing_files = sorted(p for p, cs in mapping.items() if any(c.outcome != "passed" for c in cs))
     covered = [p for p, cs in mapping.items() if cs and all(c.outcome == "passed" for c in cs)]
     head_failed = [c.name for c in head.cases if c.outcome == "failed"]
     tests_used = sorted({c.name for cs in mapping.values() for c in cs})
@@ -365,7 +371,8 @@ def run_regeneration(ctx: ReviewContext) -> tuple[list[Evidence], bool]:
         details={
             "generated_files": len(generated), "covered": len(covered),
             "unmapped": unmapped[:50], "failing_tests": head_failed[:50],
-            "failing_mapped_tests": failing_mapped[:50], "snapshot_tests": len(tests_used),
+            "failing_mapped_tests": failing_mapped[:50], "failing_files": failing_files[:50],
+            "snapshot_tests": len(tests_used),
             "head_tests_passed": head.passed, "head_tests_total": head.total,
             "mapping": (f"each file {RESOURCES_PREFIX}<testMethod>/... is the expected output the "
                         "SourceGenerator verifier compares against for test <testMethod> "
@@ -381,18 +388,30 @@ def run_regeneration(ctx: ReviewContext) -> tuple[list[Evidence], bool]:
 
 
 def compat_needed(ctx: ReviewContext) -> bool:
-    if any(f.path.startswith(COMPAT_PREFIXES) and f.kind == "source" for f in ctx.intake.files):
-        return True
-    return any(r.category == "compatibility" for r in ctx.routing.routes)
+    """The harness serializes through the runtime library, so it only runs when that changed."""
+    return any(f.path.startswith(COMPAT_PREFIXES) and f.kind == "source"
+               for f in ctx.intake.files)
+
+
+def codegen_changed(ctx: ReviewContext) -> bool:
+    return any(f.area in CODEGEN_AREAS and f.kind in ("source", "template")
+               for f in ctx.intake.files)
 
 
 def run_compatibility(ctx: ReviewContext) -> tuple[list[Evidence], list[Finding],
                                                    list[NotChecked], bool]:
+    gaps: list[NotChecked] = []
+    if codegen_changed(ctx):
+        gaps.append(NotChecked(what=CODEGEN_NOT_CHECKED, why=CODEGEN_WHY))
     if not compat_needed(ctx):
-        return [], [], [NotChecked(what=COMPAT_NOT_CHECKED,
-                                   why="no runtime/public API change; byte diff not needed")], False
+        compat_routes = any(r.category == "compatibility" for r in ctx.routing.routes)
+        why = ("compatibility-relevant hunks changed, but none in src/MessagePack or "
+               "src/MessagePack.Annotations; the harness only compares the runtime library"
+               if compat_routes else "no runtime/public API change; byte diff not needed")
+        return [], [], [*gaps, NotChecked(what=COMPAT_NOT_CHECKED, why=why)], False
     if ctx.base_wt is None or ctx.head_wt is None:
-        return [], [], [NotChecked(what=COMPAT_NOT_CHECKED, why="worktrees unavailable")], False
+        return [], [], [*gaps, NotChecked(what=COMPAT_NOT_CHECKED,
+                                          why="worktrees unavailable")], False
     with sandbox.lock(ctx.base_wt), sandbox.lock(ctx.head_wt):
         receipts, ev = compat.run_compat(ctx.base_wt, ctx.head_wt, ctx.run_dir)
     ctx.commands.extend(receipts)
@@ -413,7 +432,7 @@ def run_compatibility(ctx: ReviewContext) -> tuple[list[Evidence], list[Finding]
             location=src[0] if src else "src/MessagePack",
             severity="high", receipt_plan=ReceiptPlan(kind="byte-diff", detail=ev.title),
             verified=True, evidence_ids=[ev.id]))
-    return [ev], findings, [], True
+    return [ev], findings, gaps, True
 
 
 # Mapping lens findings to evidence -----------------------------------------------------------
@@ -422,6 +441,8 @@ def run_compatibility(ctx: ReviewContext) -> tuple[list[Evidence], list[Finding]
 def verify_findings(findings: list[Finding], evidence: list[Evidence],
                     mutants: list[Mutant]) -> list[Finding]:
     """Attach evidence to lens findings whose receipt plan an executed artifact confirms."""
+    """Each mapping ties the finding's own claim to an artifact that shows THAT problem; a failing
+    artifact about something else never verifies it (it stays an unverified hunch)."""
     by_kind: dict[str, list[Evidence]] = {}
     for e in evidence:
         by_kind.setdefault(e.kind, []).append(e)
@@ -435,16 +456,7 @@ def verify_findings(findings: list[Finding], evidence: list[Evidence],
         ids: list[str] = []
         plan = f.receipt_plan.kind
         if plan == "test" and f.lens in ("requirement-tests", "logic-edge"):
-            text = f"{f.receipt_plan.detail} {f.location} {f.claim}"
-            same_lens = [e for e in test_ev if e.details.get("lens") == f.lens]
-            named = [e for e in same_lens
-                     if any(_short(n) in text for n in e.details["failed_on_head"])]
-            lens_plans = sum(1 for g in findings
-                             if g.lens == f.lens and g.receipt_plan.kind == "test")
-            if named:
-                ids = [e.id for e in named]
-            elif len(same_lens) == 1 and lens_plans == 1:
-                ids = [same_lens[0].id]
+            ids = [e.id for e in test_ev if test_backs(f, e)]
         elif plan == "mutation":
             if matching_survivors(f, mutants):
                 ids = ["mutation"]
@@ -452,13 +464,68 @@ def verify_findings(findings: list[Finding], evidence: list[Evidence],
                 if f.severity in ("high", "critical"):
                     f = f.model_copy(update={"severity": "medium"})
         elif plan == "byte-diff":
-            ids = [e.id for e in by_kind.get("byte-diff", []) if e.result == "fail"]
+            ids = [e.id for e in by_kind.get("byte-diff", []) if byte_diff_backs(f, e)]
         elif plan == "regeneration":
-            ids = [e.id for e in by_kind.get("regeneration", []) if e.result == "fail"]
+            ids = [e.id for e in by_kind.get("regeneration", []) if regeneration_backs(f, e)]
         if ids:
             f = f.model_copy(update={"verified": True, "evidence_ids": ids})
         out.append(f)
     return out
+
+
+def _names(text: str, word: str) -> bool:
+    return bool(word) and re.search(rf"(?<![\w]){re.escape(word)}(?![\w])", text) is not None
+
+
+def test_backs(f: Finding, e: Evidence) -> bool:
+    """A failing generated test backs a test-plan finding only when the finding's receipt plan names
+    that exact test (method name, whole word) and the test ran and failed on head. A test exercises
+    code, so it never proves a claim about documentation."""
+    if e.details.get("lens") != f.lens or classify(f.location.split(":", 1)[0]) == "docs":
+        return False
+    return any(_names(f.receipt_plan.detail, _short(n)) for n in e.details["failed_on_head"])
+
+
+SUFFIXES = ("Formatter", "Resolver", "Attribute", "Helper", "Extensions")
+
+
+def _compat_tokens(path: str) -> set[str]:
+    stem = Path(path).stem.split(".")[0]
+    tokens = {stem.lower()}
+    for s in SUFFIXES:
+        if stem.endswith(s) and len(stem) > len(s):
+            tokens.add(stem[: -len(s)].lower())
+    return tokens
+
+
+def byte_diff_backs(f: Finding, e: Evidence) -> bool:
+    """A failing byte diff backs a compatibility finding only when what differs (a sample case, a
+    base payload that no longer reads, a removed public API member) traces to the runtime or
+    annotations file the finding names."""
+    path = f.location.split(":", 1)[0]
+    if e.result != "fail" or f.lens != "compatibility" or not path.startswith(COMPAT_PREFIXES):
+        return False
+    tokens = _compat_tokens(path)
+    d = e.details
+    cases = [c["case"] for c in d.get("differing", [])] + [
+        c["case"] for c in d.get("roundtrip_failures", [])]
+    if any(c.split("/", 1)[0].lower() in tokens for c in cases):
+        return True
+    return any(t in line.lower() for line in d.get("api_removed", []) for t in tokens)
+
+
+def regeneration_backs(f: Finding, e: Evidence) -> bool:
+    """A failing regeneration check backs a finding only when a snapshot test that verifies a
+    generated file failed on head and the finding names that test, its snapshot folder or file."""
+    path = f.location.split(":", 1)[0]
+    if e.result != "fail" or not (path.startswith("src/MessagePack.SourceGenerator/")
+                                  or path.startswith(RESOURCES_PREFIX)):
+        return False
+    text = f"{f.location} {f.receipt_plan.detail}"
+    failing = e.details.get("failing_mapped_tests", [])
+    if any(_names(text, _method_and_args(t)[0]) for t in failing):
+        return True
+    return any(p in text for p in e.details.get("failing_files", []))
 
 
 def refuted_findings(findings: list[Finding], evidence: list[Evidence]) -> dict[str, str]:

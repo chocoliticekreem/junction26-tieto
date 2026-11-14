@@ -26,6 +26,21 @@ from pydantic import BaseModel
 from . import config
 
 
+def portable(text: str) -> str:
+    """Machine paths -> placeholders, so run artifacts never carry a home directory."""
+    prefixes = {str(config.RUNS): "<RUNS>", str(config.WORK): "<WORK>",
+                str(config.MOCK_REPO): "<MOCK_REPO>", str(config.ROOT): "<ROOT>",
+                str(Path.home()): "~"}
+    for prefix in sorted(prefixes, key=len, reverse=True):
+        text = text.replace(prefix, prefixes[prefix])
+    return text
+
+
+def portable_file(path: Path) -> None:
+    if path.exists():
+        path.write_text(portable(path.read_text(errors="replace")))
+
+
 def new_run_dir(change_id: str) -> Path:
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     d = config.RUNS / change_id / ts
@@ -41,7 +56,7 @@ def write(run_dir: Path, name: str, obj) -> Path:
     else:
         payload = obj
     p = run_dir / name
-    p.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+    p.write_text(portable(json.dumps(payload, indent=2, ensure_ascii=False)))
     return p
 
 

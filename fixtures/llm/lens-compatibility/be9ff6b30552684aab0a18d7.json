@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "New error-severity diagnostics MsgPack019-022 are added to SupportedDiagnostics, but the visible hunks show no matching entries in AnalyzerReleases.Unshipped.md and no doc/analyzers pages, although helpLinkUri points to them. Missing release tracking triggers RS2000 and breaks the analyzer project build; the help links would 404.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:318",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that AnalyzerReleases.Unshipped.md lists MsgPack019-MsgPack022 and that doc/analyzers/MsgPack019.md through MsgPack022.md exist; otherwise the RS2000 build warning appears."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new attribute is public and unsealed with a public default ctor. Its type name is also hard-coded in the generator and must not collide with user copies. A post-release change to sealed would be breaking. Also, PublicAPI tracking files may be missing an entry for the new public type GeneratedMessagePackFormatterAttribute and for the public record GeneratedFormatterRequest.",
+        "location": "src/MessagePack.Annotations/Attributes.cs:164",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that PublicAPI.Unshipped.txt in MessagePack.Annotations and the SourceGenerator project contains GeneratedMessagePackFormatterAttribute and GeneratedFormatterRequest; otherwise RS0016 fires."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless output uses members sorted ordinally by name and string keys. For a [MessagePackObject]/[DataContract] type without keyAsPropertyName, the output uses int or string keys per attribute, but the members' declaring type is set to null. With [DataContract] and Order, int keys may be sparse, but intKey is passed through as the array index. Other generated formatters handle gaps by writing nil for missing indices. It is unclear whether the template does the same for these members, so array layout or deserialization may differ from the dynamic resolver's bytes for the same type.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:219",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Use a [MessagePackObject] class with [Key(0)] and [Key(2)] public properties. Serialize with the dynamic/standard resolver and with the new generated formatter, then compare the bytes (expect nil at index 1 in both)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode here serializes only public read-write members, sorted by ordinal name. The existing ContractlessStandardResolver includes read-only properties and orders members differently (by name too, but via its own rules and includes public readonly fields/get-only props). The wire bytes of the generated formatter for the same type can differ from ContractlessStandardResolver, so users who switch from dynamic contractless to this generated formatter see changed data (missing read-only members).",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:131",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with public get/set property A, a public get-only property B, and a public readonly field C using ContractlessStandardResolver and the new generated formatter; compare the maps' keys and bytes."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should contractless generated formatters match ContractlessStandardResolver wire output (including read-only members), or is the public read-write only subset intended?",
+        "options": [
+          "Match ContractlessStandardResolver bytes exactly",
+          "Only public read-write members is intended and documented"
+        ],
+        "why_it_matters": "If it must match, omitting read-only members is a wire-compat defect; if the subset is intended, there is no defect.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 18396,
+  "output_tokens": 1428,
+  "ms": 11197,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

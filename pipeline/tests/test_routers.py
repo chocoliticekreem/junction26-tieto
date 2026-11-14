@@ -22,7 +22,9 @@ def _file(path: str, kind: str, area: str) -> FileChange:
     ("source", "serializer-format", 6, "compatibility", True),
     ("source", "security", 6, "security", True),
     ("source", "type-collector", 4, "correctness", False),
-    ("template", "codegen-templates", 4, "correctness", False),
+    ("template", "codegen-templates", 6, "compatibility", True),
+    ("source", "codegen-templates", 6, "compatibility", True),
+    ("source", "source-generator", 6, "compatibility", True),
 ])
 def test_rule_router(kind, area, risk, category, floor):
     r = RuleRouter().route(_hunk("f", kind), "req", {"area": area})
@@ -97,6 +99,28 @@ def test_raising_router_falls_back_to_rule(monkeypatch):
     assert all(r.router == "rule" for r in rep.routes)
     assert "network down" in rep.routes[0].reason
     assert rep.routes[0].risk == 6
+
+
+class FlakyRouter:
+    """Scores the first hunk, then the network goes down."""
+
+    name = "flaky"
+    calls = 0
+
+    def route(self, hunk, requirement_text, context):
+        FlakyRouter.calls += 1
+        if FlakyRouter.calls > 1:
+            raise RuntimeError("network down")
+        return RouteResult(hunk_id=hunk.id, risk=2, category="correctness", confidence=0.9,
+                           router="flaky")
+
+
+def test_report_label_says_when_some_hunks_fell_back(monkeypatch):
+    monkeypatch.setitem(combine._extra, "flaky", FlakyRouter)
+    monkeypatch.setattr(FlakyRouter, "calls", 0)
+    rep = combine.route_all(HUNKS, "req", {}, "flaky", files=FILES)
+    assert [r.router for r in rep.routes] == ["rule+flaky", "rule", "rule"]
+    assert rep.router == "rule+flaky (1 of 2 hunks fell back to rule)"
 
 
 def test_auto_without_keys_or_routers_is_rule(monkeypatch):

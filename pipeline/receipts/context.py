@@ -335,6 +335,15 @@ def entries_for_areas(areas: list[str]) -> list[str]:
     return out
 
 
+def is_confirmed() -> bool:
+    """True only after a named human confirmed the context in the dashboard (status.json)."""
+    path = config.CONTEXT / "status.json"
+    try:
+        return json.loads(path.read_text()).get("status") == "confirmed"
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def context_tags(areas: list[str]) -> list[str]:
     """Intake areas (intake.AREA_TABLE) plus the REVIEW_CONTEXT.md tags (AREAS) they belong to."""
     return sorted({*areas, *(t for a in areas for t in AREA_TAGS.get(a, ()))})

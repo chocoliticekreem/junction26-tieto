@@ -1,0 +1,85 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "CompositeResolverTemplate (.tt and .cs) emits ExcludeFromCodeCoverage unconditionally, ignoring the new Options.Generator.ExcludeFromCodeCoverage opt-out, unlike every other template. README says opt-out is via GeneratedMessagePackResolver(ExcludeFromCodeCoverage=false), and this makes the opt-out incomplete for composite resolvers.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a CompositeResolver (via the [CompositeResolver] attribute) with ExcludeFromCodeCoverage=false and assert the output has no ExcludeFromCodeCoverage attribute; it will fail. Also CompositeResolverTemplate.cs does not read Options at all."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new test only asserts opt-out on a GeneratedMessagePackResolver and does not cover CompositeResolver output, so the unconditional emission is not caught. AllGeneratedTypes test also never exercises the composite resolver or generic formatters/nested types.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:97",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Remove the attribute line from CompositeResolverTemplate.tt/.cs; CodeCoverageExclusionTests still pass because no composite resolver is in TestSource."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is skipped on netstandard2.0/.NET Framework, so the requirement 'all generated code is decorated' is not met on those targets, though the guard is needed to compile. README documents it; the acceptance criterion allows conditional emission.",
+        "location": "README.md:1640",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Requirement criterion 'attribute must exist there or be conditionally emitted' permits the #if guard; no ledger entry. Noted as checked."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Adds a new public API property on GeneratedMessagePackResolverAttribute, a public surface expansion beyond the requirement that no setting is needed. PublicAPI.Unshipped is updated, but net6/other TFM files may be missing if any exist, and no docs under doc/ were added.",
+        "location": "src/MessagePack/GeneratedMessagePackResolverAttribute.cs:34",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check all src/MessagePack/*/PublicAPI.Unshipped.txt directories; diff covers net472, net8.0, netstandard2.0, netstandard2.1 only."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README attribution says 'opt out with GeneratedMessagePackResolver' but formatters for types are emitted per-assembly via the resolver attribute; if a project has no GeneratedMessagePackResolver, no opt-out is possible, and the option is read only from that attribute.",
+        "location": "src/MessagePack.SourceGenerator/Utils/AnalyzerUtilities.cs:76",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read AnalyzerUtilities option parsing: generatorAttribute may be null for projects without the attribute; confirm default true is applied then."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the opt-out setting exist at all, given the requester said a setting is not needed but would be fine?",
+        "options": [
+          "Keep the opt-out property on GeneratedMessagePackResolverAttribute (public API addition)",
+          "Remove the setting and emit unconditionally"
+        ],
+        "why_it_matters": "If unconditional is wanted, the new public API, option plumbing and opt-out test are unneeded scope; if the opt-out is kept, the CompositeResolver bypass becomes a real defect.",
+        "area": "serializer-runtime",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Attribute emitted by default on all generated types (formatters, resolvers, helper classes), with an opt-out property ExcludeFromCodeCoverage on GeneratedMessagePackResolverAttribute and an #if guard for netstandard2.0/.NET Framework."
+      },
+      {
+        "label": "B",
+        "summary": "Unconditional emission with no setting: remove the new attribute property, GeneratorOptions.ExcludeFromCodeCoverage, the AnalyzerUtilities parsing, PublicAPI entries and the template if-blocks; templates always emit the guarded attribute."
+      }
+    ]
+  },
+  "input_tokens": 17389,
+  "output_tokens": 1648,
+  "ms": 12363,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

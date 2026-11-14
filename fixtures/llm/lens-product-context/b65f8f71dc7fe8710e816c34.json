@@ -1,0 +1,75 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The README and doc/analyzers/MsgPack022.md describe MsgPack022 as 'Surrogate member does not match the formatted type' and document SurrogateType, but the attribute has no SurrogateType property. The descriptor and AnalyzerReleases.Unshipped.md title it 'Serialized member must be public and read-write'. The title mismatches across docs/index/descriptor, and the doc describes a nonexistent feature.",
+        "location": "doc/analyzers/MsgPack022.md:1",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare doc/analyzers/MsgPack022.md and doc/analyzers/index.md titles with the MsgPack022 descriptor title in MsgPack00xMessagePackAnalyzer.cs and with GeneratedMessagePackFormatterAttribute in Attributes.cs, which has no SurrogateType."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Diagnostics MsgPack019-022 are produced by the generator's RegisterSourceOutput, not by the analyzer's Initialize. The descriptors are added to SupportedDiagnostics, but the analyzer registers no action for them. Diagnostics reported from generators for undeclared descriptors may not surface in the IDE live; the analyzer-based tests may not reflect this.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:129",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that no analyzer action in MsgPack00xMessagePackAnalyzer.Initialize handles GeneratedMessagePackFormatterAttribute; the diagnostics are only reported through the generator."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Test coverage for the new diagnostics is incomplete. There are no tests for MsgPack022, the no-parameterless-constructor path, or the mixed key kinds path. No generator snapshot tests exist for the new template output.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Mutate the IsPublicReadWrite check in CreateAttributedMembers or the key-kind check and run the tests; expect them to survive."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Per L11, types from referenced assemblies are deliberately not analysed, and the TypeCollector does not generate formatters for them. This change adds an explicit opt-in path via the attribute that bypasses this, which fits the requirement and does not contradict the ledger.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] Metadata-only types get no formatter unless the user opts in via [GeneratedMessagePackFormatter]; the opt-in is deliberate and distinct from the TypeCollector's default behaviour."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Contractless mode skips read-only members and the sort order is by name; the README says to serialize public read-write members. Should types with only a parameterized constructor, or the DataContract approach, be supported?",
+        "options": [
+          "Parameterless constructor only (current)",
+          "Also support constructor matching"
+        ],
+        "why_it_matters": "If constructor matching is required, immutable types from libraries are unsupported and the requirement is only partly met.",
+        "area": "source-generator",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "The change implements the contractless-by-default approach: the attribute has no parameters, and keys/membership come from attributes on the formatted type itself (MessagePackObject or DataContract), with the generator reading the type's own attributes."
+      },
+      {
+        "label": "B",
+        "summary": "Add the surrogate-type design: GeneratedMessagePackFormatterAttribute gets a SurrogateType property, and the generator maps keys from the surrogate's [Key] members by name onto the formatted type's public members, reporting MsgPack022 on mismatches."
+      }
+    ]
+  },
+  "input_tokens": 28187,
+  "output_tokens": 1451,
+  "ms": 10461,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

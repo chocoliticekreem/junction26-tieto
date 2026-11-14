@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change deliberately generates a formatter for a type from a referenced assembly, which L11 says TypeCollector deliberately never does. L11 covers the implicit TypeCollector path (metadata-only types exit silently). This change adds a separate explicit opt-in path (GeneratedFormatterCollector) and leaves the CollectCore early return untouched, so the change is consistent with L11.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] metadata-only types are skipped in TypeCollector.CollectCore (TypeCollector.cs:367); the diff does not modify that check, and the new collector only runs for classes explicitly annotated with [GeneratedMessagePackFormatter]."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless default does not require [MessagePackObject] on the formatted type, which could look like it contradicts the explicit-annotation rule. L8 records that requiring MessagePackObject is intentional, but the requirement explicitly asks for contractless behaviour for external types and the user opts in via the formatter attribute, so the change is consistent with L8.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:158",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] explicitness is intended; the [GeneratedMessagePackFormatter] attribute is an explicit opt-in, and REQ-2129 maintainer comment asks for contractless default."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless implementation ignores attributes on T even though the requirement says that if T carries MessagePack attributes they are honoured. CreateContractlessMembers only checks public read-write members, sorted by name, and never looks at [Key], [IgnoreMember], [DataMember], [MessagePackObject] or [Union] on T. A T annotated with MessagePack attributes (for example int keys) will silently be serialized differently from its own contract.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:158",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an execution test where the external type carries [MessagePackObject] with [Key(n)] integer keys and [IgnoreMember]; use [GeneratedMessagePackFormatter] with no surrogate and assert that the bytes match the reflection-based formatter (they will not)."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Contractless-by-default for T, with the surrogate type (SurrogateType) as the only way to supply keys and membership. Attributes on T itself are ignored. This is what the change implements, and it requires the GeneratedFormatterCollector plus the SurrogateType property on the attribute."
+      },
+      {
+        "label": "B",
+        "summary": "Honour attributes on T when present: if T has [MessagePackObject] or [DataContract], read [Key], [IgnoreMember] and [DataMember] from T via the normal TypeCollector path and fall back to contractless only when T has no attributes. A surrogate type is not required, so the minimal edit is to remove SurrogateType and branch on T's attributes in the collector."
+      }
+    ]
+  },
+  "input_tokens": 28983,
+  "output_tokens": 1186,
+  "ms": 8823,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

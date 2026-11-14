@@ -17,6 +17,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "FIXTURES_LLM", tmp_path)
     monkeypatch.setattr(config, "ANTHROPIC_API_KEY", "")
     monkeypatch.setattr(config, "JEV_API_KEY", "")
+    monkeypatch.setattr(config, "MOCK_LLM", False)
     return tmp_path
 
 

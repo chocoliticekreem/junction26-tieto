@@ -61,3 +61,34 @@ def test_ledger_as_dicts_and_convention_entries_without_question(tmp_path):
 
 def test_load_ledger_missing_file_is_empty(tmp_path):
     assert load_ledger(tmp_path / "nope.jsonl") == []
+
+
+REF_A = "Should analyzer diagnostics be reported for types from referenced assemblies?"
+REF_B = "Should the analyzer report diagnostics for types declared in a referenced assembly?"
+
+
+def test_reworded_question_is_the_same_question():
+    assert same_question(REF_A, REF_B)
+
+
+def test_reworded_answered_question_is_not_reasked():
+    ledger = [LedgerEntry(question=REF_A, answer="no", area="analyzer", answered_by="Anson",
+                          change_id="ju26-issue-2283")]
+    assert select_questions([cq(REF_B, area="analyzer")], ledger) == []
+
+
+def test_same_question_in_an_area_with_a_shared_context_tag_is_not_reasked():
+    # analyzer and type-collector both map to the "analyzer" context tag.
+    ledger = [LedgerEntry(question=REF_A, answer="no", area="analyzer", answered_by="Anson",
+                          change_id="ju26-issue-2283")]
+    assert select_questions([cq(REF_A, area="type-collector")], ledger) == []
+    out = select_questions([cq(REF_A, area="analyzer", i=0), cq(REF_B, area="type-collector", i=1)],
+                           [])
+    assert [q.id for q in out] == ["q0"]
+
+
+def test_two_different_questions_in_the_same_area_are_both_kept():
+    out = select_questions([cq(REF_A, area="analyzer", i=0),
+                            cq("Should MsgPack004 also fire for init-only properties?",
+                               area="analyzer", i=1)], [])
+    assert [q.id for q in out] == ["q0", "q1"]

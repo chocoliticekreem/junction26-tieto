@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Adding `[ExcludeFromCodeCoverage]` unconditionally to the generated half of the user's own `partial` resolver class breaks existing code. Inputs: `[GeneratedMessagePackResolver]` or `[CompositeResolver(...)]` on a `partial class` that the user already marked `[ExcludeFromCodeCoverage]`, which is the obvious thing to do for a resolver class. `ExcludeFromCodeCoverageAttribute` is `AllowMultiple = false`, so on net5+/netcoreapp targets the merged declaration carries the attribute twice and fails with CS0579. Code that compiled on base no longer compiles. The generator does not check whether the user's declaration already has the attribute.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run ExcludeFromCodeCoverageEdgeCaseTests.UserResolverAlreadyExcludedFromCoverage_StillCompiles. Its source is `[GeneratedMessagePackResolver][System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage] partial class MyResolver {}` with SkipGeneratedSourcesCheck and no expected diagnostics. Base passes; head fails with CS0579 in the generated MyResolver file. The same applies to CompositeResolverTemplate.tt:7."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The guard `#if !NETSTANDARD2_0 && !NETFRAMEWORK` drops the attribute on netstandard2.0 and .NET Framework, which are the most common library targets. `System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute` exists in netstandard2.0 and in .NET Framework 4.0+, so the condition is too broad. On those targets no generated formatter or resolver is excluded from coverage, so 'all generated code is decorated' does not hold. The requirement only allows conditional emission where the attribute does not exist.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run ExcludeFromCodeCoverageEdgeCaseTests.GeneratedResolverIsExcludedFromCoverage_WhenTargetDefinesSymbol(\"NETSTANDARD2_0\") and (\"NETFRAMEWORK\"). Each drives CSharpGeneratorDriver with parse options defining that symbol and asserts that the MyResolver symbol has ExcludeFromCodeCoverageAttribute. On head the attribute is preprocessed away, so the test fails. The same guard appears in every template."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageEdgeCaseTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageEdgeCaseTests\n{\n    private const string ResolverSource = \"\"\"\n        [MessagePack.GeneratedMessagePackResolver]\n        [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]\n        partial class MyResolver\n        {\n        }\n\n        [MessagePack.MessagePackObject]\n        public class MyObject\n        {\n            [MessagePack.Key(0)]\n            public int Value { get; set; }\n        }\n        \"\"\";\n\n    private const string PlainResolverSource = \"\"\"\n        [MessagePack.GeneratedMessagePackResolver]\n        partial class MyResolver\n        {\n        }\n\n        [MessagePack.MessagePackObject]\n        public class MyObject\n        {\n            [MessagePack.Key(0)]\n            public int Value { get; set; }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task UserResolverAlreadyExcludedFromCoverage_StillCompiles()\n    {\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(ResolverSource);\n        await test.RunAsync();\n    }\n\n    [Theory]\n    [InlineData(\"NETSTANDARD2_0\")]\n    [InlineData(\"NETFRAMEWORK\")]\n    public async Task GeneratedResolverIsExcludedFromCoverage_WhenTargetDefinesSymbol(string symbol)\n    {\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3, preprocessorSymbols: new[] { symbol });\n        var references = frameworkRefs.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(PlainResolverSource, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new global::MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out _);\n\n        INamedTypeSymbol? resolver = output.GetTypeByMetadataName(\"MyResolver\");\n        Assert.NotNull(resolver);\n        bool hasAttribute = resolver!.GetAttributes().Any(a => a.AttributeClass?.Name == \"ExcludeFromCodeCoverageAttribute\");\n        Assert.True(hasAttribute, $\"Generated resolver lacks ExcludeFromCodeCoverage when {symbol} is defined, although the attribute exists on that target.\");\n    }\n}\n",
+        "test_names": [
+          "UserResolverAlreadyExcludedFromCoverage_StillCompiles",
+          "GeneratedResolverIsExcludedFromCoverage_WhenTargetDefinesSymbol"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 13035,
+  "output_tokens": 7240,
+  "ms": 60599,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

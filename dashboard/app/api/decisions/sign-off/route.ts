@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { loadRun, readDecision, writeDecision } from "@/lib/data";
+import { loadRun, readDecision, signOffRefusal, writeDecision } from "@/lib/data";
 import { nowIso, requireHuman } from "@/lib/human";
 import type { Decision } from "@/lib/types";
 
@@ -11,9 +11,8 @@ export async function POST(req: Request) {
   const run = loadRun(changeId);
   if (!run) return NextResponse.json({ error: `No run for change ${changeId}` }, { status: 404 });
   if (readDecision(changeId)) return NextResponse.json({ error: "A decision already exists for this change." }, { status: 409 });
-  if (run.receipt.verdict === "decision-A-B") {
-    return NextResponse.json({ error: "This change needs an A/B decision, not a sign-off." }, { status: 400 });
-  }
+  const refusal = signOffRefusal(run.receipt);
+  if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
   const decision: Decision = {
     change_id: changeId,
     requirement_id: run.receipt.requirement_id,

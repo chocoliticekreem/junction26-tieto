@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new GetPropertyIdentifierLocation helper only handles PropertyDeclarationSyntax. A positional record property such as `record Cmd([property: Key((string)null)] string Scope)` is declared by a ParameterSyntax, so the helper returns null and the diagnostic gets Location.None. ReportIfLocatedInCompilation then drops it because Location.None is not IsInSource. BothStringAndIntKeyAreNull is therefore silently lost for a type declared in source in the compilation being analyzed. On base this case threw InvalidCastException; it should now be reported (for example at the parameter location), not suppressed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.PositionalRecordNullKeyDiagnosticTests.NullStringKeyOnPositionalRecordPropertyIsReported. It runs MsgPack00xMessagePackAnalyzer on a C# 9 positional record with [property: Key((string)null)] and asserts that a MsgPack diagnostic is reported in source on the `Scope` parameter. On head nothing is reported, so the test fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper installed in the constructor drops every diagnostic whose location is not in a source tree of this compilation. That includes diagnostics about a [MessagePackObject] type that is declared in source, when the offending member has no syntax: for example a public, Key-less property inherited from a base class in a referenced assembly (MemberNeedsKey now gets a null location from FirstOrDefault). L8 only exempts types that are themselves metadata. Here the formatted type belongs to this compilation, so its MsgPack004 problem is now silently swallowed instead of being reported at the type's identifier.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile `public class Base { public int X { get; set; } }` into a MetadataReference. Analyze `[MessagePackObject] public class Derived : Base { [Key(0)] public int Y { get; set; } }` with MsgPack00xMessagePackAnalyzer. Expect a MsgPack004 diagnostic in source (for example on `Derived`). On head expect none, if the collector enumerates inherited members."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The requirement names three unguarded `DeclaringSyntaxReferences[0]` sites (reported lines 735, 1009, 1101). The diff changes only the two near new lines 985 and 1077. If the third site (around old line 735, in GetObjectInfo) still indexes [0], it can still throw for metadata symbols. That would happen if it is evaluated in the generator path (no ?.Invoke short-circuit) or in the analyzer path, and the wrapper does not help because the throw happens while the Diagnostic is being built, before it is reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "grep head TypeCollector.cs for `DeclaringSyntaxReferences[0]`. Then confirm with the full two-assembly repro: lib containing `partial record struct Item<T>` as a MetadataReference, app containing Cmd with `Item<int> Member`, checking for no CS8785/AD0001."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/PositionalRecordNullKeyDiagnosticTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack.SourceGenerator.Analyzers;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class PositionalRecordNullKeyDiagnosticTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public PositionalRecordNullKeyDiagnosticTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task NullStringKeyOnPositionalRecordPropertyIsReported()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace App\n            {\n                [MessagePackObject]\n                public partial record Cmd([property: Key((string)null)] string Scope);\n            }\n            \"\"\";\n\n        ImmutableArray<MetadataReference> frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        IEnumerable<MetadataReference> references = frameworkRefs.Cast<MetadataReference>()\n            .Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack).Cast<MetadataReference>());\n\n        SyntaxTree tree = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp9));\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"App\",\n            new[] { tree },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new MsgPack00xMessagePackAnalyzer());\n        ImmutableArray<Diagnostic> diagnostics = await compilation.WithAnalyzers(analyzers).GetAllDiagnosticsAsync();\n\n        foreach (Diagnostic d in diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        diagnostics.Should().NotContain(d => d.Id == \"AD0001\");\n\n        int scopeStart = source.IndexOf(\"Scope\", StringComparison.Ordinal);\n        diagnostics.Should().Contain(\n            d => d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal)\n                && d.Location.IsInSource\n                && d.Location.SourceSpan.Start <= scopeStart\n                && d.Location.SourceSpan.End >= scopeStart,\n            \"a [Key] with neither an int nor a string value on a positional record property in source must still be reported\");\n    }\n}\n",
+        "test_names": [
+          "NullStringKeyOnPositionalRecordPropertyIsReported"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 9812,
+  "output_tokens": 11017,
+  "ms": 100190,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

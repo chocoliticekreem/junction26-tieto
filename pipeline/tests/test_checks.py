@@ -165,11 +165,47 @@ def test_failing_head_test_verifies_the_named_finding_only():
     assert not out["f2"].verified
 
 
-def test_single_unnamed_test_finding_maps_to_single_failing_evidence():
+def test_lone_failing_test_does_not_verify_a_finding_that_does_not_name_it():
     ev = [_ev("gentest-1", "fail-before-pass-after", "fail", lens="requirement-tests",
               failed_on_head=["Req.A"])]
     [f] = checks.verify_findings([_finding("f", "requirement-tests", "test")], ev, [])
-    assert f.verified and f.evidence_ids == ["gentest-1"]
+    assert not f.verified
+
+
+def test_test_name_must_match_as_a_whole_word_in_the_plan():
+    ev = [_ev("gentest-1", "fail-before-pass-after", "fail", lens="logic-edge",
+              failed_on_head=['Edge.Throws(symbol: "X")'])]
+    fs = [_finding("prefix", "logic-edge", "test", detail="run Edge.ThrowsWhenEmpty"),
+          _finding("claim-only", "logic-edge", "test", detail="a test").model_copy(
+              update={"claim": "Throws is broken"}),
+          _finding("exact", "logic-edge", "test", detail="run Edge.Throws on head")]
+    out = {f.id: f.verified for f in checks.verify_findings(fs, ev, [])}
+    assert out == {"prefix": False, "claim-only": False, "exact": True}
+
+
+def test_readme_claim_is_not_verified_by_a_failing_head_test():
+    # 2297 requirement-tests-2: "README states a false limitation" named a test that failed on head
+    # for a different reason (generated code lacks the attribute). A test cannot prove docs false.
+    failed = ["Receipts.GeneratedTests.ExcludeFromCodeCoverageDownlevelTargetTests."
+              "GeneratedResolver_IsDecorated_WhenNetStandard20SymbolDefined"]
+    ev = [_ev("gentest-2", "fail-before-pass-after", "fail", lens="requirement-tests",
+              failed_on_head=failed),
+          _ev("gentest-3", "fail-before-pass-after", "fail", lens="product-context",
+              failed_on_head=failed)]
+    detail = ("ExcludeFromCodeCoverageDownlevelTargetTests."
+              "GeneratedResolver_IsDecorated_WhenNetStandard20SymbolDefined: its preconditions "
+              "resolve the netstandard2.0 reference assemblies")
+    fs = [_finding("requirement-tests-2", "requirement-tests", "test", location="README.md:1640",
+                   detail=detail),
+          _finding("product-context-1", "product-context", "test", location="README.md:1639",
+                   detail=detail),
+          _finding("code", "requirement-tests", "test",
+                   location="src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+                   detail=detail)]
+    out = {f.id: f for f in checks.verify_findings(fs, ev, [])}
+    assert not out["requirement-tests-2"].verified
+    assert not out["product-context-1"].verified
+    assert out["code"].verified and out["code"].evidence_ids == ["gentest-2"]
 
 
 def test_passing_evidence_never_verifies():
@@ -186,14 +222,59 @@ def test_mutation_and_byte_diff_findings_map_to_their_evidence():
                       original="a", mutated="b", status="survived")
     killed = Mutant(id="m2", file="src/Y.cs", line=3, operator="off-by-one", original="a",
                     mutated="b", status="killed")
-    ev = [_ev("mutation", "mutation", "partial"), _ev("compat-bytes", "byte-diff", "fail")]
+    ev = [_ev("mutation", "mutation", "partial"),
+          _ev("compat-bytes", "byte-diff", "fail",
+              differing=[{"case": "datetime/utc", "base_hex": "d6ff", "head_hex": "c7"}])]
     fs = [_finding("m", "test-quality", "mutation", location="src/X.cs:12"),
           _finding("k", "test-quality", "mutation", location="src/Y.cs:3"),
-          _finding("b", "compatibility", "byte-diff")]
+          _finding("b", "compatibility", "byte-diff",
+                   location="src/MessagePack/Formatters/DateTimeFormatter.cs:40")]
     out = {f.id: f for f in checks.verify_findings(fs, ev, [survivor, killed])}
     assert out["m"].evidence_ids == ["mutation"] and out["m"].verified
     assert not out["k"].verified  # every mutant in that file was killed: nothing backs the claim
     assert out["b"].evidence_ids == ["compat-bytes"]
+
+
+COMPAT_FAIL = _ev("compat-bytes", "byte-diff", "fail",
+                  differing=[{"case": "datetime/utc", "base_hex": "d6ff", "head_hex": "c7"}],
+                  roundtrip_failures=[], api_removed=[
+                      "MessagePack.MessagePackSecurity.get_MaximumObjectGraphDepth()"])
+
+
+def test_unrelated_security_finding_is_not_verified_by_a_byte_diff():
+    fs = [Finding(id="security-1", lens="security", claim="untrusted input reaches eval",
+                  location="src/MessagePack/MessagePackSecurity.cs:10", severity="critical",
+                  receipt_plan=ReceiptPlan(kind="byte-diff", detail="serialize and compare"))]
+    [f] = checks.verify_findings(fs, [COMPAT_FAIL], [])
+    assert not f.verified
+
+
+def test_byte_diff_verifies_only_compat_findings_traceable_to_the_diff():
+    fs = [_finding("dt", "compatibility", "byte-diff",
+                   location="src/MessagePack/Formatters/DateTimeFormatter.cs:12"),
+          _finding("api", "compatibility", "byte-diff",
+                   location="src/MessagePack/MessagePackSecurity.cs:88"),
+          _finding("other", "compatibility", "byte-diff",
+                   location="src/MessagePack/Formatters/GuidFormatter.cs:5"),
+          _finding("gen", "compatibility", "byte-diff",
+                   location="src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:3")]
+    out = {f.id: f.verified for f in checks.verify_findings(fs, [COMPAT_FAIL], [])}
+    assert out == {"dt": True, "api": True, "other": False, "gen": False}
+
+
+def test_regeneration_verifies_only_findings_naming_a_failing_snapshot_test():
+    ev = [_ev("regeneration", "regeneration", "fail",
+              failing_mapped_tests=["GenerationTests.EnumFormatter(container: None)"],
+              failing_files=[f"{RES}/EnumFormatter/a.g.cs"], failing_tests=["Other.Unrelated"])]
+    tmpl = "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:5"
+    fs = [_finding("named", "compatibility", "regeneration", location=tmpl,
+                   detail="rerun EnumFormatter snapshots"),
+          _finding("vague", "compatibility", "regeneration", location=tmpl,
+                   detail="rerun the snapshot tests"),
+          _finding("elsewhere", "compatibility", "regeneration", location="README.md:3",
+                   detail="rerun EnumFormatter snapshots")]
+    out = {f.id: f.verified for f in checks.verify_findings(fs, ev, [])}
+    assert out == {"named": True, "vague": False, "elsewhere": False}
 
 
 # Regeneration mapping and compat trigger ---------------------------------------------------------
@@ -219,12 +300,14 @@ def test_map_generated_matches_theory_arguments():
 
 
 def _ctx(paths_kinds, categories=()):
-    files = [FileChange(path=p, kind=k, status="modified", additions=1, deletions=0, area="x")
-             for p, k in paths_kinds]
+    from receipts.intake import area_for
+
+    files = [FileChange(path=p, kind=k, status="modified", additions=1, deletions=0,
+                        area=area_for(p)) for p, k in paths_kinds]
     routes = [RouteResult(hunk_id=f"h{i}", risk=3, category=c, confidence=1, router="rule")
               for i, c in enumerate(categories)]
     return SimpleNamespace(intake=SimpleNamespace(files=files),
-                           routing=SimpleNamespace(routes=routes))
+                           routing=SimpleNamespace(routes=routes), base_wt=None, head_wt=None)
 
 
 def test_compat_needed():
@@ -233,7 +316,26 @@ def test_compat_needed():
     assert not checks.compat_needed(_ctx(
         [("src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs", "source")],
         categories=["correctness"]))
-    assert checks.compat_needed(_ctx([("README.md", "docs")], categories=["compatibility"]))
+    # A compatibility-category route outside the runtime does not fire the runtime harness.
+    assert not checks.compat_needed(_ctx([("README.md", "docs")], categories=["compatibility"]))
+
+
+def test_template_change_declares_generated_bytes_not_compared():
+    tmpl = "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt"
+    ev, findings, gaps, ran = checks.run_compatibility(
+        _ctx([(tmpl, "template")], categories=["compatibility"]))
+    assert (ev, findings, ran) == ([], [], False)
+    by_what = {g.what: g.why for g in gaps}
+    assert "runtime resolvers, not source-generated formatters" in by_what[
+        checks.CODEGEN_NOT_CHECKED]
+    assert "harness only compares the runtime library" in by_what[checks.COMPAT_NOT_CHECKED]
+
+
+def test_runtime_change_with_template_change_keeps_the_codegen_gap():
+    ctx = _ctx([("src/MessagePack/Formatters/X.cs", "source"),
+                ("src/MessagePack.SourceGenerator/MessagePackGenerator.cs", "source")])
+    _, _, gaps, _ = checks.run_compatibility(ctx)  # worktrees missing: harness cannot start
+    assert [g.what for g in gaps] == [checks.CODEGEN_NOT_CHECKED, checks.COMPAT_NOT_CHECKED]
 
 
 def test_a_passing_named_test_refutes_its_finding_only():

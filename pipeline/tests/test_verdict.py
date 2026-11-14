@@ -50,7 +50,8 @@ def test_auto_ready_when_everything_green_and_trusted(high_trust):
     assert r.verdict == "auto-ready", r.verdict_reason
 
 
-@pytest.mark.parametrize("area", ["public-api", "serializer-format", "security"])
+@pytest.mark.parametrize("area", ["public-api", "serializer-format", "security", "codegen-templates",
+                                  "source-generator"])
 def test_never_auto_ready_for_risky_areas(high_trust, area):
     r = compose(_inputs(area, risk=1))
     assert r.verdict == "needs-sign-off"

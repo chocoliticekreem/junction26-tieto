@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "No snapshot/generator test checks the emitted source of a generated formatter. The only generator tests cover diagnostics, and the diagnostic cases hand-write the Serialize/Deserialize members. The `partial class` vs `internal sealed class` template switch could therefore be mutated or removed without any generator test noticing. Only the execution tests would notice, and those run in a single project.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.cs:37",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.cs:37 swap-boolean: Info.IsUserDeclaredFormatter ? \"partial class\" : \"internal sealed class\" -> Info.IsUserDeclaredFormatter ? \"internal sealed class\" : \"partial class\"; expected to survive in MessagePack.SourceGenerator.Tests because no test there snapshots generated output"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `GeneratedMessagePackFormatter` exclusion guard in the hand-written formatter discovery has no negative test. Removing it would register the formatter twice (as an ObjectSerializationInfo and as a custom formatter). That would likely yield duplicate registrations or a build error. The test GeneratedFormattersAreRegisteredInGeneratedResolver only checks the returned formatter type, so it may pass either way.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38 remove-guard: delete `&& !symbol.GetAttributes().Any(...GeneratedMessagePackFormatterAttributeName...)`; expected to survive if the resolver tolerates duplicates and the tests only assert IsType"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MsgPack019-022 diagnostics are reported only via the generator's RegisterSourceOutput. The analyzer descriptors are added to SupportedDiagnostics, but no analyzer test exercises them. Several guards are untested: the parameterless-constructor check (NoDeserializingConstructor), the non-accessible type check, the generic type check, the struct case, the duplicate-key case (KeysMustBeUnique), the missing-[Key] case (MemberNeedsKey), and the multiple-IMessagePackFormatter-interfaces case. Mutating or removing these would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:73",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:73 remove-guard: delete the `isClass && !type.InstanceConstructors.Any(...)` check; expected to survive because no test in GeneratedMessagePackFormatterTests uses a class without a default constructor"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Tests do not cover the requirement that attributes on T are honoured. The collector never reads the MessagePack attributes ([MessagePackObject], [Key], [DataContract]) on T, and there is no test where T carries them. Contractless mode is therefore always applied, and a test of the acceptance criterion would fail.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:1",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an external type with [MessagePackObject]/[Key(n)] attributes, generate a formatter for it, and assert that the integer-key array layout is used; expected to fail against the current collector"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In contractless mode the contractless members are sorted by name and given an IntKey of their index, but the tests only check the string keys and the fixmap header 0x82. The key-ordering sort is not verified. A test would be needed to catch changes to the OrderBy or the key assignment.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:137",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:137 delete-statement: remove .OrderBy(m => m.Name, StringComparer.Ordinal); expected to survive because the tests assert only key presence via Contains"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate test only asserts the array length of 8 and the values after a round trip. It does not check that slots 3 and 7 hold the Id and Name values, or that the intermediate slots are nil. Swapping the key assignment (target Id vs Name) would still round-trip. The mutation of the intKey/members.Count branch for string-key surrogates is not tested at all, because there is no execution test with a string-key surrogate.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:231",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:231 off-by-one: intKey: members.Count -> members.Count + 1 for string-key surrogates; expected to survive because no test uses a string-keyed surrogate"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25096,
+  "output_tokens": 1942,
+  "ms": 12861,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}
