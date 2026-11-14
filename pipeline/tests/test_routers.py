@@ -29,6 +29,20 @@ def test_rule_router(kind, area, risk, category, floor):
     assert (r.risk, r.category, r.floor_applied) == (risk, category, floor)
 
 
+@pytest.mark.parametrize("path,kind,risk,floor", [
+    ("src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs", "source", 5, True),
+    ("src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs", "source", 5, True),
+    ("src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs", "source", 4, False),
+    ("src/MessagePack.SourceGenerator/MessagePackGenerator.cs", "source", 4, False),
+])
+def test_generator_analysis_floor(path, kind, risk, floor):
+    area = "type-collector" if "CodeAnalysis" in path else "analyzer"
+    r = RuleRouter().route(_hunk(path, kind), "req", {"area": area})
+    assert (r.risk, r.category, r.floor_applied) == (risk, "correctness", floor)
+    if floor:
+        assert r.reason.startswith("code generator analysis")
+
+
 class LowRouter:
     name = "low"
     usd_per_token = 1e-6
@@ -61,12 +75,12 @@ def test_floor_beats_lower_router_score(monkeypatch):
     api = by_id[HUNKS[0].id]
     assert api.risk == 6 and api.floor_applied and api.router == "rule+low"
     tc = by_id[HUNKS[1].id]
-    assert tc.risk == 2 and not tc.floor_applied
+    assert tc.risk == 5 and tc.floor_applied and tc.category == "correctness"
     gen = by_id[HUNKS[2].id]
     assert gen.router == "rule" and gen.risk == 1  # generated never goes to the other router
     assert rep.router == "rule+low"
     assert rep.total_tokens == 200 and rep.cost_usd == pytest.approx(0.0002)
-    assert rep.depth_by_file == {FILES[0].path: "deep", FILES[1].path: "light",
+    assert rep.depth_by_file == {FILES[0].path: "deep", FILES[1].path: "deep",
                                  FILES[2].path: "regeneration"}
 
 

@@ -158,7 +158,10 @@ def _decide(inp: VerdictInputs, verified: list[Finding], hunches: list[Finding],
     reasons = []
     if risk >= AUTO_READY_MAX_RISK:
         reasons.append(f"max routed risk {risk} >= {AUTO_READY_MAX_RISK}")
-    red_cmds = [c.id for c in inp.commands if c.exit_code != 0]
+    # A command an Evidence item interprets (a requirement test failing on base, a killed mutant)
+    # is judged by that evidence's result, not by its exit code.
+    covered = {cid for e in inp.evidence for cid in e.command_ids}
+    red_cmds = [c.id for c in inp.commands if c.exit_code != 0 and c.id not in covered]
     red_ev = [e.id for e in inp.evidence if e.result not in GREEN]
     if red_cmds or red_ev:
         reasons.append("not every receipt is green (" + ", ".join((red_cmds + red_ev)[:4]) + ")")

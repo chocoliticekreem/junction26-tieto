@@ -10,6 +10,12 @@ FLOOR_AREAS = {
     "serializer-runtime": "compatibility",
     "security": "security",
 }
+# Generated code correctness depends on the generator's analysis, so its hunks reach mutation.
+GENERATOR_ANALYSIS_FLOOR = 5
+GENERATOR_ANALYSIS_PREFIXES = (
+    "src/MessagePack.SourceGenerator/CodeAnalysis/",
+    "src/MessagePack.SourceGenerator/Analyzers/",
+)
 DEFAULT_SOURCE_RISK = 4
 TEST_RISK = 3
 
@@ -30,6 +36,12 @@ class RuleRouter:
             return RouteResult(hunk_id=hunk.id, risk=FLOOR_RISK, category=FLOOR_AREAS[area],
                                confidence=0.8, router=self.name, floor_applied=True,
                                reason=f"{area} code: risk floor {FLOOR_RISK}")
+        if hunk.kind == "source" and hunk.file.startswith(GENERATOR_ANALYSIS_PREFIXES):
+            return RouteResult(hunk_id=hunk.id, risk=GENERATOR_ANALYSIS_FLOOR,
+                               category="correctness", confidence=0.7, router=self.name,
+                               floor_applied=True,
+                               reason="code generator analysis: generated code correctness "
+                                      "depends on it")
         if hunk.kind == "test":
             return RouteResult(hunk_id=hunk.id, risk=TEST_RISK, category="tests", confidence=0.7,
                                router=self.name, reason="test code")

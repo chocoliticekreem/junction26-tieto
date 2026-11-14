@@ -155,6 +155,7 @@ def test(
     project: str | None = None,
     commands: list[CommandReceipt] | None = None,
     no_build: bool = False,
+    timeout: int = TEST_TIMEOUT_S,
 ) -> TestRun:
     """Run `dotnet test` (which builds first) and parse its TRX. compiled=False when no TRX appears.
 
@@ -181,7 +182,7 @@ def test(
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 dest.write_text(content)
                 written.append(dest)
-            receipt = run_cmd(receipt_id, cmd, wt, run_dir, TEST_TIMEOUT_S)
+            receipt = run_cmd(receipt_id, cmd, wt, run_dir, timeout)
         finally:
             for f in written:
                 f.unlink(missing_ok=True)
