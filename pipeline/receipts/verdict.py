@@ -77,7 +77,10 @@ def _test_regressions(tests: list[TestRun]) -> list[str]:
     if not (base and head and base.compiled and head.compiled):
         return []
     passed_on_base = {c.name for c in base.cases if c.outcome == "passed"}
-    return sorted(c.name for c in head.cases if c.outcome == "failed" and c.name in passed_on_base)
+    on_base = {c.name for c in base.cases}
+    # A test the change itself adds that fails on head is as red as a regression.
+    return sorted(c.name for c in head.cases if c.outcome == "failed"
+                  and (c.name in passed_on_base or c.name not in on_base))
 
 
 def _cmd(commands: list[CommandReceipt], cid: str) -> CommandReceipt | None:
@@ -149,7 +152,7 @@ def _decide(inp: VerdictInputs, verified: list[Finding], hunches: list[Finding],
         return "blocked", f"head does not build (receipt build-head, exit {head_build.exit_code})"
     regressions = _test_regressions(inp.tests)
     if regressions:
-        return "blocked", (f"{len(regressions)} existing test(s) pass on base but fail on head: "
+        return "blocked", (f"{len(regressions)} test(s) fail on head (passing on base, or added by the change): "
                            + ", ".join(regressions[:3]))
     if inp.interpretations:
         return "decision-A-B", (f"the requirement has {len(inp.interpretations)} plausible readings "
