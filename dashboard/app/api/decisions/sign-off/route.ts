@@ -1,0 +1,28 @@
+import { NextResponse } from "next/server";
+import { loadRun, readDecision, writeDecision } from "@/lib/data";
+import { nowIso, requireHuman } from "@/lib/human";
+import type { Decision } from "@/lib/types";
+
+export async function POST(req: Request) {
+  const auth = await requireHuman();
+  if ("error" in auth) return auth.error;
+  const body = await req.json().catch(() => ({}));
+  const changeId = typeof body?.change_id === "string" ? body.change_id : "";
+  const run = loadRun(changeId);
+  if (!run) return NextResponse.json({ error: `No run for change ${changeId}` }, { status: 404 });
+  if (readDecision(changeId)) return NextResponse.json({ error: "A decision already exists for this change." }, { status: 409 });
+  if (run.receipt.verdict === "decision-A-B") {
+    return NextResponse.json({ error: "This change needs an A/B decision, not a sign-off." }, { status: 400 });
+  }
+  const decision: Decision = {
+    change_id: changeId,
+    requirement_id: run.receipt.requirement_id,
+    who: auth.who,
+    choice: "sign-off",
+    evidence_ids: run.evidence.map((e) => e.id),
+    merge_sha: "",
+    ts: nowIso(),
+  };
+  writeDecision(decision);
+  return NextResponse.json({ decision });
+}
