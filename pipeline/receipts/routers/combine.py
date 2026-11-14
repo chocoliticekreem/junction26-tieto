@@ -155,4 +155,6 @@ def route_all(hunks: list[Hunk], requirement_text: str, context: dict,
         total_tokens=total_tokens,
         total_ms=int((time.monotonic() - t0) * 1000),
         cost_usd=round(total_tokens * usd_per_token, 6),
+        cost_eur=round(total_tokens * usd_per_token * config.VERDA_EUR_PER_USD, 6),
+        provider=config.LLM_PROVIDER,
     )

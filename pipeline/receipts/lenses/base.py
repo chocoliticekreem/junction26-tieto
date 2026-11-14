@@ -60,6 +60,8 @@ class LensRun:
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
+    cost_eur: float = 0.0
+    provider: str = ""
     ms: int = 0
     from_fixture: bool = False
 
@@ -285,7 +287,7 @@ def run_lens(spec: LensSpec, req_id: str, req_text: str, hunks: list[Hunk], rout
              generated_files: int = 0) -> tuple[LensRun, ParsedLens | None]:
     selected = spec.select(hunks, routes, areas_by_file)
     run = LensRun(lens=spec.name, model=spec.model, status="ok", effort=spec.effort,
-                  hunk_ids=[h.id for h in selected])
+                  hunk_ids=[h.id for h in selected], provider=config.LLM_PROVIDER)
     if not selected:
         run.status, run.detail = "skipped", "no hunks in this lens's scope"
         return run, None
@@ -303,6 +305,8 @@ def run_lens(spec: LensSpec, req_id: str, req_text: str, hunks: list[Hunk], rout
         return run, None
     run.input_tokens, run.output_tokens, run.ms, run.from_fixture = res.input_tokens, res.output_tokens, res.ms, res.from_fixture
     run.cost_usd = llm.cost_usd(spec.model, res.input_tokens, res.output_tokens)
+    run.cost_eur = llm.cost_eur(spec.model, res.input_tokens, res.output_tokens)
+    run.provider = res.provider
     try:
         return run, parse_lens_output(spec.name, res.data, areas, change_id)
     except LensOutputError as e:

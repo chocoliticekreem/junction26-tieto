@@ -103,6 +103,7 @@ class ABResult:
     summary_b: str = ""
     diff_stat: str = ""
     cost_usd: float = 0.0
+    cost_eur: float = 0.0
     tokens: dict = field(default_factory=dict)
 
 
@@ -273,6 +274,7 @@ def build_branches(change_id: str, req_id: str, req_text: str, interps: list[Int
                 attempts.append({"attempt": attempt, "error": f"LLM unavailable: {e}"})
                 break
             res.cost_usd += llm.cost_usd(config.MODEL_DEEP, out.input_tokens, out.output_tokens)
+            res.cost_eur += llm.cost_eur(config.MODEL_DEEP, out.input_tokens, out.output_tokens)
             res.tokens = {"input": res.tokens.get("input", 0) + out.input_tokens,
                           "output": res.tokens.get("output", 0) + out.output_tokens,
                           "from_fixture": out.from_fixture, "model": config.MODEL_DEEP}

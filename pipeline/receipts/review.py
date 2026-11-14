@@ -69,11 +69,12 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
     """Review `change` (a branch, or `head` when given). `ab_reading` marks a per-branch run of an
     A/B decision (<change>__A / __B): it reviews that branch and never starts another A/B.
     `no_ab` keeps the lenses' interpretations and refusal but builds no A/B branches (bench runs)."""
-    run_dir = runstore.new_run_dir(change)
+    run_dir = runstore.new_run_dir(config.run_id(change))
     print(f"run dir: {run_dir}")
     title, req_text, req_missing = load_requirement(req)
 
     intake = run_intake(change, req, base, head=head)
+    intake.change_id = config.run_id(change)  # the run's id; `change` stays the git ref
     runstore.write(run_dir, "intake.json", intake)
     print(f"[1] intake: {intake.summary} ({len(intake.hunks)} hunks)")
 
@@ -123,8 +124,9 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
     runstore.write(run_dir, "tests.json", tests)
 
     ctx = stages.ReviewContext(
-        run_dir=run_dir, change_id=change, requirement_id=req, requirement_title=title,
-        requirement_text=req_text, requirement_missing=req_missing, intake=intake, routing=routing,
+        run_dir=run_dir, change_id=config.run_id(change), requirement_id=req,
+        requirement_title=title, requirement_text=req_text, requirement_missing=req_missing,
+        intake=intake, routing=routing,
         base_sha=intake.base, head_sha=intake.head_sha, base_wt=base_wt, head_wt=head_wt,
         base_build_ok=b_base.exit_code == 0, head_build_ok=b_head.exit_code == 0,
         base_tests=runs["base"], head_tests=runs["head"], skip_mutation=skip_mutation,
@@ -149,7 +151,9 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
     if not lens_res.ran:
         if config.MOCK_LLM:
             lens_why = "MOCK_LLM=1 and no lens output was replayed for this change"
-        elif not config.ANTHROPIC_API_KEY:
+        elif config.LLM_PROVIDER == "verda" and not config.VERDA_API_KEY:
+            lens_why = "LLM unavailable: VERDA_API_KEY not set and no recorded fixture"
+        elif config.LLM_PROVIDER == "anthropic" and not config.ANTHROPIC_API_KEY:
             lens_why = "LLM unavailable: ANTHROPIC_API_KEY not set and no recorded fixture"
 
     evidence += [*lens_res.evidence, *check_res.evidence]
@@ -186,7 +190,7 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
 
         print("[A/B] two readings found; building review branches")
         panel = next((r.why for r in refused if "(A or B)" in r.what), "")
-        ab_result = ab.build_branches(change, req, req_text, interpretations, intake, run_dir,
+        ab_result = ab.build_branches(config.run_id(change), req, req_text, interpretations, intake, run_dir,
                                       commands, panel)
         built_b = f" As built on the branch: {ab_result.summary_b}" if ab_result.summary_b else ""
         interpretations = [i.model_copy(update={
@@ -199,7 +203,8 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
         runstore.write(run_dir, "ab.json", {
             "branches": ab_result.branches, "shas": ab_result.shas,
             "summary_b": ab_result.summary_b, "diff_stat": ab_result.diff_stat,
-            "cost_usd": round(ab_result.cost_usd, 6), "tokens": ab_result.tokens})
+            "cost_usd": round(ab_result.cost_usd, 6), "cost_eur": round(ab_result.cost_eur, 6),
+            "provider": config.LLM_PROVIDER, "tokens": ab_result.tokens})
         print(f"[A/B] branches: {ab_result.branches}")
     receipt = compose(verdict_inputs())
 

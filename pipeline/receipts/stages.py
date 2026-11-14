@@ -141,8 +141,8 @@ def _citation_evidence(citations: list[Finding], ledger: list[dict],
 def run_lenses(ctx: ReviewContext) -> StageResult:
     """[4] Six independent lenses (lenses.run_all_lenses), each with minimal context, then the
     requirement-reading panel (lenses.readers), whose vote alone decides ambiguity."""
+    from . import config, runstore
     from . import context as review_context
-    from . import runstore
     from .lenses import run_all_lenses
     from .lenses.harness import TEST_PROJECT_DIR
     from .lenses.readers import run_panel
@@ -174,15 +174,19 @@ def run_lenses(ctx: ReviewContext) -> StageResult:
         "lenses": [{"lens": r.lens, "status": r.status, "detail": r.detail, "model": r.model,
                     "effort": r.effort,
                     "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
-                    "cost_usd": r.cost_usd, "ms": r.ms, "from_fixture": r.from_fixture,
+                    "provider": r.provider, "cost_usd": r.cost_usd, "cost_eur": r.cost_eur,
+                    "ms": r.ms, "from_fixture": r.from_fixture,
                     "hunks": len(r.hunk_ids)} for r in out.runs],
+        "provider": config.LLM_PROVIDER,
         "total_cost_usd": out.total_cost_usd,
+        "total_cost_eur": out.total_cost_eur,
         "ledger_entries": len(ledger),
         "ambiguity": out.ambiguity,
         "lens_interpretations": [i.model_dump(mode="json") for i in out.interpretations],
         "ambiguity_decided_by": "readers.json",
         "readers_ambiguity": panel.ambiguity,
         "readers_cost_usd": panel.cost_usd,
+        "readers_cost_eur": panel.cost_eur,
         "candidate_questions": len(out.candidate_questions),
         "questions_after_budget": len(out.questions),
         "generated_tests": [{"lens": t.lens, "path": t.path, "test_names": t.test_names,

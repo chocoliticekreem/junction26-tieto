@@ -122,3 +122,115 @@ def format_table(lines: list[Line]) -> str:
     rows.append("standard $ = the same requests sent live (non-batch path); batch $ = Message "
                 "Batches at 50%.")
     return "\n".join(rows)
+
+
+# ---------------------------------------------------------------- Verda projection
+#
+# Verda has no batch API, so there is no collect queue to price. Instead a review is projected
+# from what the same review consumed on Anthropic: the recorded input and output tokens of every
+# lens, reader, orientation and A/B call, re-priced at the Verda model of the same role. Open
+# models tokenize and reason differently, so output tokens are scaled by the measured ratio
+# (Verda output / Anthropic output per role, from `@verda` runs of the same change) once one
+# exists; before that the ratio is 1.0 and the projection says so.
+
+DEEP_PURPOSES = {"lens-requirement-tests", "lens-logic-edge", "ab-variant"}
+
+
+def role_of(purpose: str) -> str:
+    if purpose in DEEP_PURPOSES:
+        return "deep"
+    return "router" if purpose.startswith("router") else "lens"
+
+
+def run_usage(run_dir: Path) -> list[tuple[str, int, int]]:
+    """(purpose, input tokens, output tokens) for every LLM call a run recorded, replayed or not."""
+    out: list[tuple[str, int, int]] = []
+    for r in _read(run_dir / "lenses.json").get("lenses", []):
+        if r.get("input_tokens"):
+            out.append((f"lens-{r['lens']}", r["input_tokens"], r.get("output_tokens", 0)))
+    readers = _read(run_dir / "readers.json")
+    for r in readers.get("readers", []):
+        if r.get("input_tokens"):
+            out.append(("readers", r["input_tokens"], r.get("output_tokens", 0)))
+    orient = readers.get("orientation") or {}
+    if orient.get("input_tokens"):
+        out.append(("readers-orient", orient["input_tokens"], orient.get("output_tokens", 0)))
+    ab = _read(run_dir / "ab.json").get("tokens") or {}
+    if ab.get("input"):
+        out.append(("ab-variant", ab["input"], ab.get("output", 0)))
+    return out
+
+
+def latest_dir(change_id: str, root: Path | None = None, mode: str = "") -> Path | None:
+    """Newest complete run of `change_id`; with `mode`, the newest whose bench.json has it."""
+    base = (root or config.RUNS) / change_id
+    if not base.is_dir():
+        return None
+    dirs = sorted(d for d in base.iterdir() if (d / "receipt.json").exists())
+    if mode:
+        dirs = [d for d in dirs if _read(d / "bench.json").get("mode") == mode]
+    return dirs[-1] if dirs else None
+
+
+def output_ratio(pairs: list[tuple[Path, Path]]) -> dict[str, float]:
+    """role -> Verda output / Anthropic output, over (anthropic run, verda run) pairs."""
+    sums: dict[str, list[int]] = {}
+    for a, v in pairs:
+        for side, d in ((0, a), (1, v)):
+            for purpose, _, out in run_usage(d):
+                sums.setdefault(role_of(purpose), [0, 0])[side] += out
+    return {r: round(v / a, 3) for r, (a, v) in sums.items() if a and v}
+
+
+def project_verda(run_dirs: list[Path], models: dict[str, str],
+                  ratio: dict[str, float] | None = None) -> dict:
+    """EUR and USD at Verda list prices for re-running `run_dirs` (Anthropic runs) on Verda."""
+    ratio = ratio or {}
+    by_role: dict[str, list[int]] = {}
+    for d in run_dirs:
+        for purpose, tin, tout in run_usage(d):
+            role = role_of(purpose)
+            acc = by_role.setdefault(role, [0, 0, 0])
+            acc[0] += 1
+            acc[1] += tin
+            acc[2] += round(tout * ratio.get(role, 1.0))
+    roles = {r: {"model": models[r], "calls": c, "input_tokens": i, "output_tokens": o,
+                 "output_ratio": ratio.get(r, 1.0),
+                 "usd": llm.cost_usd(models[r], i, o), "eur": llm.cost_eur(models[r], i, o)}
+             for r, (c, i, o) in by_role.items()}
+    return {"runs": len(run_dirs), "roles": roles,
+            "usd": round(sum(x["usd"] for x in roles.values()), 4),
+            "eur": round(sum(x["eur"] for x in roles.values()), 4)}
+
+
+def verda_plans(root: Path | None = None) -> dict:
+    """Projected Verda cost of the re-run plan in docs/verda.md, from the recorded Anthropic runs."""
+    from .bench import load_manifest
+
+    root = root or config.RUNS
+    manifest = load_manifest()
+    models = {"deep": config.VERDA_MODEL_DEEP, "lens": config.VERDA_MODEL_LENS,
+              "router": config.VERDA_MODEL_ROUTER}
+    tieto = [c for b in config.SAMPLE_BRANCHES for c in (b, f"{b}__A", f"{b}__B")]
+    pairs = [(a, v) for c in [*tieto, *(e["id"] for e in manifest)]
+             if (a := latest_dir(c, root)) and (v := latest_dir(f"{c}@verda", root))]
+    ratio = output_ratio(pairs)
+
+    def dirs(ids, mode=""):
+        return [d for c in ids if (d := latest_dir(c, root, mode))]
+
+    plans = {
+        "a_cold_bench_36": dirs([e["id"] for e in manifest], "cold"),
+        "b_warm_mock_2283": dirs([e["id"] for e in manifest if e["issue"] == "2283"], "warm"),
+        "b_warm_mock_2234": dirs([e["id"] for e in manifest if e["issue"] == "2234"], "warm"),
+        "c_2297_r2_with_ab": dirs(["ju26-issue-2297", "ju26-issue-2297__A", "ju26-issue-2297__B"]),
+        "d_tieto_four_with_ab": dirs(tieto),
+    }
+    return {"models": models, "output_ratio": ratio,
+            "ratio_basis": (f"{len(pairs)} anthropic/verda run pairs" if pairs else
+                            "no @verda run yet: Verda output tokens assumed equal to Anthropic's"),
+            "eur_per_usd": config.VERDA_EUR_PER_USD,
+            "plans": {name: project_verda(ds, models, ratio) for name, ds in plans.items()},
+            "note": ("c uses the round-1 2297 runs as the token basis (round 2 has no complete "
+                     "Anthropic run). Prices: verda.com/inference list prices, cached input at "
+                     "the full input price, so these are upper bounds at the given output ratio.")}

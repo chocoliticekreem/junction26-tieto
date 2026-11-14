@@ -45,11 +45,15 @@ class LensOutput:
     refusals: list[Refusal] = field(default_factory=list)
     not_checked: list[NotChecked] = field(default_factory=list)
     runs: list[LensRun] = field(default_factory=list)
-    tokens: dict[str, dict] = field(default_factory=dict)  # lens -> {input, output, cost_usd, model, from_fixture}
+    tokens: dict[str, dict] = field(default_factory=dict)  # lens -> {input, output, cost_usd, cost_eur, model, provider, from_fixture}
 
     @property
     def total_cost_usd(self) -> float:
         return round(sum(t["cost_usd"] for t in self.tokens.values()), 6)
+
+    @property
+    def total_cost_eur(self) -> float:
+        return round(sum(t["cost_eur"] for t in self.tokens.values()), 6)
 
     def to_json(self) -> dict:
         def dump(xs):
@@ -62,6 +66,7 @@ class LensOutput:
             "interpretations": dump(self.interpretations), "refusals": dump(self.refusals),
             "not_checked": dump(self.not_checked), "runs": [asdict(r) for r in self.runs],
             "tokens": self.tokens, "total_cost_usd": self.total_cost_usd,
+            "total_cost_eur": self.total_cost_eur,
         }
 
 
@@ -103,7 +108,9 @@ def run_all_lenses(req_id: str, req_text: str, hunks: list[Hunk], routes: list[R
         out.runs.append(run)
         if run.input_tokens:
             out.tokens[run.lens] = {"model": run.model, "input": run.input_tokens, "output": run.output_tokens,
-                                    "cost_usd": run.cost_usd, "ms": run.ms, "from_fixture": run.from_fixture}
+                                    "cost_usd": run.cost_usd, "cost_eur": run.cost_eur,
+                                    "provider": run.provider, "ms": run.ms,
+                                    "from_fixture": run.from_fixture}
         if run.status == "skipped":
             out.not_checked.append(NotChecked(what=f"{run.lens} lens", why=run.detail))
             continue

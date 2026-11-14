@@ -234,7 +234,7 @@ class LedgerScope:
         self.mode = mode
         self.path = config.CONTEXT / "ledger.jsonl"
         self.backup = config.CONTEXT / "ledger.cold-backup.jsonl"
-        self.archive = config.CONTEXT / "ledger.bench-oracle.jsonl"
+        self.archive = config.CONTEXT / f"ledger.bench-oracle{config.RUN_SUFFIX}.jsonl"
         self.real: list[str] = []
 
     def __enter__(self):
@@ -261,7 +261,7 @@ class LedgerScope:
 
 
 def _latest(change_id: str) -> str:
-    f = config.RUNS / change_id / "latest"
+    f = config.RUNS / config.run_id(change_id) / "latest"
     return f.read_text().strip() if f.exists() else ""
 
 
@@ -294,7 +294,7 @@ def run_case(entry: dict, mode: str, seq: int, log_dir: Path, env: dict | None =
     if not after or after == before:
         rec.setdefault("error", f"no new complete run (exit {rec['exit_code']}); see {rec['log']}")
         return rec
-    run_dir = config.RUNS / entry["id"] / after
+    run_dir = config.RUNS / config.run_id(entry["id"]) / after
     (run_dir / "bench.json").write_text(json.dumps(
         {"mode": mode, "seq": seq, "manifest_id": entry["id"], "wall_s": rec["wall_s"]}, indent=2))
     receipt = _json(run_dir / "receipt.json")
@@ -303,7 +303,10 @@ def run_case(entry: dict, mode: str, seq: int, log_dir: Path, env: dict | None =
     rec.update(run=str(run_dir.relative_to(config.RUNS)), verdict=receipt["verdict"],
                findings=len(receipt.get("findings", [])), hunches=len(receipt.get("hunches", [])),
                questions=len(_json(run_dir / "questions.json", [])),
+               provider=config.LLM_PROVIDER,
                router=routing.get("router", ""), router_usd=routing.get("cost_usd", 0.0),
+               router_eur=routing.get("cost_eur", 0.0),
+               lens_eur=lenses.get("total_cost_eur", 0.0) if lenses else None,
                lens_usd=lenses.get("total_cost_usd", 0.0) if lenses else None,
                lens_spend_usd=round(sum(x.get("cost_usd", 0.0) for x in lenses.get("lenses", [])
                                         if not x.get("from_fixture")), 6) if lenses else None)
@@ -341,7 +344,7 @@ def _remove_worktree(path: Path) -> None:
 def cleanup_worktrees(entry: dict, commit: str, keep: set[str]) -> list[str]:
     """Drop the case's private mutation worktree and its head worktree, unless the head is shared
     (the clean variant's head is the agent branch the sample reviews also use). Base stays."""
-    names = [f"mut-{entry['id']}"]
+    names = [f"mut-{config.run_id(entry['id'])}"]
     if commit not in keep:
         names.append(f"head-{commit[:10]}")
     removed = []
@@ -383,7 +386,7 @@ def leak_scan(since: float, run_dirs: list[Path]) -> list[dict]:
 
 def _write_summary(mode: str, records: list[dict], meta: dict) -> Path:
     """Merge by case id, so a partial (--only) re-run updates its cases and keeps the rest."""
-    path = config.RUNS / f"bench-{mode}-summary.json"
+    path = config.RUNS / f"bench-{mode}-summary{config.RUN_SUFFIX}.json"
     by_id = {r["id"]: r for r in (_json(path, {}) or {}).get("cases", [])}
     by_id.update({r["id"]: r for r in records})
     order = {e["id"]: i for i, e in enumerate(load_manifest())}
@@ -397,6 +400,7 @@ def _write_summary(mode: str, records: list[dict], meta: dict) -> Path:
             "router_usd": round(sum(r.get("router_usd") or 0 for r in cases), 6),
             "lens_usd": round(sum(r.get("lens_usd") or 0 for r in cases), 4),
             "lens_spend_usd": round(sum(r.get("lens_spend_usd") or 0 for r in cases), 4),
+            "lens_eur": round(sum(r.get("lens_eur") or 0 for r in cases), 4),
             "verdicts": {v: sum(r.get("verdict") == v for r in cases)
                          for v in sorted({r["verdict"] for r in cases if r.get("verdict")})},
         },
@@ -538,6 +542,13 @@ def _run_cases(entries: list[dict], mode: str, jobs: int, log_dir: Path, seq_of:
 def run(warm: bool = False, only: str | None = None, jobs: int = DEFAULT_JOBS,
         batch: bool = False, max_usd: float | None = None, dry_run: bool = False) -> int:
     mode = "warm" if warm else "cold"
+    if config.LLM_PROVIDER == "verda" and (batch or dry_run):
+        print("bench run: Verda Inference has no batch API (docs.verda.com/inference/faq); "
+              + ("--dry-run needs the batch collect path, nothing to estimate" if dry_run
+                 else "--batch falls back to live calls, still capped by VERDA_MAX_EUR"))
+        if dry_run:
+            return 2
+        batch, max_usd = False, None
     manifest = load_manifest()
     entries = select_entries(manifest, only)
     if not entries:
@@ -572,7 +583,10 @@ def run(warm: bool = False, only: str | None = None, jobs: int = DEFAULT_JOBS,
     meta = {"only": only, "jobs": jobs,
             "started_at": datetime.fromtimestamp(started, timezone.utc).isoformat(timespec="seconds"),
             "elapsed_s": round(time.monotonic() - t0, 1), "oracle_answers": oracle_log,
-            "leak_scan": leaks, "lens_effort": config.LENS_EFFORT}
+            "leak_scan": leaks, "lens_effort": config.LENS_EFFORT,
+            "provider": config.LLM_PROVIDER, "models": {"deep": config.MODEL_DEEP,
+                                                     "lens": config.MODEL_LENS,
+                                                     "router": config.MODEL_ROUTER}}
     if batch:
         meta["batch"] = {"rounds": batch_log,
                          "cost_usd": round(sum(r.get("cost_usd", 0.0) for r in batch_log), 4)}

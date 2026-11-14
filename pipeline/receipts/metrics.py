@@ -93,11 +93,13 @@ def load_run(run_dir: Path, case: dict | None = None) -> Run | None:
                lenses=_read(run_dir / "lenses.json"))
 
 
-def load_bench_runs(manifest: list[dict], runs_root: Path) -> dict[tuple[str, str], Run]:
-    """(manifest id, mode) -> the newest run of that mode."""
+def load_bench_runs(manifest: list[dict], runs_root: Path,
+                    suffix: str = "") -> dict[tuple[str, str], Run]:
+    """(manifest id, mode) -> the newest run of that mode. `suffix` selects a provider's run
+    folders (runs/<id>@verda/)."""
     out: dict[tuple[str, str], Run] = {}
     for case in manifest:
-        root = runs_root / case["id"]
+        root = runs_root / (case["id"] + suffix)
         if not root.is_dir():
             continue
         for d in sorted(p for p in root.iterdir() if p.is_dir()):
@@ -115,12 +117,12 @@ def incomplete(run: Run) -> list[str]:
     return [x["lens"] for x in (run.lenses or {}).get("lenses", []) if x.get("status") == "unavailable"]
 
 
-def load_sample_runs(runs_root: Path) -> list[Run]:
+def load_sample_runs(runs_root: Path, suffix: str = "", extra: tuple = ()) -> list[Run]:
     out = []
-    for branch in config.SAMPLE_BRANCHES:
-        latest = runs_root / branch / "latest"
+    for branch in [*config.SAMPLE_BRANCHES, *extra]:
+        latest = runs_root / (branch + suffix) / "latest"
         if latest.exists():
-            run = load_run(runs_root / branch / latest.read_text().strip())
+            run = load_run(latest.parent / latest.read_text().strip())
             if run is not None:
                 out.append(run)
     return out
@@ -661,9 +663,10 @@ def trust_history(results: list[CaseResult]) -> tuple[dict[str, int], list[dict]
 # Entry point ---------------------------------------------------------------------------------
 
 
-def write_json(name: str, obj) -> Path:
-    config.METRICS.mkdir(parents=True, exist_ok=True)
-    p = config.METRICS / name
+def write_json(name: str, obj, out_dir: Path | None = None) -> Path:
+    out_dir = out_dir or config.METRICS
+    out_dir.mkdir(parents=True, exist_ok=True)
+    p = out_dir / name
     p.write_text(json.dumps(obj, indent=2, ensure_ascii=False) + "\n")
     return p
 
@@ -705,8 +708,11 @@ def headline(by_mode: dict[str, list[CaseResult]], samples: list[Run], t3: dict)
     return out
 
 
-def run_metrics() -> int:
+def run_metrics(provider: str = "anthropic") -> int:
     from .bench import load_manifest
+
+    if provider == "verda":
+        return run_metrics_verda()
 
     manifest = load_manifest()
     runs = load_bench_runs(manifest, config.RUNS)
@@ -753,4 +759,188 @@ def run_metrics() -> int:
               f"{s['false_alarm_cases']}/{s['control_bait_cases']} control/bait with false alarms, "
               f"{s['questions']} questions over {s['cases']} cases")
     print(f"metrics: wrote T1-T6, trust.json, trust-history.json, summary.json to {config.METRICS}")
+    return 0
+
+
+# Provider comparison (Verda) -----------------------------------------------------------------
+
+VERDA = "@verda"
+VERDA_EXTRA = ("ju26-issue-2297-r2",)  # round 2 of 2297 exists on Verda only
+PROVIDER_NOTE = (
+    "Anthropic bench numbers come from the pipeline as of PR #11 (recorded Sat 14 Nov 07:10-09:10 "
+    "EET; the key then hit its spend limit); Verda bench numbers come from the final pipeline "
+    "(PR #13 claim-tied verification, PR #15 reader vote). So a bench difference mixes the model "
+    "change with the pipeline change. The four Tieto changes ran on the current pipeline on both "
+    "providers, so those rows compare models only. cost = recorded cost of every LLM call in the "
+    "run (lenses, readers, orientation, A/B builder, LLM router; Tieto rows include the __A/__B "
+    "review runs), at list price: Anthropic first-party, Verda per verda.com/inference with "
+    "cached input at the full input price. EUR = USD x VERDA_EUR_PER_USD (default 1.0, parity). "
+    "gentests = generated requirement/edge tests: compiled = built and ran; discriminating = "
+    "behaved as the test plan says (fails on base and passes on head for requirement tests, "
+    "fails on head for an edge test that claims a defect). lens_s = slowest lens call (lenses "
+    "run in parallel); wall_s = whole review, recorded for bench runs only.")
+
+
+def run_cost(run: Run) -> float:
+    lenses = run.lenses or {}
+    ab = _read(run.dir / "ab.json", {}) or {}
+    return round(lenses.get("total_cost_usd", 0.0) + lenses.get("readers_cost_usd", 0.0)
+                 + (run.routing or {}).get("cost_usd", 0.0) + ab.get("cost_usd", 0.0), 6)
+
+
+def gentest_counts(run: Run) -> tuple[int, int, int]:
+    """(generated tests, compiled, discriminating as planned)."""
+    gs = [e for e in run.evidence if str(e.get("id", "")).startswith("gentest")]
+    return (len(gs), sum(e.get("result") != "error" for e in gs),
+            sum(e.get("result") == "pass" for e in gs))
+
+
+def _side(run: Run | None, subs: list[Run], result: CaseResult | None) -> dict:
+    if run is None:
+        return {}
+    g = [gentest_counts(r) for r in [run, *subs]]
+    lens_ms = [x.get("ms", 0) for x in (run.lenses or {}).get("lenses", [])]
+    wall = (_read(run.dir / "bench.json", {}) or {}).get("wall_s")
+    usd = round(sum(run_cost(r) for r in [run, *subs]), 4)
+    return {
+        "verdict": run.verdict, "verified": len(run.verified), "hunches": len(run.hunches),
+        "gentests": sum(x[0] for x in g), "compiled": sum(x[1] for x in g),
+        "discriminating": sum(x[2] for x in g),
+        "caught": (None if result is None or not result.planted else result.caught),
+        "false_alarms": len(result.false_alarms) if result else 0,
+        "questions": len(run.questions), "usd": usd,
+        "eur": round(usd * config.VERDA_EUR_PER_USD, 4),
+        "lens_s": round(max(lens_ms, default=0) / 1000, 1), "wall_s": wall,
+    }
+
+
+COMPARE_COLS = [("verdict", "verdict"), ("verified", "verified_findings"), ("hunches", "hunches"),
+                ("gentests_compiled", "gentests_compiled"),
+                ("gentests_discriminating", "gentests_discriminating"),
+                ("caught", "planted_caught"), ("false_alarms", "false_alarms"),
+                ("questions", "questions"), ("usd", "cost_usd"), ("eur", "cost_eur"),
+                ("lens_s", "lens_s"), ("wall_s", "wall_s")]
+
+
+def _cell(side: dict, key: str):
+    if not side:
+        return "-"
+    if key == "gentests_compiled":
+        return f"{side['compiled']}/{side['gentests']}"
+    if key == "gentests_discriminating":
+        return f"{side['discriminating']}/{side['gentests']}"
+    if key == "caught":
+        return "-" if side["caught"] is None else ("yes" if side["caught"] else "no")
+    return side[key] if side[key] is not None else "-"
+
+
+def _row(change: str, kind: str, a: dict, v: dict) -> list:
+    return [change, kind, *[c for key, _ in COMPARE_COLS for c in (_cell(a, key), _cell(v, key))]]
+
+
+def _overall(label: str, pairs: list[tuple[dict, dict]]) -> list:
+    both = [(a, v) for a, v in pairs if a and v]
+
+    def agg(side: list[dict]) -> dict:
+        planted = [s for s in side if s["caught"] is not None]
+        lens = [s["lens_s"] for s in side]
+        walls = [s["wall_s"] for s in side if s["wall_s"] is not None]
+        return {
+            "verdict": f"{sum(s['verdict'] == 'blocked' for s in side)} blocked of {len(side)}",
+            **{k: sum(s[k] for s in side) for k in ("verified", "hunches", "gentests", "compiled",
+                                                     "discriminating", "false_alarms",
+                                                     "questions")},
+            "caught": None, "usd": round(sum(s["usd"] for s in side), 4),
+            "eur": round(sum(s["eur"] for s in side), 4),
+            "lens_s": round(sum(lens) / len(lens), 1) if lens else 0,
+            "wall_s": round(sum(walls) / len(walls), 1) if walls else None,
+            "_caught": f"{sum(s['caught'] for s in planted)}/{len(planted)}",
+        }
+
+    a, v = agg([x for x, _ in both]), agg([y for _, y in both])
+    row = _row(f"overall: {label} ({len(both)} with both)", "overall", a, v)
+    i = 2 + 2 * [k for k, _ in COMPARE_COLS].index("caught")
+    row[i], row[i + 1] = a["_caught"], v["_caught"]
+    return row
+
+
+def provider_comparison(manifest: list[dict], runs_root: Path) -> dict:
+    a_bench, v_bench = load_bench_runs(manifest, runs_root), load_bench_runs(manifest, runs_root, VERDA)
+    a_res = {r.run.case["id"]: r for r in classify_all(a_bench, "cold")}
+    v_res = {r.run.case["id"]: r for r in classify_all(v_bench, "cold")}
+
+    def latest(cid: str) -> Run | None:
+        f = runs_root / cid / "latest"
+        return load_run(f.parent / f.read_text().strip()) if f.exists() else None
+
+    def subs(cid: str, suffix: str) -> list[Run]:
+        return [r for s in ("A", "B") if (r := latest(f"{cid}{suffix}__{s}"))]
+
+    rows, tieto, bench = [], [], []
+    for cid in [*config.SAMPLE_BRANCHES, *VERDA_EXTRA]:
+        a = _side(latest(cid), subs(cid, ""), None)
+        v = _side(latest(cid + VERDA), subs(cid, VERDA), None)
+        if a or v:
+            tieto.append((a, v))
+            rows.append(_row(cid, "tieto", a, v))
+    for case in manifest:
+        cid = case["id"]
+        ar, vr = a_res.get(cid), v_res.get(cid)
+        if ar is None and vr is None:
+            continue
+        a = _side(ar.run if ar else None, [], ar)
+        v = _side(vr.run if vr else None, [], vr)
+        bench.append((a, v))
+        rows.append(_row(cid, f"bench-cold ({case['variant']})", a, v))
+    rows.append(_overall("Tieto changes", tieto))
+    rows.append(_overall("bench cold", bench))
+    columns = ["change_id", "kind", *[f"{name}_{p}" for _, name in COMPARE_COLS
+                                      for p in ("anthropic", "verda")]]
+    return {"columns": columns, "rows": rows, "note": PROVIDER_NOTE}
+
+
+def run_metrics_verda() -> int:
+    """metrics/verda/: the T1, T2, T4, T5, T6 and summary tables over runs/*@verda, plus
+    metrics/provider-comparison.json. The Anthropic tables in metrics/ are not touched. T3 (router
+    comparison) is left out: routing does not depend on the lens provider."""
+    from .bench import load_manifest
+    from .questions import load_ledger
+
+    manifest = load_manifest()
+    out_dir = config.METRICS / "verda"
+    runs = load_bench_runs(manifest, config.RUNS, VERDA)
+    samples = load_sample_runs(config.RUNS, VERDA, VERDA_EXTRA)
+    if not runs and not samples:
+        print(f"metrics --provider verda: no runs/*{VERDA} under {config.RUNS}")
+        return 1
+    dropped = {f"{cid} ({mode})": incomplete(r) for (cid, mode), r in runs.items() if incomplete(r)}
+    runs = {k: r for k, r in runs.items() if not incomplete(r)}
+    by_mode = {m: classify_all(runs, m) for m in ("cold", "warm") if any(k[1] == m for k in runs)}
+    latest_bench = [r for r in (runs.get((c["id"], "warm")) or runs.get((c["id"], "cold"))
+                                for c in manifest) if r is not None]
+    tables = {"T4.json": table_t4([*samples, *latest_bench]),
+              "T6.json": table_t6([*samples, *latest_bench])}
+    if by_mode:
+        primary = primary_mode(runs)
+        ledger = load_ledger() + load_ledger(config.CONTEXT / f"ledger.bench-oracle{VERDA}.jsonl")
+        variants = list(dict.fromkeys(c["variant"] for c in manifest))
+        tables |= {"T1.json": table_t1(by_mode[primary], primary),
+                   "T2.json": table_t2(by_mode, variants), "T5.json": table_t5(by_mode, ledger)}
+    for name, table in tables.items():
+        table["note"] = f"Verda runs (runs/*{VERDA}), final pipeline. " + table["note"]
+        if dropped and name != "T4.json":
+            table["note"] += " Excluded (a lens could not run): " + "; ".join(
+                f"{k}: {', '.join(v)}" for k, v in sorted(dropped.items()))
+        write_json(name, table, out_dir)
+    summary = headline(by_mode, [], {"columns": ["router"], "rows": []})
+    summary.pop("routing", None)
+    summary |= {"provider": "verda", "models": {"deep": config.VERDA_MODEL_DEEP,
+                                                "lens": config.VERDA_MODEL_LENS,
+                                                "router": config.VERDA_MODEL_ROUTER},
+                "excluded_incomplete_runs": dropped,
+                "sample_runs": {s.change_id: s.verdict for s in samples}}
+    write_json("summary.json", summary, out_dir)
+    write_json("provider-comparison.json", provider_comparison(manifest, config.RUNS))
+    print(f"metrics --provider verda: wrote {', '.join(sorted(tables))}, summary.json to {out_dir}; "
+          f"provider-comparison.json to {config.METRICS}")
     return 0

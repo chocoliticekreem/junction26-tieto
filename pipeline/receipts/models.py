@@ -80,6 +80,8 @@ class RoutingReport(BaseModel):
     total_tokens: int = 0
     total_ms: int = 0
     cost_usd: float = 0.0
+    cost_eur: float = 0.0
+    provider: str = "anthropic"  # whose model the llm router used (jev and rule are not LLM providers)
 
 
 # [3] Sandbox --------------------------------------------------------------
