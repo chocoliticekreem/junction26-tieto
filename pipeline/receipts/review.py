@@ -149,8 +149,9 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
         from . import ab
 
         print("[A/B] two readings found; building review branches")
+        panel = next((r.why for r in refused if "(A or B)" in r.what), "")
         ab_result = ab.build_branches(change, req, req_text, interpretations, intake, run_dir,
-                                      commands)
+                                      commands, panel)
         built_b = f" As built on the branch: {ab_result.summary_b}" if ab_result.summary_b else ""
         interpretations = [i.model_copy(update={
             "branch": ab_result.branches.get(i.label, ""),

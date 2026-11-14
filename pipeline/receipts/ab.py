@@ -1,4 +1,5 @@
-"""A/B decisions (SPEC 5.7): when the lenses find two plausible readings, build both as branches.
+"""A/B decisions (SPEC 5.7): when the reading panel (lenses.readers) votes that the requirement has
+two plausible readings, build both as branches.
 
   review/<change>/A   the original head (reading A, what the change implements)
   review/<change>/B   a minimal edit on top of the original head implementing reading B, written by
@@ -229,14 +230,18 @@ def _quote(req_text: str, quote: str) -> str:
     return q.rstrip(".") if q and q in " ".join(req_text.split()) else ""
 
 
-def refusal_for(req_id: str, req_text: str, interps: list[Interpretation], quote: str) -> Refusal:
+def refusal_for(req_id: str, req_text: str, interps: list[Interpretation], quote: str,
+                panel: str = "") -> Refusal:
+    """`panel`: the reading panel's vote sentence (lenses.readers); it leads the refusal."""
     by = {i.label: i.summary for i in interps}
     q = _quote(req_text, quote)
     support = (f"the requirement text supports both: \"{q}\"" if q else
                "the requirement text supports both readings and nothing recorded settles it")
+    lead = (f"The AI will not pick: {panel.strip()}" if panel
+            else f"The AI will not pick, because {support}.")
     return Refusal(
         what=f"Choosing between reading A and reading B of {req_id}",
-        why=(f"The AI will not pick, because {support}. Reading A: {by.get('A', '')} "
+        why=(f"{lead} Reading A: {by.get('A', '')} "
              f"Reading B: {by.get('B', '')} Which one ships is a product decision, not a "
              "correctness question; both branches are built and reviewed with their own receipts, "
              "and a named human merges one."),
@@ -244,7 +249,8 @@ def refusal_for(req_id: str, req_text: str, interps: list[Interpretation], quote
 
 
 def build_branches(change_id: str, req_id: str, req_text: str, interps: list[Interpretation],
-                   intake: IntakeReport, run_dir: Path, commands: list) -> ABResult:
+                   intake: IntakeReport, run_dir: Path, commands: list,
+                   panel: str = "") -> ABResult:
     res = ABResult()
     head_sha = intake.head_sha
     _set_branch(branch_name(change_id, "A"), head_sha)
@@ -300,7 +306,7 @@ def build_branches(change_id: str, req_id: str, req_text: str, interps: list[Int
         git("checkout", "--detach", "--force", head_sha, cwd=wt)
         sandbox.reset(wt)
 
-    res.refusal = refusal_for(req_id, req_text, interps, quote)
+    res.refusal = refusal_for(req_id, req_text, interps, quote, panel)
     receipts = [a["test_receipt"] for a in attempts if a.get("test_receipt")]
     if sha:
         _set_branch(branch_name(change_id, "B"), sha)

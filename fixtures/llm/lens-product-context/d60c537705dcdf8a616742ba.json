@@ -1,0 +1,86 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The requirement says no new setting is needed and an opt-out is optional, but the change adds a new public API property GeneratedMessagePackResolverAttribute.ExcludeFromCodeCoverage and a new README-documented opt-out. This is permitted but expands the public API surface across four target frameworks. Whether the team wants that is not recorded.",
+        "location": "src/MessagePack/GeneratedMessagePackResolverAttribute.cs:30",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read GeneratedMessagePackResolverAttribute.cs:30-34 and the four PublicAPI.Unshipped.txt additions. The REQ-2297 acceptance criteria call an opt-out optional and give no maintainer decision."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The opt-out is read only from the [GeneratedMessagePackResolver] attribute. Formatters generated without a resolver attribute, such as the default resolver or assemblies with no attribute, fall back to the default of true and cannot be opted out. The opt-out is therefore not available everywhere generated code is emitted.",
+        "location": "src/MessagePack.SourceGenerator/Utils/AnalyzerUtilities.cs:76",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate formatters with no [GeneratedMessagePackResolver] attribute or with a different resolver config. Assert that no opt-out path exists and that the attribute is always emitted."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The CompositeResolver template emits the attribute unconditionally and ignores Options.Generator.ExcludeFromCodeCoverage. The other templates honor the opt-out, so with ExcludeFromCodeCoverage=false the composite resolver is still decorated. The README states that opting out removes the attribute, and the opt-out test asserts it is absent from every generated file, so the test may not exercise a composite resolver.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Set ExcludeFromCodeCoverage=false and generate a CompositeResolver (the tests do not cover one). Assert that the output does not contain the attribute."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is guarded with #if !NETSTANDARD2_0 && !NETFRAMEWORK. ExcludeFromCodeCoverage exists on netstandard2.0 as of .NET Core 2.0 only in newer targets. The requirement says generated code must be decorated, but netstandard2.0 and .NET Framework consumers, who may be a large share of the user base, get no exclusion. The README does document the gap.",
+        "location": "README.md:1640",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the guard in all templates and README.md:1640. It contradicts the acceptance criterion that all generated code is decorated, unless 'attribute must exist there or be conditionally emitted' is accepted."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Only top-level generated types and the nested FormatterCache helper types are decorated. Nesting partial types emitted by EmitNestingTypesAndNamespaces are user-declared partials and are left undecorated, which may be fine. The TransformUtilities change from '{' to '{\\r\\n' alters generated output for all nested generic-constrained types and is not related to this requirement.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests and inspect the diffs for nested types with constraints. Check that only the intended whitespace change appears."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the opt-out setting exist at all, and should it be configurable beyond the resolver attribute?",
+        "options": [
+          "Unconditional, with no setting",
+          "Resolver attribute property only (the current approach)",
+          "An MSBuild property or analyzer config as well"
+        ],
+        "why_it_matters": "The requirement allows either an unconditional attribute or an opt-out. If the answer is unconditional, the new public API and README text should be removed. If a wider setting is wanted, the current attribute-only scope is incomplete.",
+        "area": "source-generator",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Decorate all generated types, with the attribute emitted by default and an opt-out via a new GeneratedMessagePackResolver.ExcludeFromCodeCoverage property. Keep the #if guard for netstandard2.0 and .NET Framework."
+      },
+      {
+        "label": "B",
+        "summary": "Decorate all generated types unconditionally with no setting. Remove the new attribute property, the PublicAPI entries, the Options.Generator.ExcludeFromCodeCoverage plumbing and the README opt-out text, and drop the conditionals in the templates."
+      }
+    ]
+  },
+  "input_tokens": 17343,
+  "output_tokens": 1741,
+  "ms": 12569,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

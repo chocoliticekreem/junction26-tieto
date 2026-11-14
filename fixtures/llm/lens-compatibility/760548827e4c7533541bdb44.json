@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The #if guard `!NETSTANDARD2_0 && !NETFRAMEWORK` omits the attribute on netstandard2.0/.NET Framework builds, which contradicts the requirement that ALL generated code carry ExcludeFromCodeCoverage. ExcludeFromCodeCoverageAttribute has existed since .NET Framework 4.0 and netstandard2.0, so the guard looks unnecessary. Users targeting those frameworks, including Unity-style consumers, still get coverage skew.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Regenerate the snapshot for a netstandard2.0 or net472 compilation. Check that the generated formatter contains no ExcludeFromCodeCoverage once the preprocessor symbols are defined. Compile a sample with a target that defines NETSTANDARD2_0 and confirm the attribute is absent."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "CompositeResolverTemplate emits the attribute unconditionally, bypassing the new Options.Generator.ExcludeFromCodeCoverage opt-out used in every other template. A user who sets ExcludeFromCodeCoverage=false still gets the attribute on composite resolvers, and the generated output is inconsistent.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a composite resolver with [GeneratedMessagePackResolver(ExcludeFromCodeCoverage=false)] semantics and assert the output does not contain ExcludeFromCodeCoverage. It currently does."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change to the nesting emitter, `{` to `{\\r\\n`, alters the whitespace of generated output for nested types with constraints. This may break users' checked-in or snapshot generator output and is unrelated to the requirement. It is a compatibility-visible output change.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests for nested generic types with constraints. Diff the output against base for changes unrelated to the attribute."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new public property GeneratedMessagePackResolverAttribute.ExcludeFromCodeCoverage is added to the public API, and the default of true means existing users get changed generated output without opting in. The analyzer reads the property by name via GetSingleNamedArgumentValue. An older MessagePack runtime paired with a newer generator is compatible, but a newer runtime with an older analyzer silently ignores the property.",
+        "location": "src/MessagePack/GeneratedMessagePackResolverAttribute.cs:33",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read AnalyzerUtilities.cs:76. The `is not false` default applies when the named argument is absent. Confirm the named argument is read from the attribute data and that the attribute is a source-defined type."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 13917,
+  "output_tokens": 1157,
+  "ms": 8585,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

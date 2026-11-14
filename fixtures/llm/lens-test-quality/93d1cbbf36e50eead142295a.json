@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The generator-output path for contractless mode is untested at the snapshot level. No generator snapshot test exercises the emitted formatter source (partial class declaration, members, string-key template). Only runtime execution tests cover it, and the MapMode execution project excludes them. Mutating the template change would not be caught by any snapshot test.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.tt",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests in tests/MessagePack.SourceGenerator.Tests; no snapshot exists for a [GeneratedMessagePackFormatter] class, so a template mutation (e.g. 'partial class' -> 'sealed class') survives there."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode ignores attributes on T, but the requirement says that if T carries MessagePack attributes they are honoured. No test has T with [MessagePackObject]/[Key]/[DataContract] and no code reads them. The ExternalTypes assembly cannot reference MessagePack, so this acceptance criterion is untested.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:123",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test in which T has [MessagePackObject] with [Key(0)] on an int member. Serialize through the generated formatter and assert an array is produced rather than a string-key map; this is expected to fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The negative case for the class-needs-parameterless-constructor check (NoDeserializingConstructor) is not covered by any diagnostic test, so removing the guard would survive. The surrogate's missing [MessagePackObject] check (TypeMustBeMessagePackObject) and the surrogate's abstract/struct constructor check are also untested. The DoNotMixStringAndIntKeys test expects MsgPack005 only on the source, and KeysMustBeUnique (MsgPack006) has no test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:76",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:76 remove-guard: delete the 'isClass && !InstanceConstructors.Any(...)' block; expected to survive because no test uses a formatted class lacking a public parameterless constructor."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate conversion tests use only int and string members with no null or struct path. The struct Deserialize-nil branch and the value-is-null branch for classes have no surrogate test. Callback-receiver code (OnBeforeSerialize/OnAfterDeserialize, explicit-interface cast) in both modes is never exercised, because no test type implements IMessagePackSerializationCallbackReceiver.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:166",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "ObjectSerializationInfo.cs:~175 delete-statement: remove the OnBeforeSerialize emission in GetSurrogateConversionCode; expected to survive because no test type implements the callback receiver."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratedFormatterMustBePartial test cannot distinguish the analyzer from the generator's skip behaviour. The change in GeneratorUtilities that excludes attributed classes from hand-written formatter registration is covered only indirectly. Removing the '!symbol.GetAttributes().Any(...)' guard would likely still pass the registration test, since duplicate registration might compile or pick the same type.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: drop the GeneratedMessagePackFormatter attribute exclusion; check whether GeneratedFormattersAreRegisteredInGeneratedResolver and the other tests still pass."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 29427,
+  "output_tokens": 1518,
+  "ms": 11227,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The surrogate mode's generated Serialize/Deserialize bypass the generated formatters' MessagePackSecurity depth tracking. The standard templates call options.Security.DepthStep(ref reader) and reader.Depth-- on Deserialize, but GetSurrogateConversionCode emits no DepthStep. It relies on the surrogate formatter to enforce MaximumObjectGraphDepth. If the surrogate resolves to a custom or non-generated formatter, this level of nesting is not counted, so the depth limit applied to untrusted data is weakened. Contractless mode keeps the standard templates, so only surrogate mode is affected.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:154",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Deserialize deeply nested data (for example a self-referencing type) through a formatter generated with SurrogateType, with MessagePackSecurity.UntrustedData and a small MaximumObjectGraphDepth. Check that the depth limit throws as it does with the standard template. Compare against a contractless generated formatter."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate path emits `new DataType() { ... }` and `new Surrogate() { ... }` object initializers that assign every member. The collector never checks that init-only or required members are settable this way. Read-write is enforced only through IsPublicReadWrite, which accepts init accessors. This is a correctness issue with no direct security impact.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:200",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the generated surrogate conversion code against a type with required members. This is an unverified hunch."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 22000,
+  "output_tokens": 662,
+  "ms": 5885,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}
