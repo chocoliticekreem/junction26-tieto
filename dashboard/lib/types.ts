@@ -235,6 +235,8 @@ export interface Decision {
   choice: "A" | "B" | "sign-off";
   evidence_ids: string[];
   merge_sha?: string;
+  /** Dashboard-only: merge recorded on a host with no git repository (public demo); merge_sha stays "". */
+  simulated?: boolean;
   ts: string;
 }
 

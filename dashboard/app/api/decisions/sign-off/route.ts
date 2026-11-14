@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { loadRun, readDecision, signOffRefusal, writeDecision } from "@/lib/data";
+import { loadRun, signOffRefusal, writeDecision } from "@/lib/data";
+import { addDecision, decisionFor, isEphemeral, readDemoState, saveDemoState } from "@/lib/demo-state";
 import { nowIso, requireHuman } from "@/lib/human";
 import { readOnlyRefusal } from "@/lib/readonly";
 import type { Decision } from "@/lib/types";
@@ -13,7 +14,7 @@ export async function POST(req: Request) {
   const changeId = typeof body?.change_id === "string" ? body.change_id : "";
   const run = loadRun(changeId);
   if (!run) return NextResponse.json({ error: `No run for change ${changeId}` }, { status: 404 });
-  if (readDecision(changeId)) return NextResponse.json({ error: "A decision already exists for this change." }, { status: 409 });
+  if (await decisionFor(changeId)) return NextResponse.json({ error: "A decision already exists for this change." }, { status: 409 });
   const refusal = signOffRefusal(run.receipt);
   if (refusal) return NextResponse.json({ error: refusal }, { status: 409 });
   const decision: Decision = {
@@ -25,6 +26,11 @@ export async function POST(req: Request) {
     merge_sha: "",
     ts: nowIso(),
   };
+  if (isEphemeral()) {
+    const res = NextResponse.json({ decision });
+    saveDemoState(res, addDecision(await readDemoState(), decision));
+    return res;
+  }
   writeDecision(decision);
   return NextResponse.json({ decision });
 }

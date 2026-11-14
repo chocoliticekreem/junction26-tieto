@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight, FlaskConical, Info, MessageCircleQuestion, Split } from "lucide-react";
-import { loadRun, pendingQuestions, readDecision, signOffRefusal } from "@/lib/data";
+import { loadRun, pendingQuestions, signOffRefusal } from "@/lib/data";
+import { decisionFor, ledgerEntries } from "@/lib/demo-state";
 import { currentHuman } from "@/lib/human";
 import { humanizeTitle, lensLabel } from "@/lib/humanize";
 import { isReadOnly } from "@/lib/readonly";
@@ -53,8 +54,8 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
   const { receipt: r } = run;
   const human = await currentHuman();
   const readOnly = isReadOnly();
-  const decision = readDecision(changeId);
-  const pending = pendingQuestions([run]).filter((q) => q.change_id === changeId);
+  const decision = await decisionFor(changeId);
+  const pending = pendingQuestions([run], await ledgerEntries()).filter((q) => q.change_id === changeId);
   const ctx = { changeId, runTs: run.runTs, commands: run.commands, evidence: run.evidence, mutants: run.mutants, tests: run.tests };
   const findingEvidenceIds = new Set(r.findings.flatMap((f) => f.evidence_ids ?? []));
   const otherEvidence = run.evidence.filter((e) => !findingEvidenceIds.has(e.id));
@@ -108,6 +109,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
           {decision.choice === "sign-off" ? "Signed off" : `Merged ${decision.choice}`} by <span className="font-medium">{decision.who}</span>{" "}
           <span className="font-mono text-xs">{decision.ts}</span>
           {decision.merge_sha && <span className="font-mono text-xs"> · {decision.merge_sha.slice(0, 12)}</span>}
+          {decision.simulated && <span className="text-xs"> · <span data-testid="merge-simulated">Merge recorded (simulated on the public demo: no git repository here)</span></span>}
         </div>
       )}
 
