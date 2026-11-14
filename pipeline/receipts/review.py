@@ -35,7 +35,7 @@ def _test_evidence(run: TestRun, side: str) -> Evidence:
 
 
 def run_review(change: str, req: str, base: str | None = None, router: str = "auto",
-               skip_mutation: bool = False) -> int:
+               skip_mutation: bool = False, req_tests_fixture: bool = False) -> int:
     run_dir = runstore.new_run_dir(change)
     print(f"run dir: {run_dir}")
     title, req_text, req_missing = load_requirement(req)
@@ -94,6 +94,10 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
     )
     lens_res = stages.safe_run("lenses", stages.run_lenses, ctx)
     ctx.findings = list(lens_res.findings)
+    if req_tests_fixture:
+        from .checks import fixture_tests
+
+        ctx.generated_tests += fixture_tests(req)
     check_res = stages.safe_run("receipt-checks", stages.run_receipt_checks, ctx)
     findings = ctx.findings + [f for f in check_res.findings if f not in ctx.findings]
     print(f"[4] lenses ran: {lens_res.ran or 'none'}; [5] checks ran: {check_res.ran or 'none'}")

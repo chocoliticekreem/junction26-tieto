@@ -16,6 +16,8 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--base", default=None, help="base sha (default: config.BASE_SHA)")
     r.add_argument("--router", default="auto", choices=["auto", "rule", "llm", "jev", "none"])
     r.add_argument("--skip-mutation", action="store_true")
+    r.add_argument("--req-tests-fixture", action="store_true",
+                   help="also run fixtures/requirement-tests/<REQ>.cs as requirement tests")
 
     b = sub.add_parser("bench", help="mock-clone bench")
     bsub = b.add_subparsers(dest="bench_cmd", required=True)
@@ -37,7 +39,8 @@ def main(argv: list[str] | None = None) -> int:
         from .review import run_review
 
         return run_review(args.change, args.req, base=args.base, router=args.router,
-                          skip_mutation=args.skip_mutation)
+                          skip_mutation=args.skip_mutation,
+                          req_tests_fixture=args.req_tests_fixture)
     if args.cmd == "bench":
         from . import bench
 

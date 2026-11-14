@@ -54,6 +54,10 @@ class ReviewContext:
     commands: list[CommandReceipt] = field(default_factory=list)  # append every executed command
     tests: list[TestRun] = field(default_factory=list)  # append every TestRun
     findings: list[Finding] = field(default_factory=list)  # lens output, set before receipt checks
+    # Tests a lens wrote, run by the receipt checks on base and head. run_lenses appends dicts:
+    # {lens, path (relative to the test project dir), content, test_names,
+    #  expects: "fail-on-base-pass-on-head" | "new-api" | "fail-on-head"}. See checks.py.
+    generated_tests: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -74,8 +78,10 @@ def run_lenses(ctx: ReviewContext) -> StageResult:
 
 
 def run_receipt_checks(ctx: ReviewContext) -> StageResult:
-    """[5] Receipt checks (Track D). Default: nothing runs; the verdict declares each check unchecked."""
-    return StageResult()
+    """[5] Receipt checks (Track D): requirement tests, mutation, regeneration, byte diff."""
+    from .checks import run_receipt_checks as run
+
+    return run(ctx)
 
 
 def safe_run(name: str, fn, ctx: ReviewContext) -> StageResult:
