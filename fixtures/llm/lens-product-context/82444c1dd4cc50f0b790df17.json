@@ -1,0 +1,66 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new README section documents analyzer behaviour (which diagnostics are reported for suppressed types, e.g. MsgPack011/016/017 skipped) but the diff shows no changes to the analyzer/TypeCollector that implements the gating; the doc claims cannot be verified from the change and the diff only adds a continue and de-duplication guards. Docs may overstate behaviour.",
+        "location": "README.md:1620",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests (esp. SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed and MsgPack011 non-partial case with SuppressSourceGeneration=true) against head build and confirm README claims; add a test for non-partial suppressed class and MsgPack012."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The 'continue' on mixed key kinds changes which members are collected for generated (non-suppressed) types too, and the dedupe guards silently drop duplicate-key members. This alters the member set for normal types, which could change generator output, though only for code that already has an error diagnostic. Acceptance criterion says unset/false behaviour must not change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshot tests (MessagePack.SourceGenerator.Tests) on base vs head to confirm no snapshot output changes for valid types."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Test for the MsgPack005 mixed key kinds expects the diagnostic on the second member only; this is order-dependent and the DuplicateKeys test for generated types is a regression test for behaviour (analyzer crash with duplicate keys) that the requirement does not mention, so the root cause of issue #2234 is not clearly demonstrated by a test that fails before the fix.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:25",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests on base build; tests such as MemberWithoutKeyIsReported should fail on base and pass on head if they actually capture the bug."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should MsgPack011 (partial requirement) and AOT-only checks MsgPack016/017 be suppressed for SuppressSourceGeneration=true types, or should they be reported as in 3.1.0?",
+        "options": [
+          "Skip them for suppressed types (as documented in README)",
+          "Report all diagnostics exactly as 3.1.0 did"
+        ],
+        "why_it_matters": "If 3.1.0 parity is the goal, skipping these diagnostics is a deviation; if skipping is intended, README/tests are correct.",
+        "area": "docs",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Analyzer reports contract diagnostics (003/004/005/012/015) for suppressed types but skips generation-only ones (011/016/017); README and tests document this."
+      },
+      {
+        "label": "B",
+        "summary": "Restore exact 3.1.0 behaviour: the analyzer reports every diagnostic for suppressed types, so tests/README would expect MsgPack011/016/017 reported as before."
+      }
+    ]
+  },
+  "input_tokens": 9088,
+  "output_tokens": 1204,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

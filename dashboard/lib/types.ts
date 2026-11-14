@@ -286,6 +286,8 @@ export interface MetricsSummary {
   oracle?: string;
   cold?: Partial<MetricsSummaryMode>;
   warm?: Partial<MetricsSummaryMode>;
+  /** Cold numbers restricted to the cases the warm run covered, so the two compare like for like. */
+  cold_on_warm_cases?: { cases: number; questions: number; questions_per_change: number };
   "ju26-issue-2297_routed_away_from_humans"?: { generated_files: number; files_total: number; share: number };
   excluded_incomplete_runs?: Record<string, string[]>;
 }

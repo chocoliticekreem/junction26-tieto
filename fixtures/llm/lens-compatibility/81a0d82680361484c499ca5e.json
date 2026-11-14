@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "New analyzer diagnostics MsgPack019-022 are registered as Errors (enabled by default) and listed in SupportedDiagnostics. The hunks do not show AnalyzerReleases.Unshipped.md being updated, so RS2000 release-tracking warnings may fire, and if warnings are errors the generator project build breaks. Users only see the diagnostics once they opt in via the attribute, so this is not a user-facing break.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that AnalyzerReleases.Unshipped.md contains MsgPack019-022; none of the provided hunks show it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new attribute class is public and unsealed, and its `Type? SurrogateType` uses a nullable annotation. Annotations targets netstandard2.0 or netstandard2.1 or older TFMs, so this may break compilation or emit warnings if nullable is not enabled there. It also adds a public API without a PublicAPI.Unshipped.txt entry shown. This is additive and not breaking for existing users.",
+        "location": "src/MessagePack.Annotations/Attributes.cs:160",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build MessagePack.Annotations for all target frameworks and check for PublicAPI analyzer warnings."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities hand-written formatter filter now excludes any class carrying GeneratedMessagePackFormatterAttribute. This is a new exclusion only for attributed classes, so existing users are unaffected. However, the filter compares ToDisplayString against a name string, and the collector's ForAttributeWithMetadataName is the only other path. A class that has the attribute but is rejected, for example non-partial, is silently dropped from the resolver while the diagnostic comes from a separate pipeline step. This is opt-in only.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:37",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests with an attributed non-partial formatter and check the resolver output and diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless mode orders members alphabetically (Ordinal) and uses string keys. This sets the wire format for the new feature. It also ignores existing MessagePack attributes on T ([MessagePackObject], [Key], [DataMember]) when no surrogate is given. The acceptance criteria say attributes on T must be honoured, and this code never reads them. The result is a different wire format from the default serializer for attributed types.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:99",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Define a type with [MessagePackObject] and [Key(0)] properties, and a partial [GeneratedMessagePackFormatter] class for it. Serialize with the generated formatter and with the default resolver, then compare the bytes: array of ints versus map of names."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The template change emits `partial class` with no accessibility or `sealed` modifier for user-declared formatters. It also emits the `: IMessagePackFormatter<T>` base list again. The user's declaration already lists the interface, so the base list is redundant. This is legal for partial types, but the generated code must not re-declare accessibility. Generator snapshot output for existing types is unchanged since the non-user branch emits the same text.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the existing generator snapshot tests to confirm no byte change for non-user formatters, and compile a sample partial formatter."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18050,
+  "output_tokens": 1428,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

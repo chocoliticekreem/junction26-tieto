@@ -1,0 +1,55 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new duplicate-key guard silently drops a member from the generated formatter. Take two properties with the same `[Key(0)]` (`Alpha`, then `Bravo`) on a type without `SuppressSourceGeneration`. On base, the generator threw and emitted no formatter. On head, it emits a formatter that serializes only `Alpha`, so `Bravo` is lost at run time. The MsgPack005 error comes only from the analyzer and can be suppressed (pragma or editorconfig), so the build can succeed with silent data loss. This changes behaviour for the non-suppressed path, which the requirement says must not change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateAndMixedKeyGeneratorReceipts.DuplicateIntKey_GeneratedFormatterDoesNotSilentlyDropMember. It drives CSharpGeneratorDriver over a `[MessagePackObject]` class with two `[Key(0)]` properties and asserts that any generated source mentioning Alpha also mentions Bravo. It passes on base (generator throws, nothing emitted) and fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys drops the mismatched member entirely, and the generator does not report diagnostics. Take `[Key(0)] Alpha` with `[Key(\"b\")] Bravo` and no `SuppressSourceGeneration`. On base, `intKey!.Value` threw and no formatter was emitted. On head, a formatter is emitted that omits `Bravo`. That is silent data loss when the analyzer error is suppressed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateAndMixedKeyGeneratorReceipts.MixedKeys_GeneratedFormatterDoesNotSilentlyDropMember. It passes on base (generator throws) and fails on head (the formatter contains Alpha but not Bravo)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `continue` also skips the rest of the loop body for the mismatched member. That includes the `[MessagePackFormatter]` lookup and the recursive collection of the member's type. Any diagnostics on that member's type are now no longer reported while the key-mix error is present, for example MsgPack003 when the member's type is not a `[MessagePackObject]`. The duplicate-key path does not `continue`, so the two invalid-key cases are handled inconsistently.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the property and field loops in TypeCollector after line 1148. The code after the key block (messagePackFormatter lookup, then CollectCore on item.Type) is unreachable for mixed-key members on head but reachable on base."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateAndMixedKeyGeneratorReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateAndMixedKeyGeneratorReceipts\n{\n    private static async Task<List<string>> RunGeneratorAsync(string source)\n    {\n        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3);\n        var framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        IEnumerable<MetadataReference> refs = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsTest\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new ISourceGenerator[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGenerators(compilation);\n        var result = driver.GetRunResult();\n        return result.Results.SelectMany(r => r.GeneratedSources).Select(s => s.SourceText.ToString()).ToList();\n    }\n\n    private static void AssertNoSilentDrop(List<string> sources)\n    {\n        foreach (var s in sources.Where(s => s.Contains(\"Alpha\")))\n        {\n            Assert.True(s.Contains(\"Bravo\"), \"Generated formatter serializes Alpha but silently drops Bravo:\\n\" + s);\n        }\n    }\n\n    [Fact]\n    public async Task DuplicateIntKey_GeneratedFormatterDoesNotSilentlyDropMember()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace Foo\n            {\n                [MessagePackObject]\n                public class MyObject\n                {\n                    [Key(0)]\n                    public int Alpha { get; set; }\n\n                    [Key(0)]\n                    public int Bravo { get; set; }\n                }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n        var sources = await RunGeneratorAsync(source);\n        AssertNoSilentDrop(sources);\n    }\n\n    [Fact]\n    public async Task MixedKeys_GeneratedFormatterDoesNotSilentlyDropMember()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace Foo\n            {\n                [MessagePackObject]\n                public class MyObject\n                {\n                    [Key(0)]\n                    public int Alpha { get; set; }\n\n                    [Key(\"b\")]\n                    public int Bravo { get; set; }\n                }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n        var sources = await RunGeneratorAsync(source);\n        AssertNoSilentDrop(sources);\n    }\n}\n",
+        "test_names": [
+          "DuplicateIntKey_GeneratedFormatterDoesNotSilentlyDropMember",
+          "MixedKeys_GeneratedFormatterDoesNotSilentlyDropMember"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10135,
+  "output_tokens": 9897,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01LRnr97VeVc8UU8nVuQdTKz"
+}

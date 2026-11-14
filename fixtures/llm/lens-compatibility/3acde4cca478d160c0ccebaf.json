@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetPropertyIdentifierLocation still indexes DeclaringSyntaxReferences[0] and casts unguarded, despite its doc saying it returns null for metadata properties. For a closed generic struct from a referenced assembly with a property where both keys are null, this still throws IndexOutOfRangeException. The BothStringAndIntKeyAreNull path stays crashing. The requirement's acceptance criterion (diagnostics needing a location must not crash on metadata symbols) is not met.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1435",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer/generator test: lib compiled as a metadata reference with [MessagePackObject] struct Item<T> that has a property with an invalid [Key] (null int and string key), e.g. a KeyAttribute-derived attribute. app has [MessagePackObject] Cmd with a member of type Item<int>. Assert there is no AD0001/CS8785 and no IndexOutOfRangeException."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper on reportDiagnostic silently drops every diagnostic whose location is not in a syntax tree of the compilation. That includes Location.None and null-location diagnostics. Previously these were reported, for example MsgPack004 for an inherited member from a base type in a referenced assembly. Users who see such diagnostics today (or rely on warnings-as-errors) would stop seeing them. Types or members with no location are also now suppressed unconditionally, which the requirement did not ask for. Also, the MemberNeedsKey change turns the location into null, and the wrapper then drops it.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test on base and head: [MessagePackObject] class Derived : BaseFromMetadata, where Base has a public property without [Key]. Compare the reported MsgPack004 diagnostics. Head loses the diagnostic if it was reported before."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 8657,
+  "output_tokens": 766,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

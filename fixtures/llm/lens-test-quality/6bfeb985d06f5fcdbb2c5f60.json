@@ -1,0 +1,47 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new tests never exercise ReportIfLocatedInCompilation: both inputs are valid and fully keyed, so no diagnostic reaches the wrapper. Removing its source-tree guard would leave both regression tests passing, and there is also no test proving that diagnostics for types in the current compilation are still reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1448",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1448 remove-guard: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) { report(diagnostic); } -> report(diagnostic); expected to survive because both added tests produce no diagnostics, so they neither exercise metadata-diagnostic suppression nor local-diagnostic preservation"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The BothStringAndIntKeyAreNull location hardening is not covered. Every metadata-struct property in the added tests has a valid integer [Key], so the branch using GetPropertyIdentifierLocation is never entered and restoring unsafe DeclaringSyntaxReferences indexing would not fail these tests.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 remove-guard: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because both added metadata structs give every serialized property a non-null integer key, so this diagnostic branch is skipped"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The MemberNeedsKey null-location hardening is likewise untested: all properties in both metadata definitions have [Key], so the changed expression is never evaluated. A keyless public property on a metadata generic struct is the missing negative case needed to exercise this path without crashing the analyzer.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 remove-guard: item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation() -> item.DeclaringSyntaxReferences[0].GetSyntax().GetLocation(); expected to survive because every member in both added tests has [Key], leaving the MemberNeedsKey branch unexecuted"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5708,
+  "output_tokens": 2961,
+  "ms": 34063,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.061539
+}

@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetPropertyIdentifierLocation still indexes DeclaringSyntaxReferences[0] unguarded and casts to PropertyDeclarationSyntax, despite its doc saying it returns null for metadata. For a metadata property on a closed generic struct from a referenced assembly (e.g. a member of Item<T> with neither a Key nor an IgnoreMember), it throws IndexOutOfRangeException. The helper only moved the crash, so the reported bug remains for this path. It also can throw InvalidCastException for non-property-declaration syntax such as positional record parameters.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the analyzer/generator on the repro with lib compiled to a metadata reference, where Item<T> has a property with Key(null) or a null string key. Assert no AD0001/CS8785. Alternatively, replace [0] with FirstOrDefault and see whether the test still fails. Also try a positional record struct, whose properties come from a ParameterSyntax."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The reportDiagnostic wrapper silently drops every analyzer diagnostic whose location is not an in-source location in this compilation. Diagnostics created with a null location (e.g. Diagnostic.Create(..., (Location?)null)) have Location.None and are now suppressed. Previously, users' builds could see these for source types. Location.None diagnostics (e.g. from MemberNeedsKey with a null location) or ones located in another syntax tree/partial declarations would no longer be reported, which changes diagnostics and could hide MsgPack errors users relied on.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing analyzer tests (MsgPack003/004/005 etc.) plus a case with the type in a partial declaration or a diagnostic with a None location. Check that each expected diagnostic is still reported, comparing results with base and head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 6858,
+  "output_tokens": 769,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

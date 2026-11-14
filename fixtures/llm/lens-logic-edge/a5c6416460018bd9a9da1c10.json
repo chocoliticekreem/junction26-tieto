@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "When source generation is suppressed, a member carrying an attribute derived from KeyAttribute is skipped before its member type is collected. Consequently, a referenced type that lacks [MessagePackObject] no longer receives MsgPack003 (and any later member-specific checks are likewise bypassed), contrary to the requirement that analyzer diagnostics continue to work with suppression enabled. The same early continue was added to both the field and property paths.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generated DerivedKeySuppressionReceiptTests.DerivedKeyDoesNotSuppressMemberTypeDiagnostics test. With build_property.SuppressSourceGeneration=true, a [MessagePackObject] container has a [CustomKey] property whose type is not annotated; the generator run should contain MsgPack003, but the new continue at TypeCollector.cs:1083 prevents member-type collection so the assertion fails. The equivalent field case is skipped at line 921."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DerivedKeySuppressionReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Collections.Generic;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DerivedKeySuppressionReceiptTests\n{\n    [Fact]\n    public async Task DerivedKeyDoesNotSuppressMemberTypeDiagnostics()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            public sealed class CustomKeyAttribute : KeyAttribute\n            {\n                public CustomKeyAttribute()\n                    : base(0)\n                {\n                }\n            }\n\n            [MessagePackObject]\n            public partial class Container\n            {\n                [CustomKey]\n                public Unannotated Value { get; set; }\n            }\n\n            public class Unannotated\n            {\n                public int Value { get; set; }\n            }\n            \"\"\";\n\n        CSharpParseOptions parseOptions = new();\n        ImmutableArray<MetadataReference> frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        ImmutableArray<MetadataReference> references = frameworkReferences.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsDerivedKeySuppression\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions,\n            optionsProvider: new SuppressedSourceGenerationOptionsProvider());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);\n\n        GeneratorRunResult result = Assert.Single(driver.GetRunResult().Results);\n        Assert.Contains(result.Diagnostics, diagnostic => diagnostic.Id == \"MsgPack003\");\n    }\n\n    private sealed class SuppressedSourceGenerationOptionsProvider : AnalyzerConfigOptionsProvider\n    {\n        private static readonly AnalyzerConfigOptions EmptyOptions = new DictionaryAnalyzerConfigOptions(new Dictionary<string, string>());\n\n        public override AnalyzerConfigOptions GlobalOptions { get; } = new DictionaryAnalyzerConfigOptions(new Dictionary<string, string>\n        {\n            [\"build_property.SuppressSourceGeneration\"] = \"true\",\n        });\n\n        public override AnalyzerConfigOptions GetOptions(SyntaxTree tree) => EmptyOptions;\n\n        public override AnalyzerConfigOptions GetOptions(AdditionalText textFile) => EmptyOptions;\n    }\n\n    private sealed class DictionaryAnalyzerConfigOptions : AnalyzerConfigOptions\n    {\n        private readonly IReadOnlyDictionary<string, string> values;\n\n        public DictionaryAnalyzerConfigOptions(IReadOnlyDictionary<string, string> values)\n        {\n            this.values = values;\n        }\n\n        public override bool TryGetValue(string key, out string? value) => this.values.TryGetValue(key, out value);\n    }\n}\n",
+        "test_names": [
+          "DerivedKeyDoesNotSuppressMemberTypeDiagnostics"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 4834,
+  "output_tokens": 9362,
+  "ms": 113191,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.154932
+}

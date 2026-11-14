@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "A null key on a positional record property is silently ignored instead of producing MsgPack005. A positional record property is declared by a ParameterSyntax, not a PropertyDeclarationSyntax, so GetPropertyIdentifierLocation returns null even though the property is declared in the current source. ReportIfLocatedInCompilation then discards the resulting diagnostic. For example, `[MessagePackObject] public partial record R([property: Key(null)] string Value);` receives no BothStringAndIntKeyAreNull diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add NullKeyOnPositionalRecordPropertyReportsMsgPack005, which runs the generator and all MessagePack analyzers on a source-declared partial record whose positional property has [property: Key(null)] and expects MsgPack005 on the Value identifier. On head, the diagnostic is absent because the helper cannot obtain a location from ParameterSyntax."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/PositionalRecordNullKeyDiagnosticTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class PositionalRecordNullKeyDiagnosticTests\n{\n    [Fact]\n    public async Task NullKeyOnPositionalRecordPropertyReportsMsgPack005()\n    {\n        var test = new VerifyCS.Test(ReferencesSet.MessagePack)\n        {\n            LanguageVersion = Microsoft.CodeAnalysis.CSharp.LanguageVersion.CSharp9,\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(\"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public partial record MyRecord([property: Key(null)] string {|MsgPack005:Value|});\n            \"\"\");\n\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "NullKeyOnPositionalRecordPropertyReportsMsgPack005"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 5439,
+  "output_tokens": 8660,
+  "ms": 106107,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.146217
+}

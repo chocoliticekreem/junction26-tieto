@@ -1,0 +1,59 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "MessagePack attributes on T are never read. For example, a metadata type with [MessagePackObject], [Key(0)] on Value, and [IgnoreMember] on Ignored is formatted with ordinal string keys over contractless public members; Ignored is serialized and Value is not written under integer key 0. This violates the explicit acceptance criterion that MessagePack attributes on T be honoured and produces an incompatible wire contract.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:126",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterLogicReceipts.MetadataType_MessagePackKeys_AreHonored. It compiles a referenced ProjectA type carrying [Key(0)] and [IgnoreMember], generates its requested formatter in ProjectB, and asserts array-key output and omission of the ignored member; head instead generates contractless map-key output."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate integer keys are checked only for type and uniqueness, not for the existing MessagePack requirement that they be non-negative and sequential from zero. A surrogate whose only member has [Key(-1)], or whose first member has [Key(1)], is accepted without a MsgPack error and passed to integer-key formatter generation. The negative case can produce a formatter with an invalid array-key layout rather than rejecting the invalid contract.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:174",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterLogicReceipts.RejectsInvalidSurrogateIntegerKeys with -1 and 1. Both invalid single-member contracts should produce a MsgPack error diagnostic; head's GeneratedFormatterCollector accepts both and reports none."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The partial-type validation examines only the formatter itself. A valid nested declaration such as a partial formatter inside a non-partial Container passes collection, but the formatter template must redeclare the containing type to emit the other partial declaration; because Container is not partial, the resulting compilation fails (typically CS0260) instead of generating a working formatter or reporting a targeted diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:49",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterLogicReceipts.NestedFormatter_InNonPartialContainer_GeneratesCompilableCode. It runs the generator for a nested partial formatter in a non-partial container and asserts that generator and output-compilation error diagnostics are empty; head emits uncompilable partial-type declarations."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterLogicReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterLogicReceipts\n{\n    [Fact]\n    public async Task MetadataType_MessagePackKeys_AreHonored()\n    {\n        MetadataReference projectA = await CompileMetadataLibraryAsync(\"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class ProjectAType\n            {\n                [Key(0)]\n                public int Value { get; set; }\n\n                [IgnoreMember]\n                public int Ignored { get; set; }\n            }\n            \"\"\");\n\n        GenerationResult generation = await GenerateAsync(\"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            [GeneratedMessagePackFormatter]\n            public partial class ProjectATypeFormatter : IMessagePackFormatter<ProjectAType>\n            {\n            }\n            \"\"\", projectA);\n\n        Assert.DoesNotContain(generation.GeneratorDiagnostics, d => d.Severity == DiagnosticSeverity.Error);\n        ImmutableArray<Diagnostic> compileErrors = GetCompileErrors(generation.OutputCompilation);\n        Assert.True(compileErrors.IsEmpty, string.Join(\"\\n\", compileErrors.Select(d => d.ToString())));\n        Assert.Contains(\"WriteArrayHeader\", generation.GeneratedText);\n        Assert.DoesNotContain(\"WriteMapHeader\", generation.GeneratedText);\n        Assert.DoesNotContain(\"\\\"Ignored\\\"\", generation.GeneratedText);\n    }\n\n    [Theory]\n    [InlineData(-1)]\n    [InlineData(1)]\n    public async Task RejectsInvalidSurrogateIntegerKeys(int key)\n    {\n        GenerationResult generation = await GenerateAsync($$\"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            public class ProjectAType\n            {\n                public int Value { get; set; }\n            }\n\n            public class ProjectATypeSurrogate\n            {\n                [Key({{key}})]\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackFormatter(SurrogateType = typeof(ProjectATypeSurrogate))]\n            public partial class ProjectATypeFormatter : IMessagePackFormatter<ProjectAType>\n            {\n            }\n            \"\"\");\n\n        Assert.Contains(\n            generation.GeneratorDiagnostics,\n            d => d.Severity == DiagnosticSeverity.Error && d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal));\n    }\n\n    [Fact]\n    public async Task NestedFormatter_InNonPartialContainer_GeneratesCompilableCode()\n    {\n        GenerationResult generation = await GenerateAsync(\"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            public class ProjectAType\n            {\n                public int Value { get; set; }\n            }\n\n            public class Container\n            {\n                [GeneratedMessagePackFormatter]\n                public partial class NestedFormatter : IMessagePackFormatter<ProjectAType>\n                {\n                }\n            }\n            \"\"\");\n\n        Assert.DoesNotContain(generation.GeneratorDiagnostics, d => d.Severity == DiagnosticSeverity.Error);\n        ImmutableArray<Diagnostic> compileErrors = GetCompileErrors(generation.OutputCompilation);\n        Assert.True(compileErrors.IsEmpty, string.Join(\"\\n\", compileErrors.Select(d => d.ToString())));\n    }\n\n    private static async Task<MetadataReference> CompileMetadataLibraryAsync(string source)\n    {\n        List<MetadataReference> references = await GetMessagePackReferencesAsync();\n        CSharpCompilation library = CreateCompilation(\"ProjectA\", source, references);\n        using MemoryStream peStream = new();\n        Microsoft.CodeAnalysis.Emit.EmitResult emitResult = library.Emit(peStream);\n        Assert.True(emitResult.Success, string.Join(\"\\n\", emitResult.Diagnostics.Select(d => d.ToString())));\n        return MetadataReference.CreateFromImage(peStream.ToArray());\n    }\n\n    private static async Task<GenerationResult> GenerateAsync(string source, MetadataReference? additionalReference = null)\n    {\n        List<MetadataReference> references = await GetMessagePackReferencesAsync();\n        if (additionalReference is not null)\n        {\n            references.Add(additionalReference);\n        }\n\n        CSharpCompilation compilation = CreateCompilation(\"ProjectB\", source, references);\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation outputCompilation, out _);\n        GeneratorDriverRunResult runResult = driver.GetRunResult();\n        string generatedText = string.Join(\n            Environment.NewLine,\n            runResult.Results.SelectMany(r => r.GeneratedSources).Select(s => s.SourceText.ToString()));\n        return new GenerationResult(outputCompilation, runResult.Diagnostics, generatedText);\n    }\n\n    private static async Task<List<MetadataReference>> GetMessagePackReferencesAsync()\n    {\n        List<MetadataReference> references = (await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None)).ToList();\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        return references;\n    }\n\n    private static CSharpCompilation CreateCompilation(string assemblyName, string source, IEnumerable<MetadataReference> references)\n    {\n        return CSharpCompilation.Create(\n            assemblyName,\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp12)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));\n    }\n\n    private static ImmutableArray<Diagnostic> GetCompileErrors(Compilation compilation)\n    {\n        return compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToImmutableArray();\n    }\n\n    private sealed record GenerationResult(\n        Compilation OutputCompilation,\n        ImmutableArray<Diagnostic> GeneratorDiagnostics,\n        string GeneratedText);\n}\n",
+        "test_names": [
+          "MetadataType_MessagePackKeys_AreHonored",
+          "RejectsInvalidSurrogateIntegerKeys",
+          "NestedFormatter_InNonPartialContainer_GeneratesCompilableCode"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 11426,
+  "output_tokens": 16441,
+  "ms": 198000,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.280893
+}

@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The early `return null` when SuppressSourceGeneration is true skips all validation in CollectCore, not only generation-specific checks. MsgPack003/004/005/012/015, DoNotMixStringAndIntKeys and duplicate-key diagnostics are therefore no longer reported for these types. That does not meet the requirement that the analyzer still reports its MsgPack0xx rules, and ledger L17 says only MsgPack011/016/017 should be skipped.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:713",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: `[MessagePackObject(SuppressSourceGeneration = true)] public class C { public int P { get; set; } }` (no [Key]). Expect MsgPack004 to be reported. It fails on head because CollectCore returns null before any validation. Add a case with a mixed string/int key type that expects DoNotMixStringAndIntKeys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `continue` after DoNotMixStringAndIntKeys changes the collected member sets for non-suppressed types. Before, a mismatched-key member fell through and was added (or threw on a duplicate). Now it is dropped. Generated formatter output for these invalid types changes, and in cases where the old code did not throw, snapshot output changes. The diagnostic is an Error, so the build fails regardless, but the partially generated output differs.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests on base and head for a [MessagePackObject] type that mixes [Key(0)] and [Key(\"a\")]. Diff the generated formatter and diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate-key guards (`ContainsKey` before `Add`) silently keep the first member for duplicate keys. Previously `Add` threw, which was caught or surfaced as a failure. Generated code for types with duplicate keys now differs. The duplicate-key diagnostic (MsgPack006) is assumed to be reported elsewhere; if it is not, the duplicate passes silently.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1029",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test with two members sharing `[Key(0)]` in the same type (and the same for string keys). Assert MsgPack006 is still reported exactly once and nothing throws, on both base and head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7296,
+  "output_tokens": 960,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_016ZTRtoFx12DniTJbHDKck6"
+}

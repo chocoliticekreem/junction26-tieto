@@ -1,0 +1,128 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The target-framework guard disables the feature on netstandard2.0 and .NET Framework even though System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute is available on those targets. Consequently, generated code on those supported targets remains coverage-instrumented, contrary to the requirement that all generated code be decorated except where the attribute cannot be emitted. The README's claim that these targets lack the attribute is also incorrect.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run the generator with NetStandard20 reference assemblies and parse options defining NETSTANDARD2_0. First assert that compilation.GetTypeByMetadataName(\"System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute\") is non-null, proving the attribute is available; then inspect active attributes on every generated class and assert ExcludeFromCodeCoverage is present. This fails on head because all occurrences of `#if !NETSTANDARD2_0 && !NETFRAMEWORK` exclude it. Repeat with .NET Framework reference assemblies and NETFRAMEWORK defined."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "The copy operation in MessagePackSecurity no longer copies HashCollisionResistant. A copy of a security configuration can therefore silently retain the destination's previous collision-resistance setting instead of the source's, potentially dropping hash-collision protection; this is an unrelated behavioral and security regression in a coverage-only change.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:60",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add or run a unit test that creates a source MessagePackSecurity with HashCollisionResistant = true, performs the copy operation containing this hunk on a destination with HashCollisionResistant = false, and asserts the destination value is true. Also test propagation in the opposite direction. The first case fails after the removed assignment."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "Generated code targeting .NET Framework or .NET Standard 2.0 still has no ExcludeFromCodeCoverage attribute because every template disables it under NETFRAMEWORK or NETSTANDARD2_0. The attribute is available on both targets, so these guards leave supported targets outside the requirement that all generated code be decorated.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run ResolverRetainsExcludeFromCodeCoverageOnFrameworksWhereItExists for NETFRAMEWORK and NETSTANDARD2_0. Generate a resolver with those preprocessor symbols and assert that the resolver symbol has ExcludeFromCodeCoverageAttribute; on head the conditional compilation removes it in both cases."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "The MessagePackSecurity copy constructor no longer copies HashCollisionResistant. For example, copying MessagePackSecurity.UntrustedData (or calling WithMaximumObjectGraphDepth on it) silently produces an instance with hash-collision protection disabled, weakening security when the copy is used for untrusted input.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:63",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run CopyingUntrustedSecurityRetainsHashCollisionResistance: construct new MessagePackSecurity(MessagePackSecurity.UntrustedData) and assert that HashCollisionResistant remains true. It fails on head because the property now retains its default value."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "The MessagePackSecurity copy constructor no longer preserves HashCollisionResistant, so cloning an existing security instance silently changes its behavior. This is unrelated to generated-code coverage and can weaken collision protection for users that copy UntrustedData or another configured instance.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:60",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add or run a unit test constructing MessagePackSecurity.UntrustedData, copying it with new MessagePackSecurity(original), and asserting copy.HashCollisionResistant == original.HashCollisionResistant; repeat with a security instance whose HashCollisionResistant value is explicitly configured. The head copy will retain its default instead."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "security-1",
+    "lens": "security",
+    "claim": "The MessagePackSecurity copy constructor no longer preserves HashCollisionResistant. Cloning MessagePackSecurity.UntrustedData therefore produces an instance with the default false value, silently disabling collision-resistant hashing and re-exposing deserialized untrusted maps to hash-collision denial-of-service attacks.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:63",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Create a derived MessagePackSecurity instance by copying MessagePackSecurity.UntrustedData (or clone it through WithMaximumObjectGraphDepth), then assert that the copy.HashCollisionResistant is true. Also deserialize a string-keyed map using the copied options under a deterministic collision scenario and verify that the collision-resistant comparer is still used."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "The unrelated MessagePackSecurity copy change silently drops HashCollisionResistant when security options are copied. A copy of options configured for collision-resistant hashing can therefore revert to the destination's existing/default value, weakening protection for untrusted data; this is contrary to the product's recorded collision-resistance behavior and is outside REQ-2297.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:63",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add or run a MessagePackSecurity copy-constructor/CopyFrom test: configure the source with HashCollisionResistant = true, copy it into another instance, and assert the destination remains true. Also verify the remaining security properties are preserved. The changed line makes this assertion fail."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The new tests check only that each generated file contains at least one guarded attribute, not that every generated type is decorated. Resolver and composite-resolver files contain several newly decorated types, so deleting the attribute from FormatterCache<T> or the formatter helper leaves both assertions passing: the file still contains another attribute, and guardedCount is recalculated from the reduced output.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:55",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:55 delete-statement: \t[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage] -> (deleted); expected to survive in CodeCoverageExclusionTests because the resolver class and GetFormatterHelper attributes remain, AllGeneratedTypesAreExcludedFromCodeCoverage uses only file-level Contains, and ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable compares occurrence counts within that same mutated output"
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "No test in the change covers MessagePackSecurity's copy constructor, so removal of the HashCollisionResistant assignment is unprotected. A regression test copying an instance with this property set and asserting the copied value would have failed on this change.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:63",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack/MessagePackSecurity.cs:63 delete-statement: this.HashCollisionResistant = copyFrom.HashCollisionResistant; -> (deleted, immediately before MaximumObjectGraphDepth assignment); expected to survive because the diff adds only source-generation attribute tests and no security copy-constructor test"
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  }
+]

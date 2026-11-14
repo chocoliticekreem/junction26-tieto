@@ -1,0 +1,364 @@
+{
+  "change_id": "mock-2234-edge",
+  "requirement_id": "REQ-2234",
+  "requirement_title": "The analyzer does not work if SuppressSourceGeneration = true",
+  "requirement_text": "# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comments. Anything beyond this is derived.)\n\n## Acceptance criteria\n\n- With `SuppressSourceGeneration = true`, the MessagePack analyzer still reports its diagnostics (MsgPack0xx rules) for code that violates them. (derived)\n- Behaviour with `SuppressSourceGeneration = true` matches version 3.1.0, where the analyzer worked. (derived)\n- Behaviour with `SuppressSourceGeneration` unset or false does not change. (derived)\n- Source generation itself stays suppressed when `SuppressSourceGeneration = true`. (derived)\n\n## Notes from discussion\n\nNo comments on the issue.",
+  "run_ts": "20261114T192306Z",
+  "head_sha": "ae47f4364f58c36efa309ef7e98a09c5f5fc1f51",
+  "verdict": "blocked",
+  "verdict_reason": "verified high finding(s) backed by receipts: logic-edge-2",
+  "risk": 7,
+  "areas": [
+    "tests",
+    "type-collector"
+  ],
+  "area_trust": {
+    "tests": 3,
+    "type-collector": 3
+  },
+  "checked": [
+    {
+      "what": "Build base (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-base",
+      "result": "pass"
+    },
+    {
+      "what": "Build head (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on head: 175/175 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on base: 167/167 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-base",
+      "result": "pass"
+    },
+    {
+      "what": "Receipts/SuppressSourceGenerationAnalyzerTests.cs: requirement test fails on head: 1/3 failed",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-1",
+      "result": "fail"
+    },
+    {
+      "what": "Receipts/DuplicateKeyMemberReceiptTests.cs: edge-case test fails on head: 2/2 failed",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-2",
+      "result": "fail"
+    },
+    {
+      "what": "Mutation: 6 killed by the change's tests, 0 caught only by the existing suite, 3 survive the full suite, 0 compile errors, 0 timeouts (9 mutants on TypeCollector.cs)",
+      "by": "mutation",
+      "evidence_id": "mutation",
+      "result": "partial"
+    },
+    {
+      "what": "routed 8 hunks across 4 files",
+      "by": "rule+jev (auto)",
+      "evidence_id": "",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "requirement-tests-1",
+      "lens": "requirement-tests",
+      "claim": "The new duplicate-key guards cover the int-key `Add` only in the first member loop (hunk at 1020). In the second member loop (hunk at 1173) only the string-key `Add` is guarded. The int-key `intMembers.Add(member.IntKey, ...)` there appears unchanged. A `SuppressSourceGeneration = true` type with duplicate int keys in that loop (presumably fields) would still throw ArgumentException inside the analyzer. The result is AD0001 instead of MsgPack005, so the analyzer still 'does not work' for that case.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1165",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerTests.SuppressedType_DuplicateIntKeysOnFields_ReportsMsgPack005WithoutCrash on head. It fails if AD0001 is reported or MsgPack005 is missing."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-1"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-1",
+      "lens": "logic-edge",
+      "claim": "The duplicate-key guard covers only half the cases. In the fields loop (second region), only `stringMembers.Add` is wrapped in `ContainsKey`. Between hunk 4 (new line 1145) and hunk 5 (new line 1173) no line changes, so the field-branch `intMembers.Add(member.IntKey, ...)` is unguarded and still throws ArgumentException. Example input: `[MessagePackObject] public class C { [Key(0)] public int First; [Key(0)] public int Second; }`. The generator fails with CS8785 and the analyzer path with AD0001, which is the same crash class this change removes for properties. A property and a field sharing an int key also still crashes.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1173",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run Receipts.GeneratedTests.DuplicateKeyMemberReceiptTests.DuplicateIntKeyOnFields_DoesNotThrow. It drives CSharpGeneratorDriver over two fields that both carry [Key(0)] and asserts GeneratorRunResult.Exception is null and no CS8785 is reported. It is expected to fail on head."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-2"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-2",
+      "lens": "logic-edge",
+      "claim": "Duplicate keys are now silently dropped. With source generation enabled, `[Key(0)] public int First {get;set;}` plus `[Key(0)] public int Second {get;set;}` used to fail loudly (exception on Add). Now the second member is skipped with no diagnostic, and the generated formatter never serializes or deserializes `Second`. That is silent data loss, and it changes behaviour when SuppressSourceGeneration is unset, which the requirement says must not change. The same applies to duplicate string keys in both loops.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run Receipts.GeneratedTests.DuplicateKeyMemberReceiptTests.DuplicateIntKeyOnProperties_IsReportedOrBothMembersGenerated. It asserts that either an error diagnostic is reported or the generated formatter references `Second`. It is expected to fail on head."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-2"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-2",
+      "lens": "test-quality",
+      "claim": "The ContainsKey guards on intMembers and stringMembers are exercised by the duplicate-key tests. But the second string-key site (line ~1173) is the constructor-parameter or non-object path, which no test targets in a way that clearly reaches it. Removing the guard there would not fail any test in the diff.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176 remove-guard: `if (!stringMembers.ContainsKey(member.StringKey))` -> unconditional Add; expected to survive because the duplicate-string-key test may only reach the first collection loop (~line 1036)."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m7",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects negate-condition at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "if (!stringMembers.ContainsKey(member.StringKey)) -> if (!(!stringMembers.ContainsKey(member.StringKey)))"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m9",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects delete-statement at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1178",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1178",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "stringMembers.Add(member.StringKey, (member, item.Type)); -> (statement deleted)"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "hunches": [
+    {
+      "id": "requirement-tests-2",
+      "lens": "requirement-tests",
+      "claim": "The README now says suppressed types are still validated for MsgPack003/004/005/012/015. The only type-collector hunks in scope are exception-avoidance changes for duplicate or mixed keys. None of them touches how `SuppressSourceGeneration` types are routed to analysis. If the 3.1.1 regression was that suppressed types are skipped entirely, nothing in scope restores e.g. MsgPack004 for them, and the documented behaviour is unbacked.",
+      "location": "README.md:1625",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerTests.SuppressedType_MissingKey_ReportsMsgPack004 on head. It must report MsgPack004 with no AD0001."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-1",
+      "lens": "compatibility",
+      "claim": "The new `continue` on mixed int/string key diagnostics changes which members reach the generator. The mismatched member is now skipped, where before it fell through and was added (or threw on a duplicate key). Generated formatters for types that mix key kinds (an error case, MsgPack00x) will now omit the member, so generated output differs in users' builds and snapshots. It is also unclear that this change fixes the SuppressSourceGeneration analyzer problem described in the requirement.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Run generator snapshot tests with a [MessagePackObject] type that mixes [Key(0)] and [Key(\"a\")]. Compare generated output and diagnostics on base and head."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-2",
+      "lens": "compatibility",
+      "claim": "Duplicate keys are now silently dropped via ContainsKey instead of failing with an ArgumentException. Only the first member is kept, so the generated formatter silently omits the second member with no generator crash. If the duplicate-key diagnostic (MsgPack006) is not reported on every path, users get a formatter that loses data without any warning. This occurs in both the property and field loops.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Add a test with a type with two members sharing [Key(0)], and another with a duplicate string key. Run it through the analyzer and the generator. Assert that MsgPack006 is reported and that the generator does not throw."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-1",
+      "lens": "product-context",
+      "claim": "The new README section documents analyzer behaviour (which diagnostics are reported for suppressed types, e.g. MsgPack011/016/017 skipped) but the diff shows no changes to the analyzer/TypeCollector that implements the gating; the doc claims cannot be verified from the change and the diff only adds a continue and de-duplication guards. Docs may overstate behaviour.",
+      "location": "README.md:1620",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run SuppressSourceGenerationAnalyzerTests (esp. SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed and MsgPack011 non-partial case with SuppressSourceGeneration=true) against head build and confirm README claims; add a test for non-partial suppressed class and MsgPack012."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-2",
+      "lens": "product-context",
+      "claim": "The 'continue' on mixed key kinds changes which members are collected for generated (non-suppressed) types too, and the dedupe guards silently drop duplicate-key members. This alters the member set for normal types, which could change generator output, though only for code that already has an error diagnostic. Acceptance criterion says unset/false behaviour must not change.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Rerun generator snapshot tests (MessagePack.SourceGenerator.Tests) on base vs head to confirm no snapshot output changes for valid types."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-3",
+      "lens": "product-context",
+      "claim": "Test for the MsgPack005 mixed key kinds expects the diagnostic on the second member only; this is order-dependent and the DuplicateKeys test for generated types is a regression test for behaviour (analyzer crash with duplicate keys) that the requirement does not mention, so the root cause of issue #2234 is not clearly demonstrated by a test that fails before the fix.",
+      "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:25",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run SuppressSourceGenerationAnalyzerTests on base build; tests such as MemberWithoutKeyIsReported should fail on base and pass on head if they actually capture the bug."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-1",
+      "lens": "test-quality",
+      "claim": "The change adds `continue` after DoNotMixStringAndIntKeys in two loops (lines ~1008 and ~1148). MixedKeyKindsAreReportedWithoutAnalyzerFailure covers only the first loop (the int/object path). Nothing covers the second loop, and the test has the key mix in only one direction (int first, then string). The test's expected diagnostic is also MsgPack005, which is the duplicate-key descriptor, not the mixed-key one. The `continue` could be deleted and the test might still pass.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 and :1148 delete-statement: `continue;` -> removed; expected to survive because MixedKeyKindsAreReportedWithoutAnalyzerFailure only exercises one key order and MsgPack005 markup does not discriminate whether the mixed-key path was skipped. Run SuppressSourceGenerationAnalyzerTests with each mutant."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-3",
+      "lens": "test-quality",
+      "claim": "The tests do not prove the root-cause fix. The diff changes only TypeCollector duplicate-key and mixed-key handling, yet the tests assert the analyzer works with SuppressSourceGeneration = true. If the original bug was a different gate (e.g. analyzer early-return on the suppress flag), those tests would still not pin the changed lines. Conversely, MemberWithoutKeyIsReported, AllowPrivateRequiredIsReported and MemberTypeMustBeMessagePackObjectIsReported have no source hunk in the diff. They would pass on base if the suppress gate was never the bug. Only the duplicate and mixed tests can reproduce a base-side crash. That makes the three non-duplicate tests likely non-regressing on base.",
+      "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:19",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run SuppressSourceGenerationAnalyzerTests against the base build. Tests that pass on base do not reproduce the bug for REQ-2234."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-5",
+      "lens": "test-quality",
+      "claim": "SuppressedSourceGenerationTests (the execution tests) carry no assertion that the analyzer ran. The round-trip test passes on base regardless of the TypeCollector change. The NoFormatterIsGenerated test checks the requirement that generation stays suppressed, but only for a trivial type.",
+      "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:23",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run SuppressedSourceGenerationTests on the base build; expect both to pass, which shows they do not reproduce the bug."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-3",
+      "lens": "logic-edge",
+      "claim": "Nothing in the change refers to SuppressSourceGeneration or the analyzer's handling of it. The diff only changes key bookkeeping in TypeCollector. If the 3.1.1 regression comes from how the analyzer behaves when generation is suppressed, rather than from an exception thrown on duplicate or mixed keys, the requirement stays unmet. This is a hunch from reading the diff, not a verified result.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "In TypeCollector.cs, the hunks at new lines 1008, 1023, 1039, 1148 and 1176 contain no reference to SuppressSourceGeneration. Check this with an analyzer test that sets `[assembly: GeneratedMessagePackResolver]`-style options with SuppressSourceGeneration=true and expects MsgPack004 on an un-keyed public member."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-4",
+      "lens": "test-quality",
+      "claim": "SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed asserts that MsgPack011, MsgPack016 and MsgPack017 are suppressed. No source change in the diff implements that, and the requirement and ledger do not state it, so the test pins unspecified behaviour. It also contradicts L2/L6, which describe MsgPack017 as an unconditional warning for init properties.",
+      "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:166",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "Check whether the analyzer gates MsgPack011/016/017 on SuppressSourceGeneration. The new test passes only if that gating already exists in code outside the diff."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": true
+    }
+  ],
+  "refused": [],
+  "not_checked": [
+    {
+      "what": "compatibility byte diff (base vs head serialized bytes)",
+      "why": "no runtime/public API change; byte diff not needed"
+    },
+    {
+      "what": "tests/MessagePack.SourceGenerator.ExecutionTests (changed by this diff)",
+      "why": "not run: it does not compile in this sandbox even on base (SDK 8.0.402 ships Roslyn 4.11; the source generator needs 4.12, CS9057, so no generated code exists); see notes/sandbox.md"
+    },
+    {
+      "what": "tests/MessagePack.Tests and other runtime test suites",
+      "why": "not built or run in the sandbox; only the source generator test project is in scope"
+    },
+    {
+      "what": "NativeAOT, Unity and non-net8.0 target frameworks",
+      "why": "the sandbox builds and tests net8.0 only"
+    }
+  ],
+  "residual_risk": "This change touches 4 files (0 generated) in tests, type-collector; the highest routed risk is 7/10. 2 file(s) were routed for deep review, 2 for light review and 0 to the regeneration check. The existing source generator tests ran on head: 175 of 175 passed, 0 failed. 11 unverified hunch(es) remain without an executed receipt. 4 thing(s) were not checked, including compatibility byte diff (base vs head serialized bytes); tests/MessagePack.SourceGenerator.ExecutionTests (changed by this diff); tests/MessagePack.Tests and other runtime test suites. By signing off, the signer accepts any defect that only those unchecked paths would have revealed. The change is blocked; signing off is not offered until the blocker is fixed.",
+  "routing": {
+    "README.md": "light",
+    "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs": "deep",
+    "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs": "light",
+    "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs": "deep"
+  },
+  "counts": {
+    "source": 1,
+    "test": 2,
+    "docs": 1,
+    "generated": 0,
+    "template": 0,
+    "total": 4,
+    "not_generated": 4
+  },
+  "questions": [
+    "q-mock-2234-edge-product-context-1"
+  ],
+  "interpretations": [],
+  "narrative": "",
+  "mock_llm": false
+}

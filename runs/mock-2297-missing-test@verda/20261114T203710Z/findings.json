@@ -1,0 +1,44 @@
+[
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "Defining NETFRAMEWORK strips ExcludeFromCodeCoverage from every generated formatter and resolver, although the attribute exists on supported modern .NET Framework targets. Consequently, code generated for .NET Framework remains included in coverage, contrary to the requirement that all generated code be decorated; conditional omission is only needed where the attribute is unavailable.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageReceiptTests.NetFrameworkGeneratedTypesStillGetCoverageExclusion. It runs the generator with NETFRAMEWORK defined and asserts that the compiled generated resolver has ExcludeFromCodeCoverageAttribute; the current guard makes the assertion fail."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "A consumer that already applied [ExcludeFromCodeCoverage] to its partial generated resolver now gets a second copy from ResolverTemplate. ExcludeFromCodeCoverageAttribute does not allow multiple attributes, and attributes from partial declarations are combined, so previously valid source fails with CS0579 instead of compiling.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:15",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageReceiptTests.UserAttributedResolverDoesNotProduceDuplicateAttribute. It compiles a partial [GeneratedMessagePackResolver] that already has [ExcludeFromCodeCoverage], with the generated attribute active, and asserts that no CS0579 diagnostic is produced."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "No test hunks are included. Regenerating the default-TFM snapshots verifies that the attribute is emitted there, but it does not compile the generated code with NETSTANDARD2_0 or NETFRAMEWORK defined, so a guard that still produces identical modern snapshots while exposing the attribute on netstandard2.0 would go unnoticed despite the cross-target compilation acceptance criterion.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 remove-guard: `#if !NETSTANDARD2_0 && !NETFRAMEWORK` -> `#if !NETFRAMEWORK`; expected to survive because default-TFM snapshot output is unchanged and the diff adds no netstandard2.0 generated-code compilation test. Add/run a generator test that compiles its output for netstandard2.0 to kill the mutant."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  }
+]

@@ -1,0 +1,57 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "No test exercises public fields, so the field accessibility predicate can exclude every writable public field (and include readonly fields) without any test failing. All external-type fixtures contain only properties.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:275",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:275 swap-boolean: field.DeclaredAccessibility == Accessibility.Public && field.IsReadOnly && !field.IsConst -> field.DeclaredAccessibility == Accessibility.Public && !field.IsReadOnly && !field.IsConst; expected to survive because every contractless and surrogate execution fixture uses properties rather than fields. Add an external class or struct with a writable public field and a readonly public field and assert that only the writable field round-trips."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The acceptance criterion that MessagePack attributes on T are honoured has no test. Every execution fixture formats an attribute-free external type, and every generator test uses an unannotated MyType, so a formatter that always applies contractless string keys would pass the suite.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:1",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an execution test for a [GeneratedMessagePackFormatter] whose T is [MessagePackObject] with reordered integer [Key] values and an [IgnoreMember] member. Serialize with the generated resolver and assert the integer-key array layout, values, and omission of the ignored member; the current tests would not detect contractless output ignoring those annotations."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The explicitly supported bodyless declaration form is untested: every attributed formatter in both test projects has a brace-delimited body. Generation or compilation regressions specific to a semicolon-bodied partial class would go unnoticed.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypes.cs:8",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a generator compilation/execution fixture declared as `[GeneratedMessagePackFormatter] public partial class MyFormatter : IMessagePackFormatter<MyType>;`, with no hand-written members, and verify compilation plus a serialize/deserialize round-trip through the generated resolver."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "FormatterMustImplementFormatterOfT covers only zero formatter interfaces; it does not cover a class implementing IMessagePackFormatter<T> for two different types. Consequently, the exactly-one check can be weakened to reject only zero interfaces while the diagnostic tests still pass.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:55",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:55 off-by-one: formatterInterfaces.Length != 1 -> formatterInterfaces.Length < 1; expected to survive because the only MsgPack020 test has no formatter interface. Add a MsgPack020 test with IMessagePackFormatter<MyTypeA> and IMessagePackFormatter<MyTypeB> on the same annotated partial class."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 13668,
+  "output_tokens": 2863,
+  "ms": 38726,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.083949
+}

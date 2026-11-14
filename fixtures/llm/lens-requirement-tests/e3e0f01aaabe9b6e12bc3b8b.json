@@ -1,0 +1,47 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "For SuppressSourceGeneration = true types, members whose key comes from an attribute derived from KeyAttribute now hit an unconditional `continue` before any member-level validation. Their member types are therefore never collected or validated, so MsgPack003 (and MsgPack012 or MsgPack015 for such members) can no longer be reported for them. The new README says the analyzer still checks that members have serializable types (MsgPack003) for these types, and ledger L17 says all validation diagnostics still apply; only MsgPack011/016/017 are skipped.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test in which a [MessagePackObject(SuppressSourceGeneration = true)] class has a member annotated with a custom attribute derived from KeyAttribute. The member's type is a plain class with no [MessagePackObject] and no formatter. Expect MsgPack003 on that member. On head no MsgPack003 is reported, because the `continue` at TypeCollector.cs:921-924 (and :1083-1086 for fields) skips the member."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new ContainsKey guards on intMembers and stringMembers apply to every type, not only SuppressSourceGeneration ones. When two members share a key, the second member is now silently dropped instead of failing, and no diagnostic is raised at these call sites. If no MsgPack005-style duplicate-key diagnostic is raised elsewhere for normal types, a generated formatter would silently omit a member. That would change behaviour for types where SuppressSourceGeneration is unset, which the requirement says must not change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1028",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Write a normal [MessagePackObject] class (no SuppressSourceGeneration) with two public properties both marked [Key(0)], and run VerifyCS with SkipGeneratedSourcesCheck. Assert that a duplicate-key diagnostic is reported. If the run reports no diagnostic and the generated formatter contains only one of the members, the finding is confirmed."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerReceiptTests\n{\n    [Fact]\n    public async Task SuppressedType_WithDerivedKeyAttributes_AnalyzerDoesNotThrow()\n    {\n        string testSource = \"\"\"\n            using MessagePack;\n\n            public class CompositeKeyAttribute : KeyAttribute\n            {\n                public CompositeKeyAttribute(string prefix, int index)\n                    : base(prefix + index)\n                {\n                }\n            }\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [CompositeKey(\"a\", 1)]\n                public int A { get; set; }\n\n                [CompositeKey(\"a\", 2)]\n                public int B { get; set; }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(testSource);\n        await test.RunAsync();\n    }\n\n    [Fact]\n    public async Task SuppressedType_WithDerivedKeyAttributes_StillReportsMissingKey()\n    {\n        string testSource = \"\"\"\n            using MessagePack;\n\n            public class CompositeKeyAttribute : KeyAttribute\n            {\n                public CompositeKeyAttribute(string prefix, int index)\n                    : base(prefix + index)\n                {\n                }\n            }\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [CompositeKey(\"a\", 1)]\n                public int A { get; set; }\n\n                [CompositeKey(\"a\", 2)]\n                public int B { get; set; }\n\n                public int {|MsgPack004:C|} { get; set; }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(testSource);\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "SuppressedType_WithDerivedKeyAttributes_AnalyzerDoesNotThrow",
+          "SuppressedType_WithDerivedKeyAttributes_StillReportsMissingKey"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 11753,
+  "output_tokens": 5005,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_017et3Dgn8iwp9LornCVKyzc"
+}

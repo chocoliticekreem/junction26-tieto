@@ -30,9 +30,9 @@ test("2283 (needs sign-off): fix proven, two untested parts, one test that did n
   expect(s.wrong).toBe(
     "2 parts of the new code are never tested: if someone broke them, no test would notice. 1 extra test we wrote did not compile, so it proves nothing either way. The reviewer also has 15 suspicions it could not prove; they are listed as hunches and did not count against the change.",
   );
-  expect(s.unchecked).toBe("We did not check 3 things, including whether saved data still reads the same and the app's other test suites.");
+  expect(s.unchecked).toBe("We did not check 4 things, including whether saved data still reads the same and semantic call graph of modified members.");
   expect(s.decide).toBe("Your call: accept it as it is, or send it back for the missing tests.");
-  expect(plainSummary(run).map((x) => x.href)).toEqual(["#requirement", "#proven", "#findings", "#not-checked", "#trust-receipt"]);
+  expect(plainSummary(run).map((x) => x.href)).toEqual(["#requirement", "#impact", "#proven", "#findings", "#not-checked", "#trust-receipt"]);
 });
 
 test("2297 (blocked, two readings): requirement tests fail on the change, generated files verified", () => {
@@ -43,7 +43,7 @@ test("2297 (blocked, two readings): requirement tests fail on the change, genera
   expect(s.wrong).toBe(
     "5 tests we wrote from the requirement fail on the change, so it does not fully do what was asked. The reviewer also has 12 suspicions it could not prove; they are listed as hunches and did not count against the change.",
   );
-  expect(s.unchecked).toBe("We did not check 5 things, including planting small breaks to see if the tests notice and the bytes of the generated code.");
+  expect(s.unchecked).toBe("We did not check 7 things, including planting small breaks to see if the tests notice and the bytes of the generated code.");
   expect(s.decide).toBe("Blocked: it has to be fixed before anyone can approve it.");
   expect(texts(run, { pendingQuestions: 1 }).decide).toBe("Blocked: it has to be fixed before anyone can approve it. 1 question for you is waiting.");
 });

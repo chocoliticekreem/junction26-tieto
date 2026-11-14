@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The timestamp compact-encoding guard now tests the low 32 bits instead of the high 32 bits. An instant at the Unix epoch with nonzero subsecond nanoseconds therefore passes the timestamp32 path, which discards its nanoseconds; ordinary timestamps with nonzero seconds also lose the previous compact encoding. This changes the wire format and can corrupt deserialized values for existing users without any opt-in.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize DateTimeOffset.UnixEpoch.AddTicks(1) and DateTimeOffset.UnixEpoch.AddSeconds(1) with base-built and head-built MessagePackPrimitives timestamp writing, compare the emitted bytes, and round-trip both values with the head build. The epoch-plus-one-tick case must expose the lost fractional value."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "When no surrogate is supplied, the collector always creates a contractless string-key member list and never reads attributes on T. Consequently [MessagePackObject]/[Key] contracts become name-keyed maps instead of integer-keyed arrays, and [IgnoreMember] members are serialized, contrary to the requirement that MessagePack attributes on T be honoured.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:95",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Generate and use a formatter for T declared as [MessagePackObject] with [Key(0)] public int A { get; set; } and [IgnoreMember] public int B { get; set; }, using A=1 and B=2. Compare its bytes with the established attributed formatter/standard resolver: the attributed contract is the one-element array [1], while this collector produces a string-keyed map containing A and B."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10209,
+  "output_tokens": 1699,
+  "ms": 23246,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.056112
+}

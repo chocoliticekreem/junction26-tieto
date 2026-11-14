@@ -1,0 +1,170 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The patch does not enable analysis of types for which source generation is suppressed. Every code edit occurs inside member-key collection, after collection and diagnosis of the type must already have begun; none changes the earlier SuppressSourceGeneration decision that caused these types to be skipped. Consequently the reported loss of MsgPack003/MsgPack004/MsgPack005 and other contract diagnostics remains, despite the new README claim that these types are validated.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run SuppressSourceGenerationAnalyzerReceiptTests.SuppressedTypeIsAnalyzedWithoutGeneratingSource from tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerReceiptTests.cs. The run for a suppressed type with a public property lacking [Key] or [IgnoreMember] must contain MsgPack004 while the valid suppressed-type run produces no generated trees. On the unfixed head the MsgPack004 assertion fails because no diagnostic is reported."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-1"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "The README incorrectly excludes MsgPack017 as an AOT-only check. Its triggering behaviour—deserialization replacing an init-property initializer's value with the type's default—also applies when the suppressed type is serialized through the dynamic resolvers. Such a type therefore still violates MsgPack017 and should receive the diagnostic under the requirement.",
+    "location": "README.md:1632",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run SuppressSourceGenerationAnalyzerReceiptTests.InitInitializerWarningIsReportedForSuppressedType from the generated receipt test file. A [MessagePackObject(SuppressSourceGeneration = true)] type with a keyed init property initialized to 42 must produce MsgPack017; the implementation described by the README produces none."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The new duplicate-key guards silently discard every member after the first with the same integer or string key, without reporting MsgPack007. For example, a [MessagePackObject] with two properties both annotated [Key(0)] now gets through TypeCollector without the duplicate-key diagnostic from the generator/collector path (the path relied on when source generation is suppressed). Two [Key(\"same\")] properties have the same problem. Avoiding the Dictionary.Add exception must not turn the invalid object into a silently accepted one.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run DuplicateKeyDiagnosticsReceiptTests.DuplicateKeysAreReported for both integer and string keys. It drives MessagePackGenerator over a MessagePackObject containing duplicate keys and asserts that the generator run contains MsgPack007; on head the guards drop the duplicate and the assertion fails."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The mixed-key guard added to the non-suppressed collection path has no test: the only mixed-key case uses SuppressSourceGeneration = true, so deleting this continue would leave the changed non-suppressed behavior unexercised.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148 delete-statement: continue; -> deleted; expected to survive because MixedKeyKindsAreReportedWithoutAnalyzerFailure exercises only a suppressed type and no generator-enabled mixed-key test exists."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The duplicate-string-key guard added to the non-suppressed collection path is untested: duplicate string keys are covered only for a suppressed type, while the generator-enabled duplicate test uses integer keys.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179 remove-guard: if (!stringMembers.ContainsKey(member.StringKey)) { stringMembers.Add(member.StringKey, (member, item.Type)); } -> unconditional stringMembers.Add(member.StringKey, (member, item.Type)); expected to survive because no generator-enabled duplicate-string-key test exists."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "The change incorrectly treats MsgPack017 as generation-only and tests that it is suppressed. MsgPack017 warns that an init-property initializer is replaced during deserialization, which remains relevant when the suppressed type is deserialized through the dynamic resolver; omitting it leaves a runtime contract violation undiagnosed.",
+    "location": "README.md:1633",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Cite [L6], which defines MsgPack017 as a deserialization warning without limiting it to generated formatters. Compare with SuppressSourceGenerationAnalyzerTests.SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed, whose init property with an initializer is expected to produce no MsgPack017 diagnostic despite the new execution test establishing that suppressed types use runtime deserialization."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-2",
+    "lens": "product-context",
+    "claim": "Diagnostic applicability changes for MsgPack003/004/005/011/015/016/017 are not recorded in the analyzer release notes, although changed analyzer diagnostics are expected to be documented there.",
+    "location": "src/MessagePack.SourceGenerator/AnalyzerReleases.Unshipped.md",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Inspect src/MessagePack.SourceGenerator/AnalyzerReleases.Unshipped.md, identified by [L2] as the analyzer rule/release record: the supplied change adds and removes diagnostics based on SuppressSourceGeneration but contains no corresponding release-note update."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m8",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects remove-guard at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (!intMembers.ContainsKey(member.IntKey)) -> if (true)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m10",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects negate-condition at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (!stringMembers.ContainsKey(member.StringKey)) -> if (!(!stringMembers.ContainsKey(member.StringKey)))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m12",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects delete-statement at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1181",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1181",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "stringMembers.Add(member.StringKey, (member, item.Type)); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-suite-only-TypeCollector",
+    "lens": "test-quality",
+    "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163, 1165; the existing suite does",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:1163 negate-condition: if (!intMembers.ContainsKey(member.IntKey)) -> if (!(!intMembers.ContainsKey(member.IntKey))); TypeCollector.cs:1165 delete-statement: intMembers.Add(member.IntKey, (member, item.Type)); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

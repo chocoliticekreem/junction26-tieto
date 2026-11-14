@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new filter `ReportIfLocatedInCompilation` does not do what its remarks say. A diagnostic built from a metadata member gets a null location, which becomes `Location.None`. `Location.None.IsInSource` is false, so `!diagnostic.Location.IsInSource` is true and the diagnostic is reported. The only diagnostics dropped are those located in another compilation's syntax tree. So once the crash is fixed, a referenced closed generic struct whose public member lacks `[Key]` raises a location-less MsgPack004 Error in the consuming assembly. Ledger L8 says types from a referenced assembly are not analysed by the consumer, so this is a spurious build error, where before the change there was only an AD0001 warning. The same applies to MsgPack003-style `BothStringAndIntKeyAreNull`, which now gets a null location from `GetPropertyIdentifierLocation`.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.MetadataGenericStructDiagnosticFilterTests.MetadataMemberMissingKey_IsNotReportedInConsumingCompilation. `lib` is emitted in memory with `[MessagePackObject] struct Item<T>`, which has a public property without `[Key]`. `app` uses `Item<int>`. On head the verifier reports an unexpected MsgPack004 with no location."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement names three unguarded `DeclaringSyntaxReferences[0]` indexes: lines 735, 1009 and 1101 in the reporter's version. The diff fixes only the two that map to 982 and 1074, an offset of -27. Applying the same offset, the third site is around line 708 of GetObjectInfo. No hunk touches it, so it presumably still indexes `[0]`. It can still throw IndexOutOfRangeException (CS8785/AD0001) for a closed generic struct from a referenced assembly whenever that diagnostic path is taken.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Grep head TypeCollector.cs for `DeclaringSyntaxReferences[0]`. Any remaining hit inside GetObjectInfo (near line 708) is reachable for metadata symbols through CollectGeneric's closed-generic branch."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataGenericStructDiagnosticFilterTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.IO;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MetadataGenericStructDiagnosticFilterTests(ITestOutputHelper logger)\n{\n    [Fact]\n    public async Task MetadataMemberMissingKey_IsNotReportedInConsumingCompilation()\n    {\n        MetadataReference lib = await BuildLibAsync();\n\n        string appSource = \"\"\"\n            using MessagePack;\n            using Lib;\n\n            namespace App\n            {\n                [MessagePackObject]\n                public class Cmd\n                {\n                    [Key(0)]\n                    public Item<int> Member { get; set; }\n                }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(appSource);\n        test.TestState.AdditionalReferences.Add(lib);\n        logger.WriteLine(\"Running generator and analyzers against app referencing in-memory lib.\");\n        await test.RunAsync();\n    }\n\n    private static async Task<MetadataReference> BuildLibAsync()\n    {\n        string libSource = \"\"\"\n            using MessagePack;\n\n            namespace Lib\n            {\n                [MessagePackObject]\n                public struct Item<T>\n                {\n                    [Key(0)]\n                    public string Key { get; set; }\n\n                    public int Other { get; set; }\n                }\n            }\n            \"\"\";\n\n        var references = new List<MetadataReference>();\n        references.AddRange(await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None));\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(libSource) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using var stream = new MemoryStream();\n        var result = compilation.Emit(stream);\n        Assert.True(result.Success, string.Join(Environment.NewLine, result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));\n        return MetadataReference.CreateFromImage(stream.ToArray());\n    }\n}\n",
+        "test_names": [
+          "MetadataMemberMissingKey_IsNotReportedInConsumingCompilation"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 9813,
+  "output_tokens": 7428,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

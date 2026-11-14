@@ -1,0 +1,92 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The patch removes a security guard that the requirement does not touch. `MessagePackSecurity.GetHashCollisionResistantEqualityComparer<T>` used to throw `TypeAccessException` for any key type without a known hash-collision-resistant comparer. It now silently returns `EqualityComparer<T>.Default`. Under `MessagePackSecurity.UntrustedData`, deserializing a dictionary or hash set keyed by an arbitrary user type is therefore accepted with a non-resistant comparer, which re-opens hash-flooding DoS. This contradicts the secure-by-default history recorded in L12.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.UntrustedDataComparerGuardTests.UntrustedDataRejectsUnknownKeyType. It calls `MessagePackSecurity.UntrustedData.GetEqualityComparer<CustomKey>()` and expects `TypeAccessException`. It passes on base and fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`GeneratedFormatterCollector` never reads any attribute on the formatted type T. In contractless mode it serializes every public read-write member by name and ignores `[MessagePackObject]`, `[Key]`, `[IgnoreMember]`, `[DataContract]` and `[DataMember]` on T. The acceptance criterion 'If T does carry MessagePack attributes, they are honoured' is therefore not met. A member marked `[IgnoreMember]` on T is still serialized, and int keys are replaced by name keys, which changes the wire format.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:89",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterHonoursAttributesTests.IgnoreMemberOnFormattedTypeIsHonoured. It generates `[GeneratedMessagePackFormatter]` for a `[MessagePackObject]` type that has an `[IgnoreMember] IgnoredSecret` property, and asserts that the generated user formatter never references `IgnoredSecret`."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "When T is a `[MessagePackObject]` declared in the same compilation, two formatters are produced for it. `TypeCollector` still collects T and emits its own formatter, and `GeneratedFormatterCollector` adds a second `ObjectSerializationInfo` for the same data type. Nothing deduplicates by data type, so the resolver may register two formatters for T, or pick one arbitrarily.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:70",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the foreach over `s.Left.Left.Right`: it calls `modelPerType.Add(generatedModel)` with no check that `info.DataType` was already collected from `messagePackObjectTypes`. Then inspect the generated resolver source for duplicate entries for MyObject."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`IsPartial` checks only the formatter class's own modifiers. For a formatter nested in a non-partial outer class (`class Outer { [GeneratedMessagePackFormatter] partial class F : IMessagePackFormatter<T> {} }`), the template's `EmitNestingTypesAndNamespaces` re-declares `Outer` as partial. The generated code then fails to compile with a CS0260-style error, and no MsgPack019 diagnostic is reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:47",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Run the generator on a nested formatter inside a non-partial outer class. Expect a compiler error on the generated file instead of a MsgPack019 diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`IsPublicReadWrite` checks `property.SetMethod` on the most-derived declaration only, because `GetInstanceMembers` keeps just the most derived member of each name. If a derived type overrides a read-write property but declares only `get`, Roslyn returns a null `SetMethod` for that override. The property is then silently dropped in contractless mode, and in surrogate mode it is reported as MsgPack022.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:272",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Use a base class with `public virtual int X { get; set; }` and a derived class with `public override int X => 1;`. Generate a formatter for the derived type and observe that X is absent from the generated members."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Formatters declared as `partial record` are silently ignored. The generator predicate accepts only `ClassDeclarationSyntax`, and `IsPartial` uses `OfType<ClassDeclarationSyntax>`. A `[GeneratedMessagePackFormatter] partial record F : IMessagePackFormatter<T>` therefore gets no generated body and no diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:31",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Apply the attribute to a partial record class (LanguageVersion latest). Observe that no source is generated and no MsgPack019/020 diagnostic is reported; only CS0535 appears."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/UntrustedDataComparerGuardTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class UntrustedDataComparerGuardTests\n{\n    [Fact]\n    public void UntrustedDataRejectsUnknownKeyType()\n    {\n        Assert.Throws<TypeAccessException>(() => MessagePackSecurity.UntrustedData.GetEqualityComparer<CustomKey>());\n    }\n\n    public sealed class CustomKey\n    {\n        public int Value { get; set; }\n    }\n}\n",
+        "test_names": [
+          "UntrustedDataRejectsUnknownKeyType"
+        ],
+        "expects": "fail-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterHonoursAttributesTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack.SourceGenerator;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterHonoursAttributesTests\n{\n    [Fact]\n    public async Task IgnoreMemberOnFormattedTypeIsHonoured()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace TestNs\n            {\n                [MessagePackObject]\n                public class MyObject\n                {\n                    [Key(0)]\n                    public int Kept { get; set; }\n\n                    [IgnoreMember]\n                    public int IgnoredSecret { get; set; }\n                }\n\n                [GeneratedMessagePackFormatter]\n                public partial class UserObjectFormatter : IMessagePackFormatter<MyObject>\n                {\n                }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver\n                {\n                }\n            }\n            \"\"\";\n\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = new(framework);\n        foreach (MetadataReference r in ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n        {\n            references.Add(r);\n        }\n\n        CSharpParseOptions parseOptions = new(LanguageVersion.Latest);\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePackGenerator());\n        driver = driver.RunGenerators(compilation);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n\n        List<string> userFormatterSources = result.GeneratedTrees\n            .Select(t => t.ToString())\n            .Where(t => t.Contains(\"class UserObjectFormatter\"))\n            .ToList();\n\n        Assert.NotEmpty(userFormatterSources);\n        Assert.DoesNotContain(userFormatterSources, t => t.Contains(\"IgnoredSecret\"));\n    }\n}\n",
+        "test_names": [
+          "IgnoreMemberOnFormattedTypeIsHonoured"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 21303,
+  "output_tokens": 10446,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

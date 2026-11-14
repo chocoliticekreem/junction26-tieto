@@ -1,0 +1,72 @@
+[
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "Defining NETFRAMEWORK strips ExcludeFromCodeCoverage from every generated formatter and resolver, although the attribute exists on supported modern .NET Framework targets. Consequently, code generated for .NET Framework remains included in coverage, contrary to the requirement that all generated code be decorated; conditional omission is only needed where the attribute is unavailable.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageReceiptTests.NetFrameworkGeneratedTypesStillGetCoverageExclusion. It runs the generator with NETFRAMEWORK defined and asserts that the compiled generated resolver has ExcludeFromCodeCoverageAttribute; the current guard makes the assertion fail."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "A consumer that already applied [ExcludeFromCodeCoverage] to its partial generated resolver now gets a second copy from ResolverTemplate. ExcludeFromCodeCoverageAttribute does not allow multiple attributes, and attributes from partial declarations are combined, so previously valid source fails with CS0579 instead of compiling.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:15",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageReceiptTests.UserAttributedResolverDoesNotProduceDuplicateAttribute. It compiles a partial [GeneratedMessagePackResolver] that already has [ExcludeFromCodeCoverage], with the generated attribute active, and asserts that no CS0579 diagnostic is produced."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "The test named AllGeneratedTypesAreExcludedFromCodeCoverage only checks that each generated file contains at least one attribute, so it does not verify its stated per-type guarantee: resolver files contain several generated classes, and one could lose its attribute without either new test failing.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:69",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "Remove the ExcludeFromCodeCoverage attribute from only FormatterCache<T> in ResolverTemplate.tt while leaving the resolver class and GetFormatterHelper attributes intact. Regenerate ResolverTemplate.cs and run CodeCoverageExclusionTests; both tests still pass, demonstrating that the per-type regression is not detected."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The test checks only that each generated file contains at least one guarded attribute, so a resolver's FormatterCache<T> or GetFormatterHelper class can lose its attribute while both tests still pass. This does not establish the test's stated invariant that every emitted type is decorated.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:31",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:31 delete-statement: [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage] -> (removed); expected to survive CodeCoverageExclusionTests because the resolver class retains an attribute, every remaining attribute is guarded, and neither test identifies or counts the individual types within the resolver file."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The new tests never compile the post-generation compilation or exercise either conditional-compilation branch. They can pass with syntactically invalid generated code or generated code that fails on NETSTANDARD2_0/NETFRAMEWORK, leaving the target-framework compilation acceptance criterion untested; discarding outputCompilation also means the constrained-nesting formatting change in TransformUtilities has no compilation check here.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:124",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Capture outputCompilation at CodeCoverageExclusionTests.cs:124 and assert no generation or compilation errors, then compile generated output once with no target symbols and once with NETSTANDARD2_0 (and separately NETFRAMEWORK) defined using corresponding framework references. A negative test with malformed emitted syntax or an unguarded attribute should fail these compilation assertions but passes the current text-only assertions."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  }
+]

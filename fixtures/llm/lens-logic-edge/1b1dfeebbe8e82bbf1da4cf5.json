@@ -1,0 +1,65 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The requirement says MessagePack attributes on T are honoured when present, but contractless mode ignores them. `CreateContractlessMembers` takes every public read-write member and never consults `[IgnoreMember]`, `[Key]`, `[IgnoreDataMember]` or `[DataMember(Name)]` on T. For example, a public property marked `[IgnoreMember]` on T is still serialized by the generated formatter, which also differs from what the dynamic contractless resolver does for the same type.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:131",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run GeneratedFormatterLogicEdgeCaseTests.IgnoreMemberOnFormattedTypeIsHonoured: T has `[IgnoreMember] public int IgnoredSecret { get; set; }` and a `[GeneratedMessagePackFormatter]` partial formatter. On head the generated formatter source contains `IgnoredSecret`."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`IsPartial` checks only the formatter's own declaration, not its containing types. A formatter nested in a non-partial class passes every check and reports no diagnostic. The generated `partial class` part then cannot merge with the user's declaration, so the consumer's build breaks with compiler errors (missing `partial` on the outer type, or an unimplemented `IMessagePackFormatter<T>`) instead of getting MsgPack019.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:292",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run GeneratedFormatterLogicEdgeCaseTests.NestedFormatterInNonPartialOuterIsDiagnosedOrCompiles: `public class Outer { [GeneratedMessagePackFormatter] public partial class F : IMessagePackFormatter<MyType> { } }`. On head there is no generator diagnostic, yet the output compilation has errors."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new filter excludes `[GeneratedMessagePackFormatter]` classes from hand-written formatter discovery (`FormatterDescriptor`). As a result, T is no longer known as formattable to the TypeCollector or analyzer path that relies on that discovery. If T is a source type without attributes and is used as a member type of a `[MessagePackObject]`, it now gets MsgPack003 or is treated as unformattable, even though a formatter for it is being generated. The ObjectSerializationInfo created for the generated formatter only feeds the resolver, not member analysis.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Trace how TypeCollector/MsgPack00xMessagePackAnalyzer learns custom formatters. If it relies on the GeneratorUtilities formatter provider or FormatterDescriptor, then `[MessagePackObject] class Holder { [Key(0)] public MyType V { get; set; } }` plus a generated formatter for MyType reports MsgPack003 on head but not on base."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`GetInstanceMembers` keeps only the most-derived symbol of each name, and `IsPublicReadWrite` then requires a public `SetMethod` on that symbol. A derived class that overrides only the getter of a base `public virtual int X { get; set; }` exposes an override symbol whose `SetMethod` is null. X is therefore silently dropped from the contractless contract, although it is publicly read-write on T.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:272",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Set `class B { public virtual int X { get; set; } } class D : B { public override int X { get => 1; } }` as the formatted type D and inspect the generated formatter: X is absent."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterLogicEdgeCaseTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Linq;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterLogicEdgeCaseTests\n{\n    private static async Task<(GeneratorDriverRunResult RunResult, Compilation Output)> RunGeneratorAsync(string source)\n    {\n        CSharpParseOptions parseOptions = new CSharpParseOptions(Microsoft.CodeAnalysis.CSharp.LanguageVersion.CSharp12);\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        IEnumerable<MetadataReference> references = framework.Concat<MetadataReference>(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsGeneratedFormatterAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out _);\n        return (driver.GetRunResult(), output);\n    }\n\n    [Fact]\n    public async Task IgnoreMemberOnFormattedTypeIsHonoured()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace Sample\n            {\n                public class MyType\n                {\n                    public int Visible { get; set; }\n\n                    [IgnoreMember]\n                    public int IgnoredSecret { get; set; }\n                }\n\n                [GeneratedMessagePackFormatter]\n                public partial class MyTypeFormatter : IMessagePackFormatter<MyType> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n\n        var (runResult, _) = await RunGeneratorAsync(source);\n        string[] generated = runResult.GeneratedTrees.Select(t => t.ToString()).ToArray();\n\n        Assert.Contains(generated, g => g.Contains(\"MyTypeFormatter\") && g.Contains(\"Visible\"));\n        Assert.DoesNotContain(generated, g => g.Contains(\"IgnoredSecret\"));\n    }\n\n    [Fact]\n    public async Task NestedFormatterInNonPartialOuterIsDiagnosedOrCompiles()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace Sample\n            {\n                public class MyType\n                {\n                    public int Value { get; set; }\n                }\n\n                public class Outer\n                {\n                    [GeneratedMessagePackFormatter]\n                    public partial class MyTypeFormatter : IMessagePackFormatter<MyType> { }\n                }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n\n        var (runResult, output) = await RunGeneratorAsync(source);\n        bool generatorReportedError = runResult.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error);\n        Diagnostic[] compileErrors = output.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();\n\n        Assert.True(\n            generatorReportedError || compileErrors.Length == 0,\n            \"Generator reported no diagnostic but output does not compile: \" + string.Join(\"; \", compileErrors.Select(d => d.ToString())));\n    }\n}\n",
+        "test_names": [
+          "IgnoreMemberOnFormattedTypeIsHonoured",
+          "NestedFormatterInNonPartialOuterIsDiagnosedOrCompiles"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 20965,
+  "output_tokens": 15736,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

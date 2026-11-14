@@ -1,0 +1,41 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The metadata-safety fix leaves one of the requirement's three unguarded `DeclaringSyntaxReferences[0]` accesses unchanged. If the diagnostic branch at line 735 is reached for a metadata symbol, the indexer is evaluated before `ReportIfLocatedInCompilation` can filter the diagnostic, so it can still throw `IndexOutOfRangeException` and cause CS8785/AD0001.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:735",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "REQ-2283 identifies unguarded indexing at TypeCollector.cs lines 735, 1009 and 1101 and states that metadata symbols have an empty DeclaringSyntaxReferences collection. The diff changes only the latter two sites (approximately lines 982 and 1074 in the new file); line 735 remains an unguarded [0] access outside the new filtering helper. A two-compilation test that drives a metadata-only symbol through that diagnostic branch should assert no CS8785 or AD0001."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ClosedGenericMetadataValueTypeTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ClosedGenericMetadataValueTypeTests\n{\n    private const string AppSource = \"\"\"\n        using MessagePack;\n        using Lib;\n\n        namespace App;\n\n        [MessagePackObject]\n        public sealed partial record Cmd([property: Key(0)] string Scope)\n        {\n            [Key(1)] public Item<int> Member { get; init; }\n        }\n\n        [GeneratedMessagePackResolver]\n        public partial class AppResolver\n        {\n        }\n        \"\"\";\n\n    [Fact]\n    public Task ClosedGenericRecordStructFromReferencedAssembly_GeneratesResolverWithoutCrashes() =>\n        AssertGeneratesResolverWithoutCrashes(\"\"\"\n            using MessagePack;\n\n            namespace Lib;\n\n            [MessagePackObject]\n            public partial record struct Item<T>([property: Key(0)] string Key);\n            \"\"\");\n\n    [Fact]\n    public Task ClosedGenericStructFromReferencedAssembly_GeneratesResolverWithoutCrashes() =>\n        AssertGeneratesResolverWithoutCrashes(\"\"\"\n            using MessagePack;\n\n            namespace Lib;\n\n            [MessagePackObject]\n            public partial struct Item<T>\n            {\n                [Key(0)] public string Key { get; set; }\n            }\n            \"\"\");\n\n    [Fact]\n    public Task MetadataGenericValueTypeWithoutMemberKeys_DoesNotCrashLocationDiagnostics() =>\n        AssertGeneratesResolverWithoutCrashes(\"\"\"\n            using MessagePack;\n\n            namespace Lib;\n\n            [MessagePackObject]\n            public partial struct Item<T>\n            {\n                public T Value { get; set; }\n            }\n            \"\"\");\n\n    private static async Task AssertGeneratesResolverWithoutCrashes(string librarySource)\n    {\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        var references = new List<MetadataReference>();\n        references.AddRange(await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None));\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        var libraryCompilation = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(librarySource, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using var libraryImage = new MemoryStream();\n        var libraryEmit = libraryCompilation.Emit(libraryImage);\n        Assert.True(libraryEmit.Success, string.Join(Environment.NewLine, libraryEmit.Diagnostics));\n\n        references.Add(MetadataReference.CreateFromImage(libraryImage.ToArray()));\n        var appCompilation = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(AppSource, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(appCompilation, out var updatedCompilation, out var generatorDiagnostics);\n\n        Assert.DoesNotContain(generatorDiagnostics, diagnostic => diagnostic.Id == \"CS8785\");\n        Assert.Contains(\n            updatedCompilation.SyntaxTrees,\n            tree => tree.FilePath.EndsWith(\"App.AppResolver.g.cs\", StringComparison.Ordinal));\n\n        var analyzerDiagnostics = await updatedCompilation\n            .WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(new MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer()))\n            .GetAnalyzerDiagnosticsAsync();\n        Assert.DoesNotContain(analyzerDiagnostics, diagnostic => diagnostic.Id == \"AD0001\");\n    }\n}\n",
+        "test_names": [
+          "ClosedGenericRecordStructFromReferencedAssembly_GeneratesResolverWithoutCrashes",
+          "ClosedGenericStructFromReferencedAssembly_GeneratesResolverWithoutCrashes",
+          "MetadataGenericValueTypeWithoutMemberKeys_DoesNotCrashLocationDiagnostics"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 6160,
+  "output_tokens": 9613,
+  "ms": 137095,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.162675
+}

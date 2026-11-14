@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `ContainsKey` guards silently drop any member whose `[Key]` value duplicates an earlier member's key, and no diagnostic is reported. Example: a public `[MessagePackObject]` class with `[Key(0)] int FirstValue` and `[Key(0)] int SecondValue`. On base this threw on `Dictionary.Add`: the generator failed visibly (CS8785) and the analyzer failed (AD0001). On head the generator emits a formatter that never reads or writes `SecondValue`, which is silent data loss, and the analyzer reports nothing. With SuppressSourceGeneration=true, the analyzer also stays silent even though DynamicObjectResolver rejects duplicate keys at runtime. The same applies to duplicate string keys (`stringMembers`) and to the second copy of the loop at lines 1173/1189. This also changes behaviour when SuppressSourceGeneration is unset, contrary to the acceptance criteria.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1028",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeySilentlyDroppedTests.DuplicateIntKey_IsReportedOrSerialized. It drives MessagePackGenerator and all MessagePack analyzers over a type with two `[Key(0)]` properties. It asserts that either a MsgPack/CS8785/AD0001 diagnostic appears or the generated formatter references `SecondValue`. On head neither happens, so the test fails."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeySilentlyDroppedTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeySilentlyDroppedTests(ITestOutputHelper logger)\n{\n    [Fact]\n    public async Task DuplicateIntKey_IsReportedOrSerialized()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace TestNs\n            {\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n\n                [MessagePackObject]\n                public class MyObject\n                {\n                    [Key(0)]\n                    public int FirstValue { get; set; }\n\n                    [Key(0)]\n                    public int SecondValue { get; set; }\n                }\n            }\n            \"\"\";\n\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = frameworkRefs.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"DuplicateKeyTest\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new ISourceGenerator[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation outputCompilation, out ImmutableArray<Diagnostic> generatorDiagnostics);\n        GeneratorDriverRunResult runResult = driver.GetRunResult();\n\n        string generated = string.Join(\"\\n\", runResult.GeneratedTrees.Select(t => t.ToString()));\n        logger.WriteLine(generated);\n\n        var analyzers = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetCustomAttributes(typeof(DiagnosticAnalyzerAttribute), false).Length > 0)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n\n        ImmutableArray<Diagnostic> analyzerDiagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n\n        var relevant = generatorDiagnostics\n            .Concat(runResult.Diagnostics)\n            .Concat(analyzerDiagnostics)\n            .Where(d => d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal) || d.Id == \"CS8785\" || d.Id == \"AD0001\")\n            .ToList();\n\n        foreach (Diagnostic d in relevant)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        Assert.True(\n            generated.Contains(\"SecondValue\") || relevant.Count > 0,\n            \"A member with a duplicate [Key(0)] was silently dropped: no diagnostic was reported and the generated formatter does not serialize SecondValue.\");\n    }\n}\n",
+        "test_names": [
+          "DuplicateIntKey_IsReportedOrSerialized"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8707,
+  "output_tokens": 9912,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

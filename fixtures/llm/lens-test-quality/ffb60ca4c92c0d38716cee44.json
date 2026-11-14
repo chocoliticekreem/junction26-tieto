@@ -1,0 +1,77 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "No test covers the acceptance criterion that MessagePack attributes on T are honoured. Every execution test uses an attribute-free external type, while the no-surrogate path always calls CreateContractlessMembers, so an implementation that ignores [MessagePackObject]/[Key] passes the entire added suite.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:88",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an execution test with a generated formatter for a type marked [MessagePackObject] whose members use integer [Key] values and an [IgnoreMember] member. Assert the array wire shape, keys, and omitted member; the current contractless implementation should fail this test."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate generation is executed only with integer keys. The string-key branch and its final isIntKey assignment are not covered, so a string-key surrogate could be emitted as an integer-key formatter without any added test noticing.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:219",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:219 swap-boolean: isIntKey = keyKindIsInt ?? false -> isIntKey = true; expected to survive because the only successful surrogate execution test uses integer keys, while the string/int test stops at a diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "There is no duplicate-surrogate-key test, so the uniqueness guard can be removed without affecting the added tests even though duplicate keys would produce an invalid serialization contract.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:208",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:208 remove-guard: if (!claimedKeys.Add(key)) -> remove the guard and its diagnostic return; expected to survive because all keyed surrogate members in the tests have distinct keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The deserializing-constructor guard has no test: both formatted classes have accessible parameterless constructors, and the diagnostic tests exercise only partial/interface/abstract/surrogate validation.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:74",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:74 remove-guard: remove the accessible parameterless-constructor check; expected to survive because no test formats a class with only parameterized or inaccessible constructors."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The explicitly supported body-less declaration form (`partial class X : IMessagePackFormatter<T>;`) is never used by a test; every added formatter has a brace-delimited body.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypes.cs:10",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Declare one execution-test formatter with a semicolon body, then round-trip its target through GeneratedMessagePackResolver to prove that the declaration compiles and receives the generated implementation."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless execution coverage contains properties only, despite the implementation and API documentation promising public fields as well. Excluding all fields from IsPublicReadWrite would not fail any added test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:286",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:286 swap-boolean: IFieldSymbol field => field.DeclaredAccessibility == Accessibility.Public && !field.IsReadOnly && !field.IsConst -> IFieldSymbol field => false; expected to survive because ExternalPerson, ExternalPoint, and ExternalWidget expose no fields."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 13575,
+  "output_tokens": 3377,
+  "ms": 41525,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.09138
+}

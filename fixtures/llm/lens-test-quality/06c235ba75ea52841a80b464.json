@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "MessagePackSecurity.UntrustedData MaximumObjectGraphDepth raised from 500 to 5000. This is unrelated to the crash fix and loosens a stack-depth DoS limit. No test in the diff covers it, and ledger L9 records the 500 depth limit as a deliberate secure-by-default decision.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack/MessagePackSecurity.cs:38 off-by-one: 5000 -> 500 (revert); expected to survive because no test in the diff asserts UntrustedData.MaximumObjectGraphDepth or deep-graph rejection"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ReportIfLocatedInCompilation filter in the constructor has no test that proves it drops diagnostics. Tests only assert no crash and no warnings, so removing the guard (always report) would not fail them: the metadata-only struct's MemberNeedsKey diagnostic now has a null location and would be Location.None. Also, `diagnostic.Location.IsInSource` is the only thing being tested, and the Unkeyed test member is public so it would reach the path, but a null-location diagnostic would not necessarily make the analyzer test fail.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:239 remove-guard: reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(...) -> reportAnalyzerDiagnostic; expected to survive if the test harness does not flag Location.None diagnostics for the metadata struct"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The condition in ReportIfLocatedInCompilation (IsInSource && ContainsSyntaxTree) is not tested for negation or for a positive case. The new tests have no case where a diagnostic in the compiling assembly's own source must still be reported (e.g. a same-assembly generic struct missing a key still raising MsgPack004/MemberNeedsKey), so negating or over-filtering would go unnoticed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:1445 negate-condition: if (IsInSource && ContainsSyntaxTree) -> if (!(...)); expected to survive because no new test asserts an expected diagnostic is still reported for same-assembly types"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The BothStringAndIntKeyAreNull path (GetPropertyIdentifierLocation) has no test. The tests use keyed members and an unkeyed member only, so a metadata property with a null key attribute never exercises this line; reverting to DeclaringSyntaxReferences[0] would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:985 delete-statement: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no test has a metadata property with [Key] having null int and string values"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10604,
+  "output_tokens": 1281,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

@@ -1,0 +1,66 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "DecimalFormatter.Serialize now passes StandardFormat('F') to Utf8Formatter.TryFormat. The default format for decimal is 'G', which can emit exponent notation or differ from 'F' for some values (e.g. very small values or values with trailing zero scale). This changes serialized bytes for decimals, unrelated to the ExcludeFromCodeCoverage requirement. Existing users and peers reading stored or on-the-wire data would see different strings. 'F' also has different max length behavior (a 28-digit decimal with sign and point can exceed MaxFixStringLength 31?), so TryFormat may fail and fall to a different path.",
+        "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize decimal values 0m, 1.50m, 1E-10m (0.0000000001m), -79228162514264337593543950335m, 1.0000000000000000000000000001m, 12345678901234567890.123456789m with base-built and head-built MessagePackSerializer and compare bytes; also check the fallback path when TryFormat returns false."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is emitted under #if !NETSTANDARD2_0 && !NETFRAMEWORK, but the generated code is compiled in the user's project. Users targeting netstandard2.1, netcoreapp2.x, or other TFMs would not define those symbols. ExcludeFromCodeCoverage exists on netstandard2.0 and .NET Framework 4.0+, so the guard needlessly skips them and fails the 'all generated code' criterion for those targets. Conversely, on TFMs such as net35 or other old targets that lack the type, the guard does not exclude them, so the guard is both too broad and too narrow, risking CS0234/CS0246 compile errors.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Compile generated output in a test project targeting netstandard2.0, net472, net8.0, and an older TFM (e.g. net35 or similar), and verify the attribute presence and that it compiles on each; rerun snapshot tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is added only to formatters, resolvers, and nested helper classes. Other generated types (for example, the GetFormatterHelper or any other generated members/types not covered by these templates) may remain undecorated, so 'all generated code' may not be met. Also, the attribute is placed on a type emitted via EmitNestingTypesAndNamespaces, but the nested partial wrapper types are not decorated, which is fine for coverage. The scope decision is ambiguous.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshots and grep the outputs for class/struct declarations without a preceding ExcludeFromCodeCoverage attribute."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The TransformUtilities change from \"{\" to \"{\\r\\n\" for nesting types with constraints alters generated output whitespace for every generated file with constrained nested generic types. Users who check in or snapshot generator output will see a diff; it is functionally harmless.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun snapshot tests for generic nested types with constraints and diff the outputs against base."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the ExcludeFromCodeCoverage attribute be emitted on all target frameworks where it exists, or only on the non-netstandard2.0/non-.NET Framework set currently guarded?",
+        "options": [
+          "Emit unconditionally (type exists on netstandard2.0 and net4.0+)",
+          "Keep the current conditional guard",
+          "Add a user-configurable opt-out"
+        ],
+        "why_it_matters": "If the attribute is expected on all TFMs the guard is a defect; if the guard is intentional for old TFMs, it is acceptable.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 10721,
+  "output_tokens": 1526,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

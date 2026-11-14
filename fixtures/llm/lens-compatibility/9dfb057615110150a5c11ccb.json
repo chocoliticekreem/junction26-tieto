@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `case <= byte.MaxValue` branch was removed from the unsigned-integer writer, so values 128..255 are no longer written as UInt8 (0xcc xx). They now fall through to the UInt16 branch (0xcd xx xx), which is 1 byte larger and changes the wire bytes for every user. This is unrelated to the requirement (a generator/analyzer crash). It also violates MessagePack's smallest-encoding convention and can break byte-exact expectations such as existing tests, stored data, and hashes.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Call the MessagePackPrimitives writer for the uint/ulong overload whose switch was edited, and also write via MessagePackWriter.Write(uint) and Write(ulong), with values 127, 128, 200 and 255. Do this with base-built and head-built code and compare bytes. Base gives CC 80, CC C8 and CC FF; head gives CD 00 80, CD 00 C8 and CD 00 FF."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper around reportDiagnostic now silently drops every diagnostic whose location is not in a syntax tree of the current compilation. This includes diagnostics created with a null location (`Location.None`), for example the MemberNeedsKey diagnostic when FirstOrDefault returns null. It also changes behavior for existing diagnostics that were previously reported with no source location, so users can lose MsgPack warnings or errors they get today, such as location-less diagnostics in the generator or in analysis of closed generics.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer or generator test that triggers a diagnostic that previously had Location.None or a location in another tree, and assert that it is still reported as on base. Also compare the diagnostic set on base and head for the existing analyzer test suite (MsgPack003/004/005 cases) and look for any that disappear."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The analyzer fix for the crash is only partly covered. `GetPropertyIdentifierLocation` returns null for a metadata property, but any diagnostic that reaches a metadata type with a null location is now dropped silently. The change gives no evidence that the generator path (CS8785) is fixed: the generator may still produce diagnostics, or may still generate formatters, for the referenced-assembly struct. Other unguarded `DeclaringSyntaxReferences[0]` or `Locations[0]` uses may remain.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1426",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run a generator test with a referenced-assembly `struct Item<T>` and `record struct Item<T>` used as `Item<int>` in a [MessagePackObject] in the compiling assembly. Assert there is no CS8785 and no AD0001, and that GeneratedMessagePackResolver exists. Check that the generated formatter output does not change for the other 'ok' rows."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7410,
+  "output_tokens": 1150,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

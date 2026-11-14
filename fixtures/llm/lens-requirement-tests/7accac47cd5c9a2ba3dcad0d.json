@@ -1,0 +1,59 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The target-framework guard disables the feature on netstandard2.0 and .NET Framework even though System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute is available on those targets. Consequently, generated code on those supported targets remains coverage-instrumented, contrary to the requirement that all generated code be decorated except where the attribute cannot be emitted. The README's claim that these targets lack the attribute is also incorrect.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator with NetStandard20 reference assemblies and parse options defining NETSTANDARD2_0. First assert that compilation.GetTypeByMetadataName(\"System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute\") is non-null, proving the attribute is available; then inspect active attributes on every generated class and assert ExcludeFromCodeCoverage is present. This fails on head because all occurrences of `#if !NETSTANDARD2_0 && !NETFRAMEWORK` exclude it. Repeat with .NET Framework reference assemblies and NETFRAMEWORK defined."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The copy operation in MessagePackSecurity no longer copies HashCollisionResistant. A copy of a security configuration can therefore silently retain the destination's previous collision-resistance setting instead of the source's, potentially dropping hash-collision protection; this is an unrelated behavioral and security regression in a coverage-only change.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:60",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add or run a unit test that creates a source MessagePackSecurity with HashCollisionResistant = true, performs the copy operation containing this hunk on a destination with HashCollisionResistant = false, and asserts the destination value is true. Also test propagation in the opposite direction. The first case fails after the removed assignment."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageReceiptTests\n{\n    [Fact]\n    public void Generated_formatters_and_resolver_carry_coverage_exclusion()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class Sample\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        ImmutableArray<ClassDeclarationSyntax> generatedTypes = GenerateTypes(source);\n\n        AssertAllDecorated(generatedTypes);\n    }\n\n    [Fact]\n    public void Generated_string_key_enum_and_union_formatters_carry_coverage_exclusion()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            public enum SampleEnum\n            {\n                None,\n                Value,\n            }\n\n            [MessagePackObject]\n            public class Root\n            {\n                [Key(0)]\n                public SampleEnum EnumValue { get; set; }\n\n                [Key(1)]\n                public UnionBase UnionValue { get; set; }\n            }\n\n            [MessagePackObject]\n            public class StringKeyed\n            {\n                [Key(\"name\")]\n                public string Name { get; set; }\n            }\n\n            [MessagePackObject]\n            [Union(0, typeof(UnionDerived))]\n            public abstract class UnionBase\n            {\n            }\n\n            [MessagePackObject]\n            public class UnionDerived : UnionBase\n            {\n                [Key(0)]\n                public int Id { get; set; }\n            }\n            \"\"\";\n\n        ImmutableArray<ClassDeclarationSyntax> generatedTypes = GenerateTypes(source);\n\n        Assert.True(generatedTypes.Length >= 5, $\"Expected formatters for the object, string-keyed object, enum, union, and union member, but found only {generatedTypes.Length} generated classes.\");\n        AssertAllDecorated(generatedTypes);\n    }\n\n    private static ImmutableArray<ClassDeclarationSyntax> GenerateTypes(string source)\n    {\n        CSharpParseOptions parseOptions = new(LanguageVersion.CSharp12);\n        ImmutableArray<MetadataReference> references = ReferenceAssemblies.Net.Net80\n            .ResolveAsync(LanguageNames.CSharp, CancellationToken.None)\n            .GetAwaiter()\n            .GetResult()\n            .AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"CoverageExclusionReceipts\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        var generator = new MessagePack.SourceGenerator.MessagePackGenerator();\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { generator.AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(\n            compilation,\n            out Compilation outputCompilation,\n            out ImmutableArray<Diagnostic> generatorDiagnostics,\n            CancellationToken.None);\n\n        Assert.DoesNotContain(generatorDiagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);\n        Assert.DoesNotContain(outputCompilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);\n\n        ImmutableArray<ClassDeclarationSyntax> generatedTypes = driver.GetRunResult().GeneratedTrees\n            .SelectMany(tree => tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())\n            .ToImmutableArray();\n        Assert.NotEmpty(generatedTypes);\n        return generatedTypes;\n    }\n\n    private static void AssertAllDecorated(ImmutableArray<ClassDeclarationSyntax> generatedTypes)\n    {\n        foreach (ClassDeclarationSyntax generatedType in generatedTypes)\n        {\n            Assert.Contains(\n                generatedType.AttributeLists.SelectMany(list => list.Attributes),\n                attribute => attribute.Name.ToString().EndsWith(\"ExcludeFromCodeCoverage\", StringComparison.Ordinal));\n        }\n    }\n}\n",
+        "test_names": [
+          "Generated_formatters_and_resolver_carry_coverage_exclusion",
+          "Generated_string_key_enum_and_union_formatters_carry_coverage_exclusion"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "The implemented reading: every generator-emitted formatter, resolver, and private helper/cache class is decorated unconditionally wherever the attribute is considered available, with no new setting."
+      },
+      {
+        "label": "B",
+        "summary": "A narrower, configurable reading: only the formatter and resolver types themselves require decoration, helper/cache classes need not have it, and users may opt out through a GeneratorOptions setting. This would remove the helper-class attributes and gate all attribute emission on that opt-out."
+      }
+    ]
+  },
+  "input_tokens": 7829,
+  "output_tokens": 10968,
+  "ms": 125816,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.188007
+}

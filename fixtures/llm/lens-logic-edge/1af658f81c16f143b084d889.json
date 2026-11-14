@@ -1,0 +1,48 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "When no surrogate is supplied, the collector unconditionally builds a contractless string-key model and never inspects MessagePack attributes on T. For example, a referenced T marked [MessagePackObject] whose Value property has [Key(0)] gets a name-keyed map formatter instead of the required integer-key array formatter; [IgnoreMember] and member formatter attributes are likewise ignored. This violates the acceptance criterion that MessagePack attributes on T are honoured.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:90",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterCollectorReceiptTests.MessagePackObjectKeysOnReferencedTypeAreHonored. It places [MessagePackObject] and [Key(0)] on a type in a referenced compilation and asserts that the user-declared generated formatter uses WriteArrayHeader rather than WriteMapHeader; it fails on head because the collector emits a contractless string-key formatter."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Callback casting is computed from only T's directly declared methods. If T inherits IMessagePackSerializationCallbackReceiver from a base class that explicitly implements OnBeforeSerialize and OnAfterDeserialize, hasCallbackReceiver is true but needsCast is false. The generated formatter therefore calls value.OnBeforeSerialize()/OnAfterDeserialize() without an interface cast, although those methods are not directly callable on T, causing generated-code compilation errors.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:82",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterCollectorReceiptTests.BaseTypeExplicitCallbacks_Compile. The formatted class derives from a base with explicit callback implementations; compiling the generator-updated compilation should have no errors, but fails on head because the inherited explicit implementation is overlooked when needsCast is calculated."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterCollectorReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterCollectorReceiptTests\n{\n    [Fact]\n    public async Task MessagePackObjectKeysOnReferencedTypeAreHonored()\n    {\n        ImmutableArray<MetadataReference> references = await GetReferencesAsync();\n        CSharpCompilation referencedCompilation = CreateCompilation(\n            \"ReferencedLibrary\",\n            \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class ReferencedType\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n            \"\"\",\n            references);\n\n        using MemoryStream image = new();\n        referencedCompilation.Emit(image).Success.Should().BeTrue();\n        MetadataReference referencedLibrary = MetadataReference.CreateFromImage(image.ToArray());\n\n        CSharpCompilation compilation = CreateCompilation(\n            \"Consumer\",\n            \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            [GeneratedMessagePackFormatter]\n            public partial class MyFormatter : IMessagePackFormatter<ReferencedType>;\n            \"\"\",\n            references.Add(referencedLibrary));\n\n        GeneratorDriver driver = RunGenerator(compilation, out _);\n        string formatter = driver.GetRunResult().Results.Single().GeneratedSources\n            .Select(source => source.SourceText.ToString())\n            .Single(text => text.Contains(\"partial class MyFormatter\", StringComparison.Ordinal));\n\n        formatter.Should().Contain(\"WriteArrayHeader\");\n        formatter.Should().NotContain(\"WriteMapHeader\");\n    }\n\n    [Fact]\n    public async Task BaseTypeExplicitCallbacks_Compile()\n    {\n        ImmutableArray<MetadataReference> references = await GetReferencesAsync();\n        CSharpCompilation compilation = CreateCompilation(\n            \"Consumer\",\n            \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            public class Base : IMessagePackSerializationCallbackReceiver\n            {\n                void IMessagePackSerializationCallbackReceiver.OnBeforeSerialize()\n                {\n                }\n\n                void IMessagePackSerializationCallbackReceiver.OnAfterDeserialize()\n                {\n                }\n            }\n\n            public class Derived : Base\n            {\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackFormatter]\n            public partial class DerivedFormatter : IMessagePackFormatter<Derived>;\n            \"\"\",\n            references);\n\n        RunGenerator(compilation, out Compilation outputCompilation);\n        outputCompilation.GetDiagnostics()\n            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)\n            .Should().BeEmpty();\n    }\n\n    private static async Task<ImmutableArray<MetadataReference>> GetReferencesAsync()\n    {\n        ImmutableArray<MetadataReference> frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(\n            LanguageNames.CSharp,\n            CancellationToken.None);\n        return frameworkReferences.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n    }\n\n    private static CSharpCompilation CreateCompilation(\n        string assemblyName,\n        string source,\n        IEnumerable<MetadataReference> references)\n    {\n        return CSharpCompilation.Create(\n            assemblyName,\n            new[]\n            {\n                CSharpSyntaxTree.ParseText(\n                    source,\n                    new CSharpParseOptions(LanguageVersion.CSharp12)),\n            },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n    }\n\n    private static GeneratorDriver RunGenerator(CSharpCompilation compilation, out Compilation outputCompilation)\n    {\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator());\n        return driver.RunGeneratorsAndUpdateCompilation(\n            compilation,\n            out outputCompilation,\n            out ImmutableArray<Diagnostic> _);\n    }\n}\n",
+        "test_names": [
+          "MessagePackObjectKeysOnReferencedTypeAreHonored",
+          "BaseTypeExplicitCallbacks_Compile"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 11426,
+  "output_tokens": 10845,
+  "ms": 129545,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.196953
+}

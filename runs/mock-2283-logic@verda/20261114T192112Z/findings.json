@@ -1,0 +1,86 @@
+[
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "ReportIfLocatedInCompilation forwards every diagnostic whose location is not in source, including Location.None. The two newly metadata-safe diagnostic constructions produce exactly that location for metadata members, so MsgPack004/005 can now be reported without a location in the consuming project. That contradicts the new documentation and the recorded convention that such member diagnostics belong to the defining assembly; because MsgPack004 and MsgPack005 are errors, it can also break the consuming build.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Compile a metadata library containing [MessagePackObject] generic struct Item<T> with a public property lacking [Key], then compile an app whose [MessagePackObject] has an Item<int> member and run MsgPack00xMessagePackAnalyzer on the app. Assert that the app receives neither AD0001 nor MsgPack004 for Item<T>.Value. The changed !diagnostic.Location.IsInSource branch currently forwards the Location.None MsgPack004."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The new location filter does not drop metadata-symbol diagnostics that have been converted to Location.None. For a closed generic struct from a referenced assembly with a public member lacking [Key], the null-safe MemberNeedsKey path creates MsgPack004 with a null location; !diagnostic.Location.IsInSource is then true, so the consumer compilation receives a locationless MsgPack004 error. This both contradicts the helper's stated behavior and analyses metadata types that the defining assembly owns.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Compile a Lib metadata reference containing [MessagePackObject] public partial struct Item<T> { public int Value { get; set; } } without running analyzers on Lib. Analyze an App compilation referencing Lib and containing [MessagePackObject] public class Cmd { [Key(0)] public Item<int> Member { get; set; } }. Assert that App has no MsgPack004, AD0001, or CS8785. On head, MsgPack004 is reported with Location.None instead of being dropped."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "One of the three reported crash sites remains unguarded: TypeCollector.cs:735 still indexes DeclaringSyntaxReferences[0]. The new ReportIfLocatedInCompilation wrapper cannot prevent this exception because it runs only after the diagnostic and its location have been constructed, so a metadata type reaching this diagnostic can still produce CS8785/AD0001.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:735",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add a regression case using a closed generic struct from a metadata reference that reaches the diagnostic at TypeCollector.cs:735; assert that analyzer and generator execution complete without exceptions, CS8785, or AD0001. The case fails while DeclaringSyntaxReferences[0] remains unguarded."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The new tests do not exercise the BothStringAndIntKeyAreNull crash path fixed at the former DeclaringSyntaxReferences[0] access. All three metadata types have valid integer keys, so restoring the unguarded metadata-symbol access for this diagnostic would leave every added test passing.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433 remove-guard: property.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() -> property.DeclaringSyntaxReferences[0].GetSyntax(); expected to survive because none of the added metadata-reference tests has a member whose key yields both a null int key and a null string key, so the BothStringAndIntKeyAreNull branch is never reached."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The added tests only assert zero diagnostics and therefore cannot detect the new ReportIfLocatedInCompilation predicate being inverted. That mutation would suppress ordinary diagnostics located in the compilation while all three new tests continued to pass.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445 negate-condition: !diagnostic.Location.IsInSource || this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree) -> !(!diagnostic.Location.IsInSource || this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)); expected to survive because the added tests expect no in-compilation diagnostic and contain no positive case asserting that a local diagnostic is still reported."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-2",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L8] area=analyzer, generator: Types that come from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly. In `TypeCollector.CollectCore`, after the custom-formatter, enum and generic checks, a non-generic type whose symbol is metadata-only exits with a bare `if (type.Locations[0].IsInMetadata) { return; }` (TypeCollector.cs:367-370), so no MsgPack003/004/005 diagnostic and no generated formatter appear for it. The defining assembly owns validating and formatting its own types (rationale inferred: the code has no comment). A missing diagnostic or formatter for such a type is not a defect. (source: src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367) (would-be finding: Suppressing member diagnostics whose locations are outside the consuming compilation is deliberate behavior, not an unintended loss of diagnostics: referenced-assembly types are validated by their defining assembly. The wrapper and documentation implement that recorded convention.)",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1442",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L8] Types from referenced assemblies are deliberately not analysed; the defining assembly owns validating and formatting its own types, so missing diagnostics in the consuming assembly are not defects."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  }
+]

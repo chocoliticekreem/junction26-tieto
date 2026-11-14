@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `ContainsKey` guards turn a duplicate `[Key(n)]` (or a duplicate string key) into a silent first-wins. Repro: a type that is not suppressed, with `[Key(0)] int FirstValue` and `[Key(0)] int SecondValue`. On base, `Dictionary.Add` threw, so the generator or analyzer failed visibly (CS8785/AD0001). On head the second member is dropped from `intMembers`/`stringMembers`. The generated formatter never writes or reads `SecondValue`, and nothing in these hunks reports the collision. The result is silent loss of member data on round-trip. The guard is applied whether or not `SuppressSourceGeneration` is set, so it changes behaviour for unset/false, which breaks the third acceptance criterion.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1028",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeyNotSilentlyDroppedTests.DuplicateIntKey_IsReportedOrBothMembersSerialized. It drives `CSharpGeneratorDriver` and asserts that the generator either fails, reports an error, or emits code that references `SecondValue`. Expected: passes on base (the generator throws) and fails on head (the member is silently dropped)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "For `SuppressSourceGeneration = true`, the new early `continue` on members with a KeyAttribute-derived attribute skips everything after it in the loop body. That includes the `messagePackFormatter` lookup and the recursive collection of `item.Type`, which is what reports MsgPack003 for a member type that is not serializable. So `[MessagePackObject(SuppressSourceGeneration = true)] class C { [MyKey(0)] public Bar Value; }`, where `Bar` lacks `[MessagePackObject]`, no longer gets MsgPack003 on `Bar`. Ledger L17 says all validation diagnostics should still apply for suppressed types; only MsgPack011/016/017 are skipped.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Lines 921-924 and 1083-1086 `continue` before the `var messagePackFormatter = ...` block that follows (around lines 1050/1195). The member-type collection and MsgPack003 reporting live after that block and are therefore unreachable for derived-key members of suppressed types. Confirm with a VerifyCS test using a custom `class MyKey : KeyAttribute`, a suppressed type, and a member of a plain class type, expecting MsgPack003."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after reporting DoNotMixStringAndIntKeys also skips the member-type collection further down the loop. A member with a mismatched key kind whose type is not serializable no longer gets MsgPack003, so a second, independent error is now silently dropped.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1013",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Lines 1013 and 1158: the `continue` precedes the `messagePackFormatter` / recursive `CollectCore(item.Type)` path. Write a VerifyCS test with `[Key(0)] int A; [Key(\"b\")] Bar B;` where `Bar` has no attribute, and check whether MsgPack003 is still reported."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeyNotSilentlyDroppedTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeyNotSilentlyDroppedTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public DuplicateKeyNotSilentlyDroppedTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task DuplicateIntKey_IsReportedOrBothMembersSerialized()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace TestNs\n            {\n                [MessagePackObject]\n                public class Dup\n                {\n                    [Key(0)]\n                    public int FirstValue { get; set; }\n\n                    [Key(0)]\n                    public int SecondValue { get; set; }\n                }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver\n                {\n                }\n            }\n            \"\"\";\n\n        var framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3);\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsDupKey\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGenerators(compilation);\n        var result = driver.GetRunResult();\n\n        bool generatorFailed = result.Results.Any(r => r.Exception is not null);\n        bool reported = result.Diagnostics.Any(d => d.Severity >= DiagnosticSeverity.Warning);\n        string generated = string.Join(\"\\n\", result.GeneratedTrees.Select(t => t.ToString()));\n        this.logger.WriteLine(generated);\n\n        Assert.True(\n            generatorFailed || reported || generated.Contains(\"SecondValue\"),\n            \"Duplicate [Key(0)] was silently accepted: SecondValue is absent from the generated formatter and no diagnostic or failure was produced.\");\n    }\n}\n",
+        "test_names": [
+          "DuplicateIntKey_IsReportedOrBothMembersSerialized"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10506,
+  "output_tokens": 8278,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_016ZTRtoFx12DniTJbHDKck6"
+}

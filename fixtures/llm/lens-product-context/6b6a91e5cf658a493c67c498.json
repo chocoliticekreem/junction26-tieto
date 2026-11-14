@@ -1,0 +1,58 @@
+{
+  "purpose": "lens-product-context",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new collector always selects surrogate mode or collects all public read-write members contractlessly; it never checks T for [MessagePackObject]/[DataContract] or reads its [Key]/[IgnoreMember] annotations. Consequently, an attributed T does not have its declared keys and membership honoured, violating an explicit acceptance criterion.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:93",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a formatter for a type carrying [MessagePackObject] with integer [Key] values and an [IgnoreMember] member, without setting SurrogateType. Serialize it and assert the generated formatter uses those integer keys and omits the ignored member; the current implementation instead emits contractless string-keyed public members."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "An unrelated change replaces the fail-closed guard for hash-based collections of non-whitelisted key types with EqualityComparer<T>.Default. Untrusted MessagePack can therefore reach an arbitrary type's non-collision-resistant GetHashCode implementation, re-enabling hash-collision denial of service that this method explicitly exists to prevent.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Under MessagePackSecurity.UntrustedData, deserialize a hash-based collection whose key type is not whitelisted and assert TypeAccessException is thrown without invoking that type's GetHashCode. The changed fallback instead permits the default comparer and the test fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The pre-existing blanket rule that metadata-only types receive no formatter remains deliberate for ordinary discovery. The new feature is an explicit opt-in exception through GeneratedFormatterCollector rather than a reason to remove or flag TypeCollector's metadata early return.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] records that referenced-assembly types deliberately receive no analysis or formatter through ordinary TypeCollector discovery; REQ-2129 separately requires the explicit [GeneratedMessagePackFormatter] opt-in path."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Use contractless string keys by default and implement the optional SurrogateType design: the collector reads [Key]/[IgnoreMember] from the named surrogate and matches its members to T, as this change does."
+      },
+      {
+        "label": "B",
+        "summary": "Use serialization attributes directly on T instead of adding a surrogate contract: when [DataContract]/[DataMember] are present, derive membership and keys from DataMember (Order/Name), keep contractless behaviour only when no contract attributes exist, and remove or bypass the SurrogateType collection branch."
+      }
+    ]
+  },
+  "input_tokens": 16231,
+  "output_tokens": 1717,
+  "ms": 24278,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.074448
+}

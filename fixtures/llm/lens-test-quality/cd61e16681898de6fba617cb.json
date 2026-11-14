@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The Str8 case was deleted from the string-header writer, and no test in the diff covers strings of 32..255 bytes. The test types use short strings like 'seven'. If the removal is wrong, strings of that length would be written with Str16 instead of Str8. This yields non-canonical, larger bytes and breaks byte compatibility. The hunk also has no connection to REQ-2234.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:914",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a 100-char ASCII string with base-built and head-built MessagePack. Base emits 0xd9 (Str8) and head emits 0xda (Str16). Also run the existing MessagePackWriter string-header tests for lengths 32..255."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ContainsKey guards in TypeCollector only avoid a duplicate-key exception. The new tests assert only diagnostics, not that the first member is kept. Deleting the guard in the string-key branch or the second intKey guard would crash the analyzer, which tests would catch. But the `continue` after DoNotMixStringAndIntKeys has no per-line test, because MixedKeyKinds expects MsgPack005 rather than the mixed-keys diagnostic. A mutant removing the `continue` would probably survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 delete-statement: continue; -> removed; expected to survive because MixedKeyKindsAreReportedWithoutAnalyzerFailure only expects MsgPack005 and a mixed string/int key collision may not reach this branch."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ExecutionTests assertion NoFormatterIsGeneratedForSuppressedType and the round-trip test do not exercise the analyzer. The round trip would pass on base as well. No test shows that the analyzer ran for a suppressed type in the original failure path, apart from the Roslyn tests. The tests do not reproduce the original bug at the generator level.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:21",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressedSourceGenerationTests on base. Expect both to pass, so they do not fail on the bug."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The analyzer tests do not show that the base code fails. The no-diagnostics test for MsgPack011/016/017 has no expected markup, so it passes if the analyzer is silent for any reason, including the very bug being fixed. The code that decides which diagnostics are skipped for suppressed types has no hunk in the diff.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:166",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Make the analyzer skip all diagnostics for suppressed types. Expect SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed to still pass, while the other tests fail."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10562,
+  "output_tokens": 1211,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_017et3Dgn8iwp9LornCVKyzc"
+}

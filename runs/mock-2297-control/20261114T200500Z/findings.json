@@ -1,0 +1,204 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The attribute is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, so it is never emitted for projects targeting netstandard2.0 or .NET Framework. Those are the targets the generator is commonly used on. `System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute` exists on both: it has been in System.dll since .NET Framework 2.0 and is in the netstandard2.0 surface, and on those targets it is valid on classes. So the guard is not needed for compilation, and generated code on these targets is still not excluded from coverage. This misses the acceptance criterion 'All generated code is decorated with ExcludeFromCodeCoverage'. The derived criterion only asks for conditional emission where the attribute does not exist, which does not apply here. The same guard is repeated in every template: FormatterTemplate, StringKeyFormatterTemplate, EnumTemplate, UnionTemplate, ResolverTemplate and CompositeResolverTemplate.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageDownlevelTfmTests.cs (GeneratedTypesAreExcludedWhenTargetingDownlevelFrameworks). It reparses the generated sources with NETSTANDARD2_0 or NETFRAMEWORK defined and asserts each generated type carries the attribute; it fails on head. Also compile `[System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage] class C {}` against ReferenceAssemblies.NetStandard.NetStandard20 and ReferenceAssemblies.NetFramework.Net472.Default; expect zero errors, proving the guard is unnecessary."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The generator now puts [ExcludeFromCodeCoverage] on the generated half of the user-declared partial resolver class. ExcludeFromCodeCoverageAttribute has AllowMultiple=false. A user who already applied the attribute to their own `[GeneratedMessagePackResolver] partial class MyResolver` declaration (the natural workaround for this very issue) now gets CS0579 'Duplicate ExcludeFromCodeCoverage attribute' in generated code, so a project that compiled on base fails to compile on head. CompositeResolverTemplate has the same problem for user-declared `[CompositeResolver] partial class`.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageEdgeCaseTests.UserResolverAlreadyExcludedFromCoverage_CompilesWithoutDuplicateAttribute. It passes on base and fails on head with CS0579 in the generated resolver file."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "Every emitted attribute is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute exists, with AttributeTargets.Class, in netstandard2.0 and .NET Framework 4.0+. The guard therefore silently drops the attribute on targets where it compiles fine. Libraries targeting netstandard2.0 or net4x get no coverage exclusion at all. This contradicts 'All generated code is decorated'; the derived criterion only allows conditional emission where the attribute does not exist.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageEdgeCaseTests.GeneratedResolverIsExcludedFromCoverageOnNetStandardAndNetFramework(\"NETSTANDARD2_0\"/\"NETFRAMEWORK\"). It drives the generator with that preprocessor symbol and asserts that the generated resolver type carries ExcludeFromCodeCoverageAttribute. It fails on head."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-2",
+    "lens": "compatibility",
+    "claim": "The TransformUtilities.EmitNestingTypesAndNamespaces change alters the nesting-type opening-brace output from `{` to `{\\r\\n` when there are constraints. The requirement does not ask for this change. It alters generated output for any user-nested generic type with constraints, and so may alter checked-in snapshots or any whitespace-sensitive consumers. Also, formatters inside a nested type now sit after `#if` directives, which require line-start placement. The templates already handle this by starting a new line, but the brace change should be verified in the snapshots.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Rerun the generator snapshot tests, including for nested generic types with constraints, and review the diff in generated files caused by the `{` to `{\\r\\n` change, separate from the attribute additions."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-3",
+    "lens": "compatibility",
+    "claim": "Coverage is only applied to formatters, resolvers, and their nested helper classes. Other generated code, such as the resolver's GetFormatterHelper and any other emitted types or assembly-level attributes, may be left undecorated. The requirement says all generated code must be decorated. A grep for generated types without the attribute is needed.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "In the regenerated snapshots, search for `class ` or `struct ` declarations not preceded by an ExcludeFromCodeCoverage attribute, e.g. other emitted helper types."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-2",
+    "lens": "product-context",
+    "claim": "The change modifies EmitNestingTypesAndNamespaces output: the brace is now `{\\r\\n` when constraints exist. This is unrelated to the requirement and alters generated formatting for nested generic types. L4 records that nesting and constraint logic has had many recent fixes.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Rerun the generator snapshot tests for nested generic types with constraints and check the diffs are limited to the whitespace change."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-3",
+    "lens": "product-context",
+    "claim": "The README sentence says 'All generated formatters and resolvers', but the change adds the attribute only to the templates it touches. Any other generated type or file is not covered, which conflicts with 'all generated code'. The tests check only the files from the sample source.",
+    "location": "README.md:1639",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run the generator over inputs that cover generic, nested, and custom-resolver types, and assert every emitted type declaration has the attribute."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The test only checks that the attribute string appears somewhere in each generated file, not that every emitted type carries it. A file with a formatter plus a nested helper type, or a resolver whose FormatterCache or GetFormatterHelper lost the attribute, would still pass as long as one occurrence remains. The ResolverTemplate FormatterCache and GetFormatterHelper additions and the CompositeResolverTemplate FormatterCache addition are therefore not individually covered.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:62",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48 delete-statement: remove the attribute block before GetFormatterHelper -> expected to survive because the test only uses text.Contains per file and the same file still contains the attribute on the resolver class."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The test source has no CompositeResolver (CompositeResolverTemplate) scenario, so removing the attribute from that template is never detected. It also has no generic type or nested-type formatter case, which are the paths touched by the TransformUtilities change.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:15",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27 delete-statement: drop the attribute from the Write string -> expected to survive because TestSource never uses [CompositeResolver] and generates no composite resolver file."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The TransformUtilities change from `anyConstraints ? \"{\" : \" {\\r\\n\"` to `hasConstraints ? \"{\\r\\n\" : ...` alters generated output for nesting types that have constraints. No test in the diff exercises a nested generic type with constraints. Only the snapshots cover it, if one exists, and the snapshots are not in the test hunks.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TransformUtilities.cs:58 swap-boolean: hasConstraints ? \"{\\r\\n\" : \" {\\r\\n\" -> hasConstraints ? \" {\\r\\n\" : \"{\\r\\n\"; expected to survive because the new tests have no nested constrained generic type and only check the attribute string."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "The guard test accepts only two exact layouts of the guard and attribute, and the guard symbols are never verified against the real compile conditions. Nothing compiles the generated output under a netstandard2.0 or NETFRAMEWORK define to prove it still builds. A wrong guard such as NET472 vs NETFRAMEWORK, or a missing guard case, would still pass.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:77",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Compile the generated trees with preprocessor symbols NETSTANDARD2_0 and with an older TFM reference set lacking ExcludeFromCodeCoverage, and assert there are no diagnostics. The current tests would not fail if the guard text were wrong, because they only match the literal string."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "The README claims the attribute 'is only emitted for targets where it is available (not `netstandard2.0` or .NET Framework)'. This is factually wrong: ExcludeFromCodeCoverageAttribute is available on both. The docs therefore present a requirement gap as a platform limitation.",
+    "location": "README.md:1640",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Compare README.md:1640 with the API availability of System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute (.NET Framework 2.0+, .NET Standard 2.0). Confirm by compiling the attribute against ReferenceAssemblies.NetStandard.NetStandard20 and NetFramework.Net472."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "The attribute is emitted only under `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. Generated code is compiled in the user's project, so on netstandard2.0, net472 and other .NET Framework targets, which are common MessagePack consumers, nothing is excluded from coverage. The requirement says all generated code must be decorated and the attribute must exist there or be conditionally emitted. ExcludeFromCodeCoverage has existed since .NET Framework 4.0, so it is available on net4x targets and the guard may be unnecessarily broad. netstandard2.0 does include the attribute too, so the guard is arguably wrong for every target it excludes.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Cite the `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guard in the templates and confirm System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute is present in netstandard2.0 and net472. Alternatively, build a test project targeting netstandard2.0 with the generator and check that the generated formatter lacks the attribute."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "The attribute is emitted behind `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, so consumers targeting netstandard2.0 or .NET Framework get no exclusion. The requirement says all generated code should be decorated. The README documents this limit, but generated code for those targets still skews coverage. Also, ExcludeFromCodeCoverage exists in netstandard2.0 for types (it was added in .NET Framework 4.0 / netstandard2.0), so the guard may be unnecessary.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute is in netstandard2.0 (mscorlib in .NET Framework 4.0+ for types). Compile generated output against netstandard2.0 without the guard to see whether it builds."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  }
+]

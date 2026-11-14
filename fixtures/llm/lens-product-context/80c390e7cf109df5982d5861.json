@@ -1,0 +1,48 @@
+{
+  "purpose": "lens-product-context",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The second string-key collection path has its duplicate guard inverted: it adds an entry only when that key is already present, so ordinary unique string keys are omitted and duplicate keys still reach Dictionary.Add and can throw. This breaks both analysis and generation for affected types.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests.DuplicateStringKeysAreReportedWithoutAnalyzerFailure and add/run a non-suppressed [MessagePackObject] case with unique [Key(\"a\")] and [Key(\"b\")] members. The duplicate case should report MsgPack005 without an analyzer exception, and the unique-key case should retain both collected members."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MsgPack017 is incorrectly classified as AOT-only and deliberately suppressed. Its documented warning concerns an init-property initializer being replaced during deserialization, which also applies when the suppressed type is serialized dynamically; omitting it removes a runtime contract warning rather than merely a formatter-generation check.",
+        "location": "README.md:1634",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Cite ledger [L6] and doc/analyzers/MsgPack017.md: the diagnostic describes deserialization replacing the initializer's default, not a generated-formatter-only restriction. SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed currently enshrines the contrary behavior and should instead expect MsgPack017 for Prop1."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Treat suppression as disabling formatter-specific validation as well as generation: continue reporting contract rules such as MsgPack003/004/005/015, while filtering MsgPack011, MsgPack016, and MsgPack017 for suppressed types, as the README and negative analyzer test specify."
+      },
+      {
+        "label": "B",
+        "summary": "Treat the bug strictly as analyzer inactivity: source generation alone remains suppressed, while every analyzer diagnostic behaves as it does for an ordinary [MessagePackObject]. Minimally, remove the diagnostic filtering and change SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed and the README to expect MsgPack011/016/017 where their normal conditions are met."
+      }
+    ]
+  },
+  "input_tokens": 5435,
+  "output_tokens": 1746,
+  "ms": 25341,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.042495
+}

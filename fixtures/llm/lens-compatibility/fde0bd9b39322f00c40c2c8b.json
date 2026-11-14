@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "ReportIfLocatedInCompilation drops every diagnostic whose location is not in source of this compilation, including diagnostics with Location.None. Existing diagnostics created with null/no location (e.g. MsgPack003/004/005 or other type-level diagnostics where GetIdentifierLocation returns null) were previously reported and now are silently dropped, so users no longer see warnings or errors they saw before. This is a behavior change broader than the metadata-symbol crash.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1452",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing analyzer tests (MsgPack003/004/005/etc.) and add a case where the diagnostic location is Location.None or comes from a partial or generated syntax tree. Assert the diagnostic is still reported on head as on base. A failing test shows the regression."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new early return for any generic type whose OriginalDefinition has no declaring syntax skips all further collection, including generic types from referenced assemblies that previously got a closed-generic formatter registered. A referenced-assembly generic struct without its own resolver, or one that is not a [MessagePackObject], previously went through CollectGeneric and now yields no formatter entry in the generated resolver. This changes generated output users snapshot, and could cause runtime formatter-not-found errors. It also applies to BCL generics such as ValueTuple<,> or KeyValuePair<,> if they reach this point.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests. Add a sample with a member of type ValueTuple<int,string> or KeyValuePair<,> and a closed generic from a referenced assembly. Compare generated resolver output on base and head for missing GetFormatter entries."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The guard sits after the custom-formatter and enum checks but the diff context does not show whether it also precedes the handling of built-in generic collections (List<T>, Dictionary<,>, Nullable<T>), which are metadata symbols. If it does, those generic members are skipped, and their type arguments are no longer collected, so user types nested inside them lose generated formatters.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate for a [MessagePackObject] with List<MyType> and Nullable<MyStruct> members, on base and head. Diff the output to confirm MyType's formatter is still registered."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7064,
+  "output_tokens": 989,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01Dbg3xnSVbJt6wK1KGzecTi"
+}

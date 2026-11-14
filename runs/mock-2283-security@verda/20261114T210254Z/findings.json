@@ -1,0 +1,190 @@
+[
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The original closed-generic-struct repro is not fully fixed. GetObjectInfo still contains the third unguarded DeclaringSyntaxReferences[0] access at TypeCollector.cs:735. When that diagnostic path is reached for Lib.Item<int>, the metadata symbol has no declaring syntax, so the generator/analyzer can still throw IndexOutOfRangeException before ReportIfLocatedInCompilation receives any diagnostic.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:735",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.MetadataGenericValueTypeAndSecurityDepthTests.ClosedGenericStructFromMetadataDoesNotCrashGeneratorOrAnalyzer. It compiles the requirement's generic record struct into a metadata reference, runs the generator and all MessagePack analyzers on the consuming record, and requires completion without CS8785 or AD0001. The test fails while the remaining unguarded metadata-symbol path throws."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "UntrustedData now permits object graphs ten times deeper than the recorded security limit. Inputs nested between 501 and 5000 levels, previously rejected at the depth guard, are now recursively processed, weakening the denial-of-service/stack-exhaustion protection. Ledger L9 records the deliberate 500-level limit even for trusted data, so raising the untrusted-data limit to 5000 contradicts that security decision.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.MetadataGenericValueTypeAndSecurityDepthTests.UntrustedDataStillRejectsGraphDeeperThan500. It deserializes 501 nested one-element arrays using MessagePackSecurity.UntrustedData and expects MessagePackSerializationException. The depth-500 implementation throws; the depth-5000 implementation accepts the payload. Ledger L9 independently records the intended limit."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "security-1",
+    "lens": "security",
+    "claim": "The untrusted-data security profile is weakened independently of the crash fix: `MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth` is increased from 500 to 5000, allowing attacker-controlled object graphs ten times deeper before the depth guard rejects them. This removes the established protection against excessive recursion and can expose deserialization to stack-exhaustion denial of service.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Deserialize attacker-controlled payloads with nesting depths 501 and 5000 using `MessagePackSecurity.UntrustedData` and the same recursive formatter. Verify that the base build rejects depth 501 with the depth-limit exception while the head build continues recursing (and, in an isolated test process, check for stack exhaustion near the new limit); also assert the intended `UntrustedData.MaximumObjectGraphDepth` value."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The security-depth change has no accompanying test, so the new tests would not notice if UntrustedData retained its previous depth or were changed to another value.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack/MessagePackSecurity.cs:38 swap-boolean: MaximumObjectGraphDepth = 5000 -> MaximumObjectGraphDepth = 500; expected to survive because the added tests exercise only source-generator metadata references and never assert MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth"
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The BothStringAndIntKeyAreNull metadata-safety fix is not exercised: none of the added metadata types has a member with null integer and string keys, so the old unguarded DeclaringSyntaxReferences[0] access on this path could return without any added test failing.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 remove-guard: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no added test reaches BothStringAndIntKeyAreNull for a metadata member"
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The new diagnostic-filter tests cover only suppression of metadata diagnostics; they do not verify that diagnostics located in the current compilation are still reported. A filter that suppresses every source diagnostic would pass all three added tests.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443 negate-condition: diagnostic.Location.IsInSource -> !diagnostic.Location.IsInSource; expected to survive because every added test expects zero diagnostics and none asserts a same-compilation diagnostic is preserved"
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "suppressed by unconfirmed context entry: Cite ledger entry L9, which records the stack depth limit of 500 even for trusted data, and compare it with the changed UntrustedData value of 5000. REQ-2283 contains no requirement to alter this security limit. (would-be finding: The patch makes an unrelated security-sensitive change by raising UntrustedData.MaximumObjectGraphDepth from the recorded limit of 500 to 5000. This weakens the object-graph depth defense by allowing ten times as many nested objects before the guard applies, and is not part of the referenced-assembly crash fix. The value should remain 500.)",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "Cite ledger entry L9, which records the stack depth limit of 500 even for trusted data, and compare it with the changed UntrustedData value of 5000. REQ-2283 contains no requirement to alter this security limit."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-compatibility-1",
+    "lens": "compatibility",
+    "claim": "suppressed by unconfirmed context entry: Cite ledger L9, which records the stack depth limit of 500 even for trusted data; additionally run a regression test deserializing an untrusted graph deeper than 500 levels and verify that base rejects it while head permits it. (would-be finding: UntrustedData.MaximumObjectGraphDepth is silently raised from 500 to 5000, a breaking security-behavior change unrelated to the generator fix and contrary to the recorded secure-depth-limit decision; existing applications that rely on UntrustedData will accept substantially deeper attacker-controlled graphs.)",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "Cite ledger L9, which records the stack depth limit of 500 even for trusted data; additionally run a regression test deserializing an untrusted graph deeper than 500 levels and verify that base rejects it while head permits it."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-1",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L9] area=security: Recent history includes secure-by-default changes, a collision-resistant hash for untrusted data, a stack depth limit of 500 even for trusted data, and a revert to v2's insecure-by-default mode. (source: git log) (would-be finding: UntrustedData.MaximumObjectGraphDepth is increased from 500 to 5000, weakening the library's deliberate secure-by-default depth limit and exposing untrusted deserialization to substantially deeper object graphs. This unrelated security regression should be reverted to 500.)",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L9] records secure-by-default changes and a stack depth limit of 500 even for trusted data. The changed UntrustedData default directly contradicts that recorded security posture; restore 500 and assert UntrustedData.MaximumObjectGraphDepth == 500."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-2",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L8] area=analyzer, generator: Types that come from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly. In `TypeCollector.CollectCore`, after the custom-formatter, enum and generic checks, a non-generic type whose symbol is metadata-only exits with a bare `if (type.Locations[0].IsInMetadata) { return; }` (TypeCollector.cs:367-370), so no MsgPack003/004/005 diagnostic and no generated formatter appear for it. The defining assembly owns validating and formatting its own types (rationale inferred: the code has no comment). A missing diagnostic or formatter for such a type is not a defect. (source: src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367) (would-be finding: Suppressing diagnostics whose locations are outside the current compilation is deliberate product behavior, not an erroneous loss of diagnostics: referenced-assembly types are validated by their defining assembly.)",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1442",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L8] explicitly states that referenced-assembly types are deliberately not analysed and that missing diagnostics or formatters for them are not defects. ReportIfLocatedInCompilation and the related documentation are consistent with that decision."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m5",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects linq-first at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation(); -> private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.First()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation();"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m6",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects logical-operator at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (diagnostic.Location.IsInSource || this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-suite-only-TypeCollector",
+    "lens": "test-quality",
+    "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239, 985, 1448; the existing suite does",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:239 negate-condition: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> this.reportDiagnostic = reportAnalyzerDiagnostic is not null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic);; TypeCollector.cs:239 delete-statement: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> (statement deleted); TypeCollector.cs:985 delete-statement: this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull, GetPropertyIdentifierLocation(item), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name)); -> (statement deleted); TypeCollector.cs:1448 delete-statement: report(diagnostic); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

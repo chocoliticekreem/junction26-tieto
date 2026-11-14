@@ -1,0 +1,56 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetPropertyIdentifierLocation is documented as returning null for metadata properties, but it still indexes DeclaringSyntaxReferences[0] and casts to PropertyDeclarationSyntax. It will throw IndexOutOfRangeException for a metadata property. It also throws InvalidCastException for a record primary-constructor property, whose syntax is a ParameterSyntax. The helper does not follow the FirstOrDefault convention of its neighbouring helpers, and its doc comment is inaccurate.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test where a metadata-referenced closed generic struct has a property with no Key or IgnoreMember attribute and no int or string key. Run the generator and analyzer, and expect an IndexOutOfRangeException from GetPropertyIdentifierLocation. Alternatively, mutate [0] to FirstOrDefault()? and check that the test still passes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new ReportIfLocatedInCompilation wrapper in the constructor drops every diagnostic that has no in-compilation source location. A diagnostic created with a null location is Location.None and is silently dropped. Previously it would have been reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing analyzer tests for MsgPack003, MsgPack004 and MsgPack005. Confirm that none of them depend on a location-less diagnostic. Add a test that expects a diagnostic on a type with a null identifier location."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "This is consistent with the recorded decision that referenced-assembly types are deliberately not analysed and that the defining assembly owns diagnostics. The new filter that drops diagnostics for metadata types and the docs describing it fit [L8].",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1441",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] types from referenced assemblies are deliberately not analysed and get no diagnostics from the compiling assembly."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README section says that generic value types can be used. It is a new docs section with no ledger backing, and the root cause is not fixed at its source. GetObjectInfo still runs on metadata closed generics, and diagnostics are only filtered afterwards, so there is no guard against the non-diagnostic crash paths.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the closed-generic branch of CollectGeneric in TypeCollector.cs. It calls GetObjectInfo on a metadata symbol. Check for other DeclaringSyntaxReferences[0] uses that were not guarded."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 11353,
+  "output_tokens": 1102,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

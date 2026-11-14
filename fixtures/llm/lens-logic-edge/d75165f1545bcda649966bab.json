@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The field filter in `IsPublicReadWrite` is inverted: it reads `field.IsReadOnly && !field.IsConst` instead of `!field.IsReadOnly`. In contractless mode an ordinary mutable field such as `public int MutableField;` is silently dropped from the wire format. A `public readonly int ReadOnlyField;` is selected instead and gets `IsWritable: true`. The generated Deserialize then assigns the readonly field, so the consuming project fails to compile (CS0191). The same filter makes surrogate mode reject mutable fields with MsgPack022 and accept readonly ones.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:279",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterFieldTests.ContractlessMode_SerializesMutableFields_AndCompiles. ProjectA declares a type with a mutable and a readonly public field. ProjectB declares `[GeneratedMessagePackFormatter]` for it. The test asserts the generated source mentions MutableField and the output compilation has no errors. Expected to fail on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`IsPartial` only checks the formatter class itself. When the formatter is nested in a non-partial containing type (e.g. `class Outer { [GeneratedMessagePackFormatter] partial class F : IMessagePackFormatter<T> {} }`), the templates emit the nesting via `EmitNestingTypesAndNamespaces`. If that emits `partial class Outer`, the user gets a CS0260-style compile error instead of MsgPack019.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:292",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "IsPartial (GeneratedFormatterCollector.cs:292-299) inspects only formatter.DeclaringSyntaxReferences and never ContainingType. The templates (FormatterTemplate.tt:11, StringKeyFormatterTemplate.tt:17) wrap the declaration in EmitNestingTypesAndNamespaces."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `ForAttributeWithMetadataName` predicate accepts only `ClassDeclarationSyntax`, but the attribute is `AttributeTargets.Class`, which also permits record classes. `[GeneratedMessagePackFormatter] partial record F : IMessagePackFormatter<T>;` is silently skipped: no MsgPack019/020 diagnostic, only CS0535 errors for the unimplemented interface members.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:31",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "MessagePackGenerator.cs:31 uses `predicate: static (node, _) => node is ClassDeclarationSyntax`. RecordDeclarationSyntax does not derive from ClassDeclarationSyntax, so a record formatter never reaches GeneratedFormatterCollector and no diagnostic is reported."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterFieldTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterFieldTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public GeneratedFormatterFieldTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task ContractlessMode_SerializesMutableFields_AndCompiles()\n    {\n        CSharpParseOptions parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n\n        string projectA = \"\"\"\n            namespace ProjectA\n            {\n                public class MyType\n                {\n                    public int MutableField;\n                    public readonly int ReadOnlyField;\n                    public int Prop { get; set; }\n                }\n            }\n            \"\"\";\n\n        CSharpCompilation compilationA = CSharpCompilation.Create(\n            \"ProjectA\",\n            new[] { CSharpSyntaxTree.ParseText(projectA, parseOptions) },\n            framework,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        string projectB = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace ProjectB\n            {\n                [GeneratedMessagePackFormatter]\n                public partial class MyTypeFormatter : IMessagePackFormatter<ProjectA.MyType> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n\n        List<MetadataReference> referencesB = new(framework);\n        referencesB.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        referencesB.Add(compilationA.ToMetadataReference());\n\n        CSharpCompilation compilationB = CSharpCompilation.Create(\n            \"ProjectB\",\n            new[] { CSharpSyntaxTree.ParseText(projectB, parseOptions) },\n            referencesB,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            generators: new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilationB, out Compilation output, out ImmutableArray<Diagnostic> generatorDiagnostics);\n\n        GeneratorDriverRunResult runResult = driver.GetRunResult();\n        string generated = string.Join(\"\\n\", runResult.GeneratedTrees.Select(t => t.ToString()));\n        this.logger.WriteLine(generated);\n\n        List<Diagnostic> errors = output.GetDiagnostics()\n            .Concat(generatorDiagnostics)\n            .Where(d => d.Severity == DiagnosticSeverity.Error)\n            .ToList();\n        foreach (Diagnostic error in errors)\n        {\n            this.logger.WriteLine(error.ToString());\n        }\n\n        Assert.Contains(\"MutableField\", generated);\n        Assert.Empty(errors);\n    }\n}\n",
+        "test_names": [
+          "ContractlessMode_SerializesMutableFields_AndCompiles"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 20966,
+  "output_tokens": 7074,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

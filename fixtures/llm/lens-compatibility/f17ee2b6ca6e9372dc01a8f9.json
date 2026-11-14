@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The case `<= byte.MaxValue` was removed from a uint writer switch. Values 128..255 now fall to the `<= ushort.MaxValue` case and are written as UInt16 (0xCD + 2 bytes) instead of UInt8 (0xCC + 1 byte). That changes the serialized bytes for every such value, is unrelated to the crash fix, and makes output larger and non-canonical. Existing consumers, golden bytes and tests will notice it without opting in.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize uint 200 (and 128, 255) with MessagePackSerializer on base-built and head-built code. Base yields CC C8; head yields CD 00 C8. Also run the existing primitives writer tests for uint/ulong boundaries."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The reportDiagnostic wrapper now drops every diagnostic whose location is not in a syntax tree of the compilation. This includes Location.None diagnostics, which diagnostics built from a null location become, such as MemberNeedsKey on a metadata property. It also covers diagnostics on derived types where the offending member is inherited from a referenced assembly. Users who previously got MsgPack004 or other errors with no source location will silently stop getting them. Some of these are Errors, so this is a behavior change in users' builds beyond the crash fix. Ledger L17 leaves the intended behavior for the inherited-member case undecided.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] class in the compilation inherits a public property without [Key] from a base type in a referenced assembly. Run on base and head and compare MsgPack004 reporting. Head reports nothing."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9209,
+  "output_tokens": 707,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01TXFAUAfmhX4Q4kLmeUPGJA"
+}

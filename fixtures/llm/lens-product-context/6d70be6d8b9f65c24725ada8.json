@@ -1,0 +1,55 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change deliberately skips mismatched-key-kind members and de-duplicates duplicate keys in TypeCollector. This changes the collected member set that the generator also consumes for non-suppressed types. The requirement says behaviour with SuppressSourceGeneration unset or false must not change. The edit is not gated on the suppress flag, so generated output for invalid-contract types may differ. The diagnostic is still reported, so this is probably acceptable.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests (MessagePack.SourceGenerator.Tests) on base and head. Confirm that no snapshot changes for types with mixed or duplicate keys when SuppressSourceGeneration is false."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README documents that MsgPack011/016/017 are not reported for suppressed types, and a test asserts this. However, no TypeCollector or analyzer hunk in scope implements the skip, so it is unclear which code produces that behaviour. The documented diagnostic split is therefore not backed by the visible change.",
+        "location": "README.md:1620",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed on base and head. Also add a test for a non-partial suppressed type that expects no MsgPack011."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README adds a new section and does not mention the type-level versus project-level meaning of SuppressSourceGeneration. The issue refers to SuppressSourceGeneration = true, and the change documents and tests only the per-attribute property. This is a mismatch if the project-level setting was meant.",
+        "location": "README.md:1620",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check where the SuppressSourceGeneration property is read in the analyzer and generator, and compare with the README text."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "SuppressSourceGeneration means the per-type [MessagePackObject(SuppressSourceGeneration = true)] property. The analyzer keeps validating those types (MsgPack003/004/005/012/015) but skips the generation-only checks (MsgPack011/016/017). The change implements this."
+      },
+      {
+        "label": "B",
+        "summary": "SuppressSourceGeneration is a project-wide or assembly-level setting, e.g. an MSBuild property or GeneratedMessagePackResolver option. The analyzer must run all diagnostics, possibly including the generation-only ones, when that setting is true. This requires reading the setting from analyzer config options in the analyzer and adding tests that use it."
+      }
+    ]
+  },
+  "input_tokens": 9062,
+  "output_tokens": 998,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

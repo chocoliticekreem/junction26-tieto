@@ -1,11 +1,9 @@
 # Receipts on Verda: open-weight, EU-hosted review models
 
-Status Sat 14 Nov 2026, 11:30 EET: **the provider is built and tested, but no review has run on
-Verda yet.** The key in `.env.local` authenticates, but no model is enabled for its project:
-`GET /v1/models` returns an empty list, and chat calls return `403 subscription_required`. Refused
-requests are not billed (Verda FAQ). Enabling a model takes a click in the Console
-(`BLOCKED.md` item 1b). Every number below that says "projected" comes from recorded Anthropic
-token counts re-priced at Verda list prices, not from a Verda run. Verda spend so far: **EUR 0.00**.
+Status Sat 14 Nov 2026, 23:15 EET: **measured.** Every review below ran on Verda Inference with
+`kimi-k3-1-pro` in every role (DeepSeek V4.1 Flash is closed to new projects, see "Models per
+role"). Real Verda spend, from the guard's ledger `work/verda-spend.json`: **EUR 25.00 of the EUR 40
+cap** (372 calls). Results, costs and failure modes are in "Results vs Anthropic".
 
 ## Why Verda (Fit)
 
@@ -61,8 +59,14 @@ tier limits are still unknown.
 | Fallback router (LLMRouter, used only when Jev is down) | Claude Haiku 4.5 | `deepseek-4-1-flash-1017`, reasoning `none` | One integer and one category per hunk. The cheapest model, with reasoning off. |
 
 Override any of them with `VERDA_MODEL_DEEP`, `VERDA_MODEL_LENS` or `VERDA_MODEL_ROUTER`.
-DeepSeek scores higher than Kimi on the one benchmark both report (DeepSWE). That makes
-"DeepSeek for every role" the obvious cheap ablation once the first runs are in.
+
+**What actually ran.** DeepSeek V4.1 Flash is closed to new projects on Verda, so every run here
+used `VERDA_MODEL_DEEP=VERDA_MODEL_LENS=VERDA_MODEL_ROUTER=kimi-k3-1-pro`: reasoning `high` for the
+two deep lenses and the A/B builder, `low` for the other lenses, readers and orientation (the
+router never ran: Jev routed every hunk). Kimi reasons before it answers and reasoning bills as
+output, so `max_tokens` is doubled whenever reasoning is on (a 20-token probe came back with empty
+content). Kimi in the cheap roles costs 1.5x Sonnet per token instead of 13-17x less, so the costs
+below are an upper bound on the two-model plan.
 
 ## How it is built (process)
 
@@ -137,61 +141,150 @@ A review with the real key and no model enabled ran end to end
 
 ## Results vs Anthropic
 
-**Not run yet** (models not enabled). The comparison table fills from
-`uv run receipts metrics --provider verda`. Recorded Anthropic cost per change, for reference
-(`metrics/provider-comparison.json`, all LLM calls of the run, A/B side reviews included):
+Sources: `metrics/provider-comparison.json` (`uv run receipts metrics --provider verda`),
+`metrics/verda/summary.json`, `metrics/summary.json` and the two spend ledgers. Both providers ran
+the same final pipeline on the same branches with the same empty context ledger, so every row
+compares models only. "Verified" = a finding backed by an executed receipt. "Gentests" = generated
+requirement and edge tests: compiled = built and ran; discriminating = behaved as its plan says.
 
-| Change | Anthropic verdict | Anthropic cost (USD) | Verda verdict | Verda cost (EUR) |
-|---|---|---|---|---|
-| ju26-issue-2283 | needs-sign-off | 0.68 | pending | pending |
-| ju26-issue-2234 | needs-sign-off | 0.55 | pending | pending |
-| ju26-issue-2129 (with A/B) | blocked | 4.30 | pending | pending |
-| ju26-issue-2297 (with A/B) | blocked | 2.53 | pending | pending |
-| ju26-issue-2297-r2 (with A/B) | not determined (Anthropic limit hit) | 0.00 | pending | pending |
-| Bench cold, 36 cases (PR #11 pipeline) | 19/24 plants caught, 0 escapes | 24.61 (lenses 24.56 + router 0.05, `metrics/summary.json`) | pending | pending |
+### The four Tieto changes, plus 2297 round 2
 
-### Projected cost of the re-run plan (EUR, at the pessimistic prices above)
+| Change | Anthropic verdict | Verda verdict | Verified (A / V) | Gentests compiled (A / V) | Discriminating (A / V) | Anthropic USD (recorded, live) | Verda EUR (recorded) | Slowest lens s (A / V) |
+|---|---|---|---|---|---|---|---|---|
+| ju26-issue-2283 | needs-sign-off | needs-sign-off | 3 / 4 | 1/2 / 1/2 | 1/2 / 0/2 | 0.68 | 0.53 | 103 / 173 |
+| ju26-issue-2234 | needs-sign-off | needs-sign-off | 5 / 5 | 2/2 / 2/2 | 2/2 / 0/2 | 0.55 | 0.43 | 85 / 126 |
+| ju26-issue-2129 (with A/B) | blocked | blocked | 9 / 9 | 9/9 / 4/4 | 3/9 / 0/4 | 4.30 | 2.12 (ledger: 1.56) | 134 / 178 |
+| ju26-issue-2297 (with A/B) | blocked | blocked | 3 / 1 | 9/9 / 4/4 | 1/9 / 0/4 | 2.53 | 1.18 (ledger: 0.76, plus 0.45 for a first attempt lost to a killed process) | 74 / 116 |
+| ju26-issue-2297-r2 (with A/B) | not run on Anthropic | decision-A-B; side A needs-sign-off; side B not built | - / 1 | - / 2/2 | - / 0/2 | - | 1.40 (ledger: 0.99) | - / 88 |
+| **Four changes** | 2 blocked, 2 needs-sign-off | same | 20 / 19 | 21/22 / 11/12 | 7/22 / 0/12 | **8.06** | **4.25** (ledger: 3.28) | 99 / 148 |
 
-From `uv run receipts estimate-verda`, with the Verda output tokens assumed equal to Anthropic's
-(output ratio 1.0, because no Verda run exists yet):
+"Recorded" is how `provider-comparison.json` counts cost: every call of the run and of its
+`__A`/`__B` side reviews at list price. A side review replays its parent's lens answers, so
+recorded cost double-counts them on both providers. "Ledger" is what Verda actually billed.
 
-| Plan | Runs | Kimi (deep) | DeepSeek (other) | Total EUR |
-|---|---|---|---|---|
-| (a) cold bench, 36 cases, `--no-ab` | 36 | 14.70 | 0.35 | 15.06 |
-| (b) warm `mock-2283` | 9 | 3.42 | 0.07 | 3.49 |
-| (b) warm `mock-2234` | 9 | 2.56 | 0.06 | 2.62 |
-| (c) 2297 round 2 with A/B (token basis: round 1) | 3 | 1.47 | 0.04 | 1.51 |
-| (d) four Tieto changes with A/B | 8 | 4.71 | 0.13 | 4.84 |
-| **Total** | | | | **27.52** |
+- **Same verdict on all four changes.** Both providers block 2129 and 2297 on a verified high
+  finding (2297: `requirement-tests-1`, the attribute dropped on netstandard2.0/.NET Framework) and
+  send 2283 and 2234 to sign-off.
+- **Kimi's tests rarely discriminate.** They compile about as often (11 of 12), but none of the 12
+  behaved as its own plan said (Anthropic: 7 of 22). A test that fails where it was planned to pass
+  gives a red receipt but cannot verify a claim, so Kimi's verified findings rest on mutation and
+  the build instead. One exception is worth a human look: on 2283, Kimi's edge test
+  (`PositionalRecordNullKeyReceiptTests`) compiled and failed on head. It verifies a claim that
+  MsgPack005 is dropped for positional record properties. Opus wrote a test for the same idea, but
+  it did not compile.
+- **Kimi built reading B on 1 of 3 ambiguous changes.** On 2297 and 2297-r2 the A/B builder (Kimi,
+  reasoning high) wrote a B variant that failed to build or failed the existing tests, twice each;
+  B shows under "not checked". On 2129 it built B (`review/ju26-issue-2129@verda/B`, a 297-line
+  removal), but the side-B review was cut off when the process was killed at 14:00, so there is no
+  B receipt (the incomplete run is not in `runs/`). Opus built and reviewed both sides on 2129 and
+  2297.
+- **Fewer hunches** (20 vs 58): less noise in the receipt, and fewer leads.
 
-Kimi's output tokens make up about EUR 21 of this, and Kimi reasons before it answers. So the
-total stays under the EUR 35 working ceiling only while Kimi's output is at most about **1.36x**
-Opus's. The smoke review measures that ratio. If the projection then passes EUR 35, drop runs in
-this order: warm `mock-2234`, then the Tieto re-runs except 2283 and 2297-r2, then the cold bench
-down to a stratified half (2 issues). The guard stops everything at EUR 40 regardless.
+### 2297 round 2: mergeable?
 
-## Failure modes to expect with open models (watch list; none observed yet)
+**No, not as an A/B decision.** Run `ju26-issue-2297-r2@verda/20261114T111141Z`: the readers again
+found two readings (decision-A-B).
 
-- **Format drift.** A missing required key, a misspelled enum, prose around the JSON. This is
-  handled by validation plus one repair; a second failure is declared.
-- **Reasoning eats the budget.** Kimi defaults to `max` reasoning. If `max_tokens` runs out,
-  `content` is empty with `finish_reason: length`. Mitigations: effort `high` (not `max`), doubled
-  `max_tokens`, and a cut-off is declared without paying for a repair.
-- **Compile traps in generated C# tests.** Receipts already compiles every generated test and
-  shows a non-compiling one as `error`, not as evidence (`gentests_compiled` in the comparison).
-- **Capacity.** "Out of capacity" models do not open to new projects, and 429s can arrive within
-  limits on a busy model. 429s are retried after `Retry-After`; the default bench concurrency is 3.
+- Side A (the r2 head) is **needs-sign-off, not blocked.** The build and 171/171 existing tests
+  pass, regeneration verifies 222/222 generated files, and there is no high finding. Its one
+  requirement test (`ExcludeFromCodeCoverageGeneratedCodeTests`) still fails on head. That matches
+  the namespace-mirror class the implementer deliberately left alone (`notes/round2.md`), but no
+  lens attached a claim to it.
+- Side B (the attribute on formatters only) has **no branch.** Kimi's builder could not write a
+  passing B in two attempts.
+
+So the round-1 blockers are gone on side A, but a human cannot choose between two unblocked sides,
+because only one side exists. A named human (Anson) could still sign off side A as a plain change;
+the pipeline never merges. 2297-r2 was not re-run on Anthropic in this pass: the Anthropic Tieto
+runs belong to another track.
+
+### The bench: 36 cases cold, mock-2283 warm
+
+| Bench, cold, 36 cases | Anthropic (Opus + Sonnet, batched) | Verda (Kimi, live) |
+|---|---|---|
+| Planted defects caught | **21/24** (87.5%) | **18/24** (75%) |
+| Escapes (planted defect marked auto-ready) | 0 | 0 |
+| Control/bait cases with a false alarm | 4/8 | 4/8 |
+| False-alarm findings at bait lines | 8 | 6 |
+| Verdicts | 26 blocked, 10 needs-sign-off | 19 blocked, 10 needs-sign-off, 7 decision-A-B |
+| Verified findings / hunches | 222 / 528 | 191 / 226 |
+| Gentests compiled / discriminating | 91/93 / 34/93 | 55/77 / 6/77 |
+| Questions to the human | 29 (0.81 per change) | 3 (0.08 per change) |
+| Real spend | **USD 10.20** (Message Batches at 50%; USD 26.68 at live list price) | **EUR 16.91** (16.27 + 0.64 to re-run 2 cases) |
+| Cost per case | USD 0.28 batched (0.74 live) | EUR 0.47 |
+
+Warm `mock-2283` (9 cases, ledger holding the cold run's oracle answers): Anthropic caught 5/6
+(the security plant became decision-A-B) and asked 5 questions (2 when cold). Verda caught 4/6 and
+asked none, cold or warm. Warm spend: Anthropic USD 2.88 batched, Verda EUR 3.37.
+
+Where Kimi loses recall: the 2283 edge and security plants (needs-sign-off instead of blocked,
+cold and warm) and the 2129 edge and 2297 security variants, where its tests did not compile or did
+not discriminate. On the 2297 variants Kimi returns decision-A-B instead of blocked: without a
+verified high finding, the ambiguity rule decides. Kimi also blocked two 2234 cases that Anthropic
+sent to sign-off (`mock-2234-clean`, `mock-2234-missing-test`).
+
+### Cost per change
+
+| | Anthropic | Verda (Kimi in every role) |
+|---|---|---|
+| Tieto change without A/B (2283, 2234) | USD 0.55-0.68 live | EUR 0.43-0.53 |
+| Tieto change with A/B (2129, 2297) | USD 2.53-4.30 live | EUR 1.18-2.12 recorded, 0.76-1.56 billed (no side-B review, so fewer calls) |
+| Bench case | USD 0.28 batched, 0.74 live | EUR 0.47 |
+
+On the 2283 smoke review, Kimi wrote about as many output tokens as Opus on the deep lenses
+(ratio 1.04) and was billed for about 56% of Anthropic's input tokens for the same prompts (a
+different tokenizer). Prices are the pessimistic ones above (Kimi at $3/$15, 1 USD = 1 EUR, cached
+input at the full price), so the euro figures are upper bounds.
+
+### Wall time
+
+Kimi's slowest lens takes about 1.5x as long as Anthropic's (148 s vs 99 s mean over the four
+changes). The Verda cold bench took 81 minutes with 3 cases in parallel, sharing the machine with
+the Anthropic replay pass. The Anthropic cold run took 3 Message Batches (3-4 minutes each) plus a
+58-minute replay pass.
+
+### Failure modes seen with Kimi
+
+| Failure | Where | Count | What the pipeline did |
+|---|---|---|---|
+| Transport: "Server disconnected without sending a response" | all 6 lenses of `mock-2283-security`, 21:32 EET | 6 calls | lenses unavailable (not checked); case re-run |
+| Transport: read timeout (600 s, streamed) | `mock-2283-compat`, logic-edge | 1 call | unavailable; case re-run |
+| Format drift: valid JSON without the 5 required top-level keys, still wrong after the repair turn | `mock-2283-compat`, requirement-tests | 1 call, billed twice | unavailable, nothing invented; case re-run |
+| A/B builder cannot write a building variant | side B of 2297 and 2297-r2 (2129 built) | 2 of 3 | reading B under not checked |
+| Tests that run but do not behave as planned | bench gentests | 71 of 77 | red receipt, no verified claim |
+| Empty reply when `max_tokens` is tiny (reasoning used it all) | 20-token probe | 1 | `max_tokens` doubled whenever reasoning is on |
+
+No 429s and no `finish_reason: length` cut-offs on real calls. The ledger holds every call,
+including the 7 failed ones (the disconnects reported no usage, so they cost nothing).
+
+### What the comparison means for "code never leaves the company"
+
+An open-weight model reproduces the pipeline's decisions on the real changes: the same verdict on
+all four Tieto changes, and 0 escapes on 36 planted cases, at about half of Anthropic's live price
+(EUR 4.25 vs USD 8.06 for the four). It is weaker exactly where Receipts earns trust. Its tests
+run but rarely prove a claim (6 of 77 discriminating, against 34 of 93), so it catches 3 fewer
+planted defects and built the second reading of an ambiguous requirement once in three tries.
+
+Because every claim still needs an executed receipt, the weaker model shows up as more "not
+checked" and fewer verified findings, never as a false green. That is what makes self-hosting safe
+to try. A company can run the same open weights on its own Verda GPU instances (only the base URL
+changes), keep the code in-house, and read in the receipts what the model could not prove. Today
+the price of that choice is recall on edge and security defects. The deep, test-writing lenses are
+where a stronger open model, or a hybrid (open model for the read-and-classify lenses, a frontier
+model only for test writing), would pay off first.
+
 
 ## How it scales (Path to scale)
 
-- **Per change.** At the projected rate a Tieto-sized change costs about EUR 0.5-1.5 on Verda
-  (the projected EUR 4.84 for the four changes, A/B builds included), against USD 0.55-4.30 on
-  Anthropic. DeepSeek handles the cheap lenses at almost no cost: EUR 0.35 for all 144 non-deep
-  lens calls of the bench. So cost scales with how many hunks risk-routing sends to the two deep
-  lenses, which the router already limits.
-- **Throughput.** There is no batch discount, but rate limits are per model and project, so the
-  deep model (Kimi) and the cheap one (DeepSeek) do not compete for the same TPM. Larger limits are
-  a support request. The guard and the fixture keys work across parallel bench processes.
+- **Per change.** Measured: a Tieto-sized change costs EUR 0.43-1.56 on Verda with Kimi in every
+  role (EUR 4.25 for the four changes, A/B builds included), against USD 0.55-4.30 live on
+  Anthropic; a bench case costs EUR 0.47. Moving the four read-and-classify lenses and the readers
+  to a cheaper model (DeepSeek, once Verda opens it) would cut the non-deep share further, so cost
+  scales with how many hunks risk-routing sends to the two deep lenses, which the router already
+  limits.
+- **Throughput.** There is no batch discount. Rate limits are per model and project; no 429 came
+  back across 372 calls at 3 parallel reviews. Larger limits are a support request. The guard and
+  the fixture keys work across parallel bench processes.
 - **Company deployment.** The same open weights run on dedicated Verda GPU instances or serverless
   containers behind the same OpenAI-compatible API. Set `VERDA_INFERENCE_BASE_URL` to the private
   endpoint and nothing else changes. That is principle 8 taken all the way: the code under review
@@ -204,6 +297,7 @@ From `pipeline/`, with `VERDA_API_KEY` in the env file and both models enabled:
 
 ```sh
 export LLM_PROVIDER=verda RECEIPTS_ENV_FILE=<repo>/.env.local
+export VERDA_MODEL_DEEP=kimi-k3-1-pro VERDA_MODEL_LENS=kimi-k3-1-pro VERDA_MODEL_ROUTER=kimi-k3-1-pro  # as measured
 uv run receipts estimate-verda                               # free projection
 
 # 1. smoke: one real review (with A/B if readers split)

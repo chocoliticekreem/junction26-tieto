@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The 'continue' added in the mixed-key branch (field/property loop) is not covered: the mixed-key test has the mismatched member as the only second member and MsgPack005 is expected. If 'continue' is removed, the mismatched member would be added to the intMembers or stringMembers dictionary; the test's only observable is the diagnostic, which would still be reported, and no assertion checks that the member was skipped or that an exception was avoided.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 delete-statement: continue; -> (removed); expected to survive because MixedKeyKindsAreReportedWithoutAnalyzerFailure only asserts the MsgPack005 diagnostic, which is emitted before the continue, and the dictionaries tolerate a differing key kind without throwing."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The second 'continue' (the second member-collection loop at ~1148) has the same gap. The test types use only properties, and it is unclear which loop each test exercises; no test distinguishes the two loops (for example fields versus properties). Deleting this 'continue' would go unnoticed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148 delete-statement: continue; -> (removed); expected to survive because no test asserts that the mismatched member is skipped, and the diagnostic assertion passes either way."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ContainsKey guards for the duplicate int and string keys are exercised only in the property-style tests, which do not show which of the two loops (~1020 or ~1160) they hit. Removing the guard in the other loop is likely to survive, since no test uses a field member with duplicate keys.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163 remove-guard: if (!intMembers.ContainsKey(member.IntKey)) -> unconditional Add; expected to survive if the duplicate-key tests only cover the other loop. Also mutate lines ~1023, ~1039 and ~1179."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The central bug (the analyzer not working with SuppressSourceGeneration=true) has no source change in the diff. The new analyzer tests for MsgPack003, MsgPack004 and MsgPack015 on suppressed types may already pass on base, so they do not reproduce the reported regression. Only the duplicate-key tests plausibly fail on base. The execution test NoFormatterIsGeneratedForSuppressedType likely passes on base too.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:19",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests (MemberWithoutKeyIsReported, AllowPrivateRequiredIsReported, MemberTypeMustBeMessagePackObjectIsReported) and SuppressedSourceGenerationTests against the base build; any that pass on base do not reproduce the bug."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No analyzer test for a suppressed type covers the generics, nested types, or inherited members that TypeCollector handles. The negative test for generation-only diagnostics omits MsgPack011 (non-partial) with a non-private type, since the test type is only the public class Foo, which is not declared partial.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:166",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Re-enable the MsgPack011 check for suppressed types in the analyzer; SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed should fail. If it passes, the assertion is too weak, because the test type is not partial and nothing is asserted about MsgPack011 separately from the private member."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9993,
+  "output_tokens": 1622,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_016ZTRtoFx12DniTJbHDKck6"
+}

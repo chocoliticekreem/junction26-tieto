@@ -1,0 +1,77 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The timestamp32 guard now tests the low 32 bits instead of the high 32 bits. A DateTime whose seconds value is a multiple of 2^32 (for example 0, the Unix epoch) but carries nanoseconds takes the 6-byte timestamp32 path. It is written as (uint)data64 = 0, so the sub-second part is lost: 1970-01-01T00:00:00.5Z round-trips as 1970-01-01T00:00:00Z. Conversely, every whole-second DateTime that used to be timestamp32 (1970..2106 with ns == 0) is now written as timestamp64, which changes the wire bytes. This edit is unrelated to REQ-2129.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run GeneratedFormatterLogicReceipts.DateTimeWithSubSecondAtEpochRoundTrips (round-trip loses 500 ms on head) and GeneratedFormatterLogicReceipts.WholeSecondDateTimeUsesTimestamp32 (expects d6 ff 00 00 00 01; head emits a 10-byte timestamp64)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "When SurrogateType is null, the collector always uses CreateContractlessMembers, which reads every public read-write member. Any [MessagePackObject]/[Key]/[IgnoreMember] (or DataContract/DataMember/IgnoreDataMember) annotations on T are never consulted. A referenced type with [MessagePackObject] { [Key(0)] Value; [IgnoreMember] Secret } therefore gets a string-keyed map formatter that also serializes Secret. This violates the acceptance criterion 'If T does carry MessagePack attributes, they are honoured', and the output is wire-incompatible with T's own contract.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:91",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run GeneratedFormatterLogicReceipts.MessagePackAttributesOnReferencedTypeAreHonoured: Project A declares [MessagePackObject] MyType with [IgnoreMember] Secret, and Project B declares [GeneratedMessagePackFormatter] partial MyTypeFormatter. On head the generated source references Secret."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "needsCast compares m.Name against \"OnBeforeSerialize\"/\"OnAfterDeserialize\" for methods with ExplicitInterfaceImplementations. Roslyn names explicit implementations with the interface prefix ('MessagePack.IMessagePackSerializationCallbackReceiver.OnBeforeSerialize'), so the check is never true. It also only inspects type.GetMembers(), not base types. A data type that implements the callback receiver explicitly gets generated code calling value.OnBeforeSerialize() directly, which fails with CS1061.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:84",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run GeneratedFormatterLogicReceipts.ExplicitCallbackReceiverCompiles: the post-generator compilation of a type with explicit IMessagePackSerializationCallbackReceiver implementation has errors on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "IsPartial checks only the formatter's own declaration. A [GeneratedMessagePackFormatter] class nested inside a non-partial outer class (or inside a struct) passes validation with no MsgPack019. If the template's nesting emission re-opens the containing type as 'partial class Outer', the generated code fails with CS0260 or a kind mismatch instead of a diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "GeneratedFormatterCollector.IsPartial inspects only formatter.DeclaringSyntaxReferences, never formatter.ContainingType chain; template uses EmitNestingTypesAndNamespaces for Info.Formatter = QualifiedNamedTypeName(user formatter)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "If T is declared in the same compilation with [MessagePackObject], the regular TypeCollector already produces an ObjectSerializationInfo for T. The generated-formatter path adds a second ObjectInfo for the same data type. Nothing dedupes them, so the resolver can register two formatters for T (a duplicate switch case or ambiguous registration), and the two use different contracts.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:70",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "MessagePackGenerator adds generatedModel to modelPerType unconditionally after Collect(typeSymbol) for messagePackObjectTypes; there is no check that the data type was already collected."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterLogicReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterLogicReceipts\n{\n    private static readonly CSharpParseOptions ParseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n\n    private readonly ITestOutputHelper logger;\n\n    public GeneratedFormatterLogicReceipts(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public void DateTimeWithSubSecondAtEpochRoundTrips()\n    {\n        DateTime value = new DateTime(1970, 1, 1, 0, 0, 0, 500, DateTimeKind.Utc);\n        byte[] bytes = MessagePack.MessagePackSerializer.Serialize(value);\n        DateTime result = MessagePack.MessagePackSerializer.Deserialize<DateTime>(bytes);\n        Assert.Equal(value.Ticks, result.ToUniversalTime().Ticks);\n    }\n\n    [Fact]\n    public void WholeSecondDateTimeUsesTimestamp32()\n    {\n        byte[] bytes = MessagePack.MessagePackSerializer.Serialize(new DateTime(1970, 1, 1, 0, 0, 1, DateTimeKind.Utc));\n        Assert.Equal(new byte[] { 0xd6, 0xff, 0x00, 0x00, 0x00, 0x01 }, bytes);\n    }\n\n    [Fact]\n    public async Task MessagePackAttributesOnReferencedTypeAreHonoured()\n    {\n        List<MetadataReference> references = await GetReferencesAsync();\n        CSharpCompilation projectA = CreateCompilation(\"ProjectA\", \"\"\"\n            using MessagePack;\n\n            namespace ProjectA\n            {\n                [MessagePackObject]\n                public class MyType\n                {\n                    [Key(0)]\n                    public int Value { get; set; }\n\n                    [IgnoreMember]\n                    public int Secret { get; set; }\n                }\n            }\n            \"\"\", references);\n        Assert.Empty(projectA.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));\n\n        List<MetadataReference> referencesB = new(references) { projectA.ToMetadataReference() };\n        CSharpCompilation projectB = CreateCompilation(\"ProjectB\", \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace ProjectB\n            {\n                [GeneratedMessagePackFormatter]\n                public partial class MyTypeFormatter : IMessagePackFormatter<ProjectA.MyType> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\", referencesB);\n\n        (Compilation _, GeneratorDriverRunResult run) = RunGenerator(projectB);\n        string generated = string.Join(\"\\n\", run.GeneratedTrees.Select(t => t.ToString()));\n        this.logger.WriteLine(generated);\n        Assert.Contains(\"MyTypeFormatter\", generated);\n        Assert.DoesNotContain(\"Secret\", generated);\n    }\n\n    [Fact]\n    public async Task ExplicitCallbackReceiverCompiles()\n    {\n        List<MetadataReference> references = await GetReferencesAsync();\n        CSharpCompilation project = CreateCompilation(\"ProjectB\", \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace ProjectB\n            {\n                public class Data : IMessagePackSerializationCallbackReceiver\n                {\n                    public int Value { get; set; }\n\n                    void IMessagePackSerializationCallbackReceiver.OnBeforeSerialize() { }\n\n                    void IMessagePackSerializationCallbackReceiver.OnAfterDeserialize() { }\n                }\n\n                [GeneratedMessagePackFormatter]\n                public partial class DataFormatter : IMessagePackFormatter<Data> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\", references);\n        Assert.Empty(project.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));\n\n        (Compilation output, GeneratorDriverRunResult run) = RunGenerator(project);\n        foreach (SyntaxTree tree in run.GeneratedTrees)\n        {\n            this.logger.WriteLine(tree.ToString());\n        }\n\n        List<Diagnostic> errors = output.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();\n        foreach (Diagnostic error in errors)\n        {\n            this.logger.WriteLine(error.ToString());\n        }\n\n        Assert.Empty(errors);\n    }\n\n    private static async Task<List<MetadataReference>> GetReferencesAsync()\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> result = new(framework);\n        result.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        return result;\n    }\n\n    private static CSharpCompilation CreateCompilation(string assemblyName, string source, IEnumerable<MetadataReference> references)\n    {\n        return CSharpCompilation.Create(\n            assemblyName,\n            new[] { CSharpSyntaxTree.ParseText(source, ParseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n    }\n\n    private static (Compilation Output, GeneratorDriverRunResult Run) RunGenerator(CSharpCompilation compilation)\n    {\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: ParseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out _);\n        return (output, driver.GetRunResult());\n    }\n}\n",
+        "test_names": [
+          "DateTimeWithSubSecondAtEpochRoundTrips",
+          "WholeSecondDateTimeUsesTimestamp32",
+          "MessagePackAttributesOnReferencedTypeAreHonoured",
+          "ExplicitCallbackReceiverCompiles"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 21475,
+  "output_tokens": 15712,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change raises MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth from 500 to 5000. This is a tenfold loosening of the recursion/depth limit that protects against stack overflow when deserializing untrusted data. It is unrelated to the requirement, which concerns a generator/analyzer crash. A deeply nested payload now gets through up to 5000 nested levels, and the default stack may be exhausted before the limit trips. That is an uncatchable StackOverflow crash (DoS).",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Deserialize a payload nested about 4000 levels (e.g. arrays of arrays) with MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData). On the base build it throws InsufficientExecutionStackException at depth 500. On the head build it is accepted, or it overflows the stack on a small-stack thread. Also assert MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth == 500."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The reportDiagnostic wrapper silently drops any diagnostic whose location is not in a syntax tree of the compilation. Several diagnostics are created with a null location, e.g. MemberNeedsKey, and for the BothStringAndIntKeyAreNull diagnostic, GetPropertyIdentifierLocation can now return null. A null location is Location.None, which is not in source. These diagnostics are discarded even for source types where the identifier cast fails, for example when the member is a field or the syntax is not a PropertyDeclarationSyntax. This can suppress user-protective diagnostics, such as MsgPack004 or the AOT key diagnostics, for source-declared members.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer test where a source-declared member that lacks a Key is declared in a way that produces a null location, e.g. a partial or primary-constructor-synthesized property. Assert that the diagnostic is still reported. Compare against the base build."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7118,
+  "output_tokens": 816,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

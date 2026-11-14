@@ -511,7 +511,7 @@ def batch_rounds(entries: list[dict], jobs: int, log_dir: Path, max_usd: float |
             print(f"bench run: refusing to submit: estimated ${t['batch_usd']:.2f} exceeds "
                   f"--max-usd {max_usd:.2f}")
             return 2, rounds
-        rep = llm.run_batch(requests, client=client)
+        rep = llm.run_batches(requests, client=client)
         info.update(batch_id=rep.batch_id, succeeded=rep.succeeded, errored=rep.errored,
                     cost_usd=rep.cost_usd)
         print(f"  round {rnd}: batch {rep.batch_id}: {rep.succeeded} ok, {len(rep.errored)} failed, "

@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new property-location helper also returns null for source-declared positional record properties, whose declaration syntax is a ParameterSyntax rather than a PropertyDeclarationSyntax. For `[MessagePackObject] partial record R([property: Key(null)] string Value)`, `BothStringAndIntKeyAreNull` is therefore created with `Location.None` and then discarded by `ReportIfLocatedInCompilation`, silently losing the analyzer error for an invalid key even though the property is in the current compilation.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1439",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.PositionalRecordNullKeyDiagnosticReceiptTests.NullKeyOnPositionalRecordPropertyIsStillDiagnosed. It analyzes a source positional record with `[property: Key(null)]` and requires a diagnostic whose ID is `MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull.Id`; on head the helper supplies no source location and the new reporting filter drops it."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/PositionalRecordNullKeyDiagnosticReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Collections.Immutable;\nusing MessagePack.SourceGenerator.Analyzers;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class PositionalRecordNullKeyDiagnosticReceiptTests\n{\n    [Fact]\n    public async Task NullKeyOnPositionalRecordPropertyIsStillDiagnosed()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public partial record R([property: Key(null)] string Value);\n            \"\"\";\n\n        ImmutableArray<MetadataReference> references = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        references = references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsApp\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        var analyzer = new MsgPack00xMessagePackAnalyzer();\n        ImmutableArray<Diagnostic> diagnostics = await compilation\n            .WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(analyzer))\n            .GetAnalyzerDiagnosticsAsync();\n\n        diagnostics.Should().Contain(d => d.Id == MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull.Id);\n    }\n}\n",
+        "test_names": [
+          "NullKeyOnPositionalRecordPropertyIsStillDiagnosed"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 5545,
+  "output_tokens": 9081,
+  "ms": 120445,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.15285
+}

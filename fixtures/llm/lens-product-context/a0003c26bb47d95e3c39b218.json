@@ -1,0 +1,58 @@
+{
+  "purpose": "lens-product-context",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The collector explicitly rejects any data type with no declaring syntax reference. Types defined in referenced assemblies are metadata symbols with an empty DeclaringSyntaxReferences collection, so every formatter for the Project A scenario is rejected with MsgPack021 instead of being generated. This defeats the central requirement and should also make the added ExternalTypes execution tests fail.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:67",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build and run tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs, especially ContractlessClassRoundTrips. ExternalPerson is metadata-only in the consuming compilation, so generation currently reports MsgPack021 and emits no formatter. Removing only the DeclaringSyntaxReferences.IsEmpty condition should allow the test to proceed."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Without a surrogate, the collector always calls CreateContractlessMembers and never inspects MessagePackObject, Key, or IgnoreMember on T. Consequently an attributed T is serialized using every public read-write member with ordinal string keys, contrary to the acceptance criterion that MessagePack attributes on T be honoured; attributes are only consulted on the separate surrogate type.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:98",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a generator execution test for a generated formatter whose T is [MessagePackObject] with two properties keyed [Key(0)] and [Key(1)] plus an [IgnoreMember] property, without specifying SurrogateType. Serialize with the generated resolver and assert an integer-key array of two elements and omission of the ignored property. The current implementation instead produces a string-key map including all public read-write properties."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The existing policy of silently ignoring metadata-only types during ordinary TypeCollector collection is deliberate. This feature creates a separate, explicit opt-in collection path for those types without changing that default policy, so the continued ordinary exclusion is not itself a regression.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:67",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] records that referenced-assembly types deliberately receive no ordinary analysis or generated formatter from the compiling assembly. That default remains intact; only an explicit [GeneratedMessagePackFormatter] request should bypass it."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Use the new generated-formatter attribute with an optional SurrogateType: default to contractless public read-write members, while SurrogateType supplies Key/IgnoreMember-based membership and integer or string keys, as implemented. The collector still needs to honor MessagePack attributes directly on T when present and admit metadata-only T."
+      },
+      {
+        "label": "B",
+        "summary": "Use the new generated-formatter attribute without adding SurrogateType: read serialization settings directly from T, honoring MessagePack attributes when available and DataContract/DataMember-style annotations where MessagePack cannot be referenced, otherwise falling back to contractless members. Remove the surrogate model and MsgPack022, replacing surrogate-match diagnostics with direct member/key validation on T."
+      }
+    ]
+  },
+  "input_tokens": 16034,
+  "output_tokens": 2408,
+  "ms": 30439,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.084222
+}

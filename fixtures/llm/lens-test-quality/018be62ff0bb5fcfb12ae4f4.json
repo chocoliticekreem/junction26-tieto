@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The diff contains no hand-written test hunks. The only tests covering the change are the verified snapshot outputs (222 files), and those are withheld from this lens. No test asserts that the generated code compiles on net472 or netstandard2.0, or that the `#if` guard behaves correctly. Mutating the guard would be caught only if the snapshots happen to be regenerated and compared.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14 negate-condition: #if !NETSTANDARD2_0 && !NETFRAMEWORK -> #if NETSTANDARD2_0 && NETFRAMEWORK; expected to survive unless snapshot tests compare exact text, because no compile-level test on legacy TFMs is in the diff"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities.cs change to the nesting-type brace (`{` -> `{\\r\\n`) alters output for nested types with constraints. It has no dedicated test in the diff and is only covered indirectly if a snapshot contains a nested constrained type. Reverting the line may go unnoticed if no such snapshot exists.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: writer(anyConstraints ? \"{\\r\\n\" : ...) -> writer(anyConstraints ? \"{\" : ...); expected to survive if no snapshot covers a nested generic type with constraints; run snapshot tests on the mutant"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute guard is `!NETSTANDARD2_0 && !NETFRAMEWORK`, so generated code is not decorated on netstandard2.0 or .NET Framework targets. The requirement says all generated code. No test checks the attribute is present or absent per target framework. Also, ExcludeFromCodeCoverage exists on netstandard2.0 (since 2.0) and net472 (4.0), so the guard may be needlessly excluding them.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "ExcludeFromCodeCoverage is in System.Diagnostics.CodeAnalysis for netstandard2.0 and net4.0+, so the guard is unnecessary and leaves generated code undecorated on those targets; no test compiles generated code with these TFMs"
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10184,
+  "output_tokens": 1014,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

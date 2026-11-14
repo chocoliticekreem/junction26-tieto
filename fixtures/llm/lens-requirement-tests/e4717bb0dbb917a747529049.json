@@ -1,0 +1,70 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The production changes only harden duplicate/mixed-key collection; they do not change any handling of SuppressSourceGeneration itself. Thus the patch does not address the reported case where an ordinary suppressed contract receives no analyzer diagnostics, such as MsgPack004 for a member without [Key] or [IgnoreMember].",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerReceiptTests.SuppressedTypeStillReportsMsgPack004 against base and head. Base should reproduce the missing diagnostic; if head still fails, the central acceptance criterion remains unimplemented."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new documentation says MsgPack017 is AOT-only and is not reported for suppressed types. MsgPack017 actually concerns init-property initializers being replaced during deserialization, which still occurs when the dynamic resolvers serialize the type at run time. Excluding it therefore contradicts both its established purpose and the requirement to retain analyzer validation with source generation suppressed.",
+        "location": "README.md:1633",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "Cite ledger L10: MsgPack017 warns that an init property initializer's default is replaced by the type's default value on deserialization. That runtime hazard remains when no formatter is generated. A suppressed type with an initialized [Key] init property should still produce MsgPack017."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Removing the Str8 case changes serialization of every string whose UTF-8 payload is 128-255 bytes: it is now encoded with a three-byte Str16 header instead of a two-byte Str8 header. This unrelated runtime change increases output size and changes the serialized wire bytes for existing callers.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:914",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Using base-built and head-built MessagePack assemblies, serialize new string('a', 128) and compare the bytes. Base should begin with MessagePackCode.Str8 (0xd9), have a two-byte header, and total 131 bytes; head will begin with Str16 (0xda), have a three-byte header, and total 132 bytes."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerReceiptTests\n{\n    [Fact]\n    public async Task SuppressedTypeStillReportsMsgPack004()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public partial class SuppressedContract\n            {\n                public int {|MsgPack004:Value|} { get; set; }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test();\n        test.TestState.Sources.Add(source);\n\n        // With no expected generated sources, this also verifies that formatter\n        // generation remains suppressed while the analyzer diagnostic is reported.\n        await test.RunAsync();\n    }\n\n    [Fact]\n    public async Task SuppressedValidTypeProducesNoGeneratedSource()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public partial class SuppressedContract\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test();\n        test.TestState.Sources.Add(source);\n        await test.RunAsync();\n    }\n\n    [Theory]\n    [InlineData(\"[MessagePackObject]\")]\n    [InlineData(\"[MessagePackObject(SuppressSourceGeneration = false)]\")]\n    public async Task UnsuppressedAnalyzerBehaviorIsUnchanged(string attribute)\n    {\n        string source = $$\"\"\"\n            using MessagePack;\n\n            {{attribute}}\n            public partial class UnsuppressedContract\n            {\n                public int {|MsgPack004:Value|} { get; set; }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test();\n        test.TestState.Sources.Add(source);\n        test.TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck;\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "SuppressedTypeStillReportsMsgPack004",
+          "SuppressedValidTypeProducesNoGeneratedSource",
+          "UnsuppressedAnalyzerBehaviorIsUnchanged"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "The regression is an analyzer failure while collecting particular malformed suppressed contracts. Keep suppression limited to formatter emission and make collection total by reporting then skipping mixed-kind members and by avoiding duplicate dictionary insertions, as the TypeCollector edits do."
+      },
+      {
+        "label": "B",
+        "summary": "SuppressSourceGeneration gates analyzer validation more generally, even for an ordinary invalid contract. Move or remove that gate from diagnostic collection so suppressed and unsuppressed types follow the same analyzer path, while checking the property only at the formatter-emission step to keep generated source suppressed."
+      }
+    ]
+  },
+  "input_tokens": 5564,
+  "output_tokens": 8776,
+  "ms": 121482,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.148332
+}

@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `continue` on a mixed int/string key mismatch skips the member, which changes generated output for types that already trigger DoNotMixStringAndIntKeys. Previously the code fell through and either added the member (the int path hit `intKey!.Value` on a null, or a string key was added). Now the member is silently omitted from the generated formatter. Users who tolerate the diagnostic as a non-error, or whose output is snapshotted, would see different generated code. This also does not address the reported symptom, which is that the analyzer does not run under SuppressSourceGeneration.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a [MessagePackObject] type that mixes [Key(0)] and [Key(\"a\")] members. Run the generator snapshot tests at base and at head and diff the generated formatter. Check whether the mismatched member is now absent."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate keys previously produced a duplicate-key exception from Dictionary.Add, which is the likely reason the analyzer failed. Duplicates are now silently dropped, keeping the first member. The KeysMustBeUnique diagnostic is still reported, so in practice this changes only the generated output for already-erroring code. The same guard is applied in both the object-path and the second collection path. If these hunks are the whole fix, they do not touch the SuppressSourceGeneration code path that the requirement is about.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1019",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Write an analyzer test with SuppressSourceGeneration=true containing a type with two members that share [Key(0)]. Assert that MsgPack00x diagnostics are still reported and that no generated source is emitted. Also run the same test at base to see whether it fails there."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5392,
+  "output_tokens": 711,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

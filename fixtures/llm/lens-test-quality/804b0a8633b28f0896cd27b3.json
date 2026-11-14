@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `continue` after DoNotMixStringAndIntKeys is not reliably covered. In MixedKeyKindsAreReportedWithoutAnalyzerFailure the expected diagnostic is MsgPack005 on Member2 with MarkupOptions.UseFirstDescriptor, and no separate assertion shows that the mixed-key diagnostic fires at all. If the `continue` were deleted, the member would fall through to the dictionary add, which is probably still guarded by the ContainsKey change. The test may therefore pass either way.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 delete-statement: `continue;` -> removed; expected to survive because MixedKeyKindsAreReportedWithoutAnalyzerFailure only checks one marked diagnostic and the ContainsKey guards also prevent a crash. Run SuppressSourceGenerationAnalyzerTests against the mutant."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The second `continue` in the second member-collection loop (properties/fields path) has no test with mixed key kinds that reaches it. The mixed-key test uses a single class with auto-properties, so it covers only one of the two duplicated code paths. Deleting this `continue` would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148 delete-statement: `continue;` -> removed; expected to survive because no test in the diff exercises mixed key kinds on the second path (e.g. a field member or a different member kind)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ContainsKey guard on stringMembers in the second loop (around line 1176) is exercised by DuplicateStringKeys only if that test reaches the second loop. Unless it does, removing the guard would not fail any test. The int-key guard in the second loop is not duplicated in the diff, and the mutation is not shown to be killed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176 remove-guard: `if (!stringMembers.ContainsKey(...))` -> unconditional Add; expected to survive if duplicate string keys are only hit through the first loop."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The core bug (analyzer silent under SuppressSourceGeneration=true) is verified only by tests that would also pass on base if the suppressed-type skip was not what caused the silence. The diff touches only duplicate-key handling in TypeCollector, and no source hunk changes the suppress-source-generation gating. The tests MemberWithoutKeyIsReported, MemberTypeMustBeMessagePackObjectIsReported and AllowPrivateRequiredIsReported may therefore not fail on base, so they do not show the regression is fixed. A byte-diff or base-run test is needed.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:17",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests on the base commit. Tests MemberWithoutKeyIsReported, AllowPrivateRequiredIsReported and MemberTypeMustBeMessagePackObjectIsReported should fail on base; if they pass, they do not reproduce the bug."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ExecutionTests assertion `GetFormatter<SuppressedSourceGenerationType>()` is null and the dynamic round-trip would pass on base. They only cover the already-working generation suppression, not the analyzer, so they add no regression value for this change.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:20",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressedSourceGenerationTests on the base build; expected to pass, showing it does not reproduce the bug."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9773,
+  "output_tokens": 1619,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01LRnr97VeVc8UU8nVuQdTKz"
+}

@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Generated formatter for a user-declared formatter uses an ObjectSerializationInfo built with empty constructorParameters and members marked IsWritable even for init-only/required members, and it only requires a public parameterless constructor. For types from other assemblies that enforce invariants in constructors, deserialization of untrusted data bypasses constructor validation by populating all public read-write fields and properties directly. This is not a MessagePackSecurity setting issue, but the generated deserializer does not route through MessagePackSecurity.DepthStep. The depth check is normally emitted by the template, so verify it is still emitted for the IsUserDeclaredFormatter path.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:96",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test for a [GeneratedMessagePackFormatter] class over a type with a nested self-referencing member. Confirm the generated Deserialize calls options.Security.DepthStep(ref reader) and reader.Depth--. Also confirm the string-key path emits the same."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate mode matches members by name and uses the symbol equality of types, but contractless members are serialized with no restriction on types such as delegates or pointers. Collection members in the target type also go through the default resolver, so MessagePackSecurity.UntrustedData collision-resistant comparers still apply only if the generated code uses the options resolver. That is not verified here.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:230",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the generated formatter output for a type with a Dictionary<string,int> member under UntrustedData. Confirm it resolves via formatterResolver.GetFormatterWithVerify rather than a hardcoded formatter."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18035,
+  "output_tokens": 708,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

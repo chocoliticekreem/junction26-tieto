@@ -1,0 +1,457 @@
+{
+  "change_id": "mock-2234-security",
+  "requirement_id": "REQ-2234",
+  "requirement_title": "The analyzer does not work if SuppressSourceGeneration = true",
+  "requirement_text": "# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comments. Anything beyond this is derived.)\n\n## Acceptance criteria\n\n- With `SuppressSourceGeneration = true`, the MessagePack analyzer still reports its diagnostics (MsgPack0xx rules) for code that violates them. (derived)\n- Behaviour with `SuppressSourceGeneration = true` matches version 3.1.0, where the analyzer worked. (derived)\n- Behaviour with `SuppressSourceGeneration` unset or false does not change. (derived)\n- Source generation itself stays suppressed when `SuppressSourceGeneration = true`. (derived)\n\n## Notes from discussion\n\nNo comments on the issue.",
+  "run_ts": "20261114T204401Z",
+  "head_sha": "655490a98228c650041723b428e1055258a5734a",
+  "verdict": "blocked",
+  "verdict_reason": "verified high finding(s) backed by receipts: logic-edge-1",
+  "risk": 8,
+  "areas": [
+    "security",
+    "tests",
+    "type-collector"
+  ],
+  "area_trust": {
+    "security": 1,
+    "tests": 3,
+    "type-collector": 3
+  },
+  "checked": [
+    {
+      "what": "Build base (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-base",
+      "result": "pass"
+    },
+    {
+      "what": "Build head (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on head: 175/175 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on base: 167/167 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-base",
+      "result": "pass"
+    },
+    {
+      "what": "Receipts/SuppressSourceGenerationAnalyzerTests.cs: requirement test fails on base (1/2), passes on head (2/2); refutes 2 lens claim(s): requirement-tests-1, requirement-tests-3",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-1",
+      "result": "pass"
+    },
+    {
+      "what": "Receipts/ReceiptsLogicEdgeTests.cs: edge-case test fails on head: 1/2 failed",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-2",
+      "result": "fail"
+    },
+    {
+      "what": "Mutation: 6 killed by the change's tests, 2 caught only by the existing suite, 7 survive the full suite, 0 compile errors, 0 timeouts (15 mutants on TypeCollector.cs, MessagePackSecurity.cs)",
+      "by": "mutation",
+      "evidence_id": "mutation",
+      "result": "partial"
+    },
+    {
+      "what": "Compatibility bytes: 0/124 cases differ, 0 base payloads fail to read on head, public API +0/-0",
+      "by": "byte-diff",
+      "evidence_id": "compat-bytes",
+      "result": "pass"
+    },
+    {
+      "what": "routed 10 hunks across 5 files",
+      "by": "rule+jev (auto)",
+      "evidence_id": "",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "logic-edge-1",
+      "lens": "logic-edge",
+      "claim": "MessagePackSecurity.DepthStep changed from `>=` to `>`, so the depth limit is now off by one: a graph one level deeper than MaximumObjectGraphDepth is accepted. With MaximumObjectGraphDepth = 1, `[[ ]]` (0x91 0x90) used to be rejected and now deserializes. This weakens a security limit (the default stays at 500, per L9) and the requirement does not ask for it; L18 records no intent to change it.",
+      "location": "src/MessagePack/MessagePackSecurity.cs:233",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run ReceiptsLogicEdgeTests.DepthStep_RejectsGraphOneLevelDeeperThanMaximum. It deserializes 0x91 0x90 as object with UntrustedData.WithMaximumObjectGraphDepth(1) and expects an exception. It passes on base and fails on head."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-2"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-1",
+      "lens": "test-quality",
+      "claim": "The DepthStep change from >= to > lets object graphs one level deeper than MaximumObjectGraphDepth through. This is a security-relevant off-by-one with no test in the diff, and it is unrelated to REQ-2234. The ledger (L18) records no preference, so the change is unjustified.",
+      "location": "src/MessagePack/MessagePackSecurity.cs:233",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack/MessagePackSecurity.cs:233 off-by-one: `reader.Depth > this.MaximumObjectGraphDepth` -> `>=`; expected to survive because no test in the diff exercises DepthStep at the boundary. A test deserializing nested arrays at exactly MaximumObjectGraphDepth (should throw on base) would pass on base and fail on head."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-3",
+      "lens": "test-quality",
+      "claim": "The ContainsKey guards on both dictionary Add calls (the int-key and string-key paths) are covered only by the duplicate-key tests. These tests use a single class and assert only diagnostics. The second TypeCollector copy at ~1160/1176 (the field/property variant) may not be exercised by the property-only tests, since all the duplicate-key tests use properties. Removing the guard on the field path would survive.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163-1166 remove-guard: `if (!intMembers.ContainsKey(...)) Add` -> unconditional Add; and likewise at 1179 for stringMembers; expected to survive if no test has duplicate keys on fields/the second code path."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m10",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects negate-condition at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "if (!stringMembers.ContainsKey(member.StringKey)) -> if (!(!stringMembers.ContainsKey(member.StringKey)))"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m11",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects remove-guard at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "if (!stringMembers.ContainsKey(member.StringKey)) -> if (true)"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m12",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects delete-statement at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1181",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1181",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "stringMembers.Add(member.StringKey, (member, item.Type)); -> (statement deleted)"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m13",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects negate-condition at src/MessagePack/MessagePackSecurity.cs:233",
+      "location": "src/MessagePack/MessagePackSecurity.cs:233",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "if (reader.Depth > this.MaximumObjectGraphDepth) -> if (!(reader.Depth > this.MaximumObjectGraphDepth))"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m14",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects remove-guard at src/MessagePack/MessagePackSecurity.cs:233",
+      "location": "src/MessagePack/MessagePackSecurity.cs:233",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "if (reader.Depth > this.MaximumObjectGraphDepth) -> if (false)"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-suite-only-TypeCollector",
+      "lens": "test-quality",
+      "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163, 1165; the existing suite does",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "TypeCollector.cs:1163 negate-condition: if (!intMembers.ContainsKey(member.IntKey)) -> if (!(!intMembers.ContainsKey(member.IntKey))); TypeCollector.cs:1165 delete-statement: intMembers.Add(member.IntKey, (member, item.Type)); -> (statement deleted)"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "hunches": [
+    {
+      "id": "requirement-tests-2",
+      "lens": "requirement-tests",
+      "claim": "`DepthStep` changes the depth check from `reader.Depth >= MaximumObjectGraphDepth` to `>`. This weakens the security limit by one level: a graph one level deeper than the configured maximum is now accepted. The requirement is an analyzer bug and asks for nothing in the runtime security code. Ledger L18 records no preference, so the change is out of scope and alters runtime deserialization behaviour.",
+      "location": "src/MessagePack/MessagePackSecurity.cs:233",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Use `MessagePackSecurity.TrustedData.WithMaximumObjectGraphDepth(1)`. Deserialize a nested array of depth 2, e.g. bytes [0x91, 0x91, 0x01], as `object[]` with `MessagePackSerializerOptions.Standard.WithSecurity(...)`. On base it throws a `MessagePackSerializationException` wrapping `InsufficientExecutionStackException`; on head it succeeds."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-2",
+      "lens": "logic-edge",
+      "claim": "The new `if (!intMembers.ContainsKey(...))` and `if (!stringMembers.ContainsKey(...))` guards silently discard the second member that shares a key. Two members marked [Key(0)] used to make the collector throw, which is at least visible. Now they produce no diagnostic, and the generated formatter omits the second member. That member is silently never serialized or deserialized, so data is lost. The dynamic resolver rejects duplicate keys.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run ReceiptsLogicEdgeTests.DuplicateIntKey_IsReportedOrBothMembersGenerated. It compiles a [MessagePackObject] with two [Key(0)] properties and runs the generator and the MessagePack analyzers. It asserts that either a MsgPack or generator diagnostic is reported or the generated formatter references SecondMember. It fails on head."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-3",
+      "lens": "logic-edge",
+      "claim": "The same silent-drop guard is applied to the second member-collection path (lines 1163 and 1179) and to string keys (line 1039). Duplicate string keys, or duplicate keys on that path, also lose a member without any diagnostic.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Variant of DuplicateIntKey_IsReportedOrBothMembersGenerated using [Key(\"a\")] on two members, and a variant using fields instead of properties. Expect a diagnostic or both members in the generated formatter."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-1",
+      "lens": "compatibility",
+      "claim": "DepthStep changed from `>=` to `>`, so the object graph depth limit is now off by one: a graph one level deeper than MaximumObjectGraphDepth is accepted and no longer throws InsufficientExecutionStackException. This is unrelated to the SuppressSourceGeneration analyzer fix. Users, including those with a lowered limit, would see the changed deserialization behavior without opting in. It also weakens a security limit (see ledger L9 on the stack depth limit).",
+      "location": "src/MessagePack/MessagePackSecurity.cs:233",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Set MessagePackSecurity.Default.WithMaximumObjectGraphDepth(N), and deserialize a nested array of depth N+1 with the base build and the head build. Base throws InsufficientExecutionStackException. Head succeeds. Also check that the boundary at depth N behaves the same on both builds."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-2",
+      "lens": "compatibility",
+      "claim": "The new `continue` after DoNotMixStringAndIntKeys skips mixed-key members. The generated formatter and the generated resolver's member list change for types that mix key kinds: previously the member was still added, and now it is dropped. The diagnostic is an Error (MsgPack005 class), so the build fails either way, but snapshot tests of generator output for such types would differ. If the diagnostic is not reported, for example in a suppressed-diagnostics project, the generated output silently loses members.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Run the generator snapshot tests against a [MessagePackObject] type that mixes [Key(0)] and [Key(\"a\")] members with base and head, and diff the generated formatter output."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-3",
+      "lens": "compatibility",
+      "claim": "Duplicate int or string keys are now silently deduplicated with first-wins. The collector previously threw ArgumentException on Add, so the generator crashed. Now it emits a formatter that omits the later member. If the duplicate-key diagnostic (MsgPack006) is not reported on this path, generated output changes and members are dropped without any error. It is also not clear that the diagnostic is still reported in analyzer builds.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Add an analyzer/generator test with two members sharing [Key(0)] on a type with SuppressSourceGeneration unset. Assert that MsgPack006 is reported and that generation does not emit a formatter that silently drops the second member. Run on base and head."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "security-1",
+      "lens": "security",
+      "claim": "MessagePackSecurity.DepthStep changes the depth check from `>=` to `>`, so one extra nesting level is accepted: with MaximumObjectGraphDepth = N, an object graph of depth N+1 is no longer rejected. This loosens the recursion/depth limit that protects against stack exhaustion on untrusted data. It is also unrelated to the SuppressSourceGeneration analyzer fix. The ledger (L18) records no decision for it beyond 'follow the requirement', and the requirement does not mention it. Existing depth-limit tests that assume a graph at exactly the maximum depth throws would likely fail.",
+      "location": "src/MessagePack/MessagePackSecurity.cs:233",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Build a nested array/map payload whose depth equals MaximumObjectGraphDepth (e.g. MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(N)) and deserialize it with base-built and head-built code. Base throws InsufficientExecutionStackException; head succeeds. Also rerun the existing MessagePackSecurityTests depth tests."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-1",
+      "lens": "product-context",
+      "claim": "The DepthStep change from >= to > in MessagePackSecurity raises the effective maximum object graph depth by one. It is unrelated to the SuppressSourceGeneration analyzer bug. It also loosens a security limit, and L9 records a deliberate depth limit of 500. L18 gives no decision on it, so scope creep and a security behavior change remain.",
+      "location": "src/MessagePack/MessagePackSecurity.cs:233",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Deserialize a msgpack payload nested exactly MaximumObjectGraphDepth+1 levels deep. Base code throws InsufficientExecutionStackException; head code accepts it. Existing depth tests would show the boundary shift."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-3",
+      "lens": "product-context",
+      "claim": "The new continue statements and ContainsKey guards in TypeCollector silently drop members with duplicate or mismatched keys. This is a behavior change for non-suppressed types too, which the requirement says must not change. Generated output could differ for invalid code, though MsgPack005 is reported either way.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Run the generator snapshot tests with duplicate-key or mixed-key input for a non-suppressed type and compare the output with base."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-2",
+      "lens": "test-quality",
+      "claim": "The `continue` added after the DoNotMixStringAndIntKeys diagnostic is only covered by MixedKeyKindsAreReportedWithoutAnalyzerFailure. That test marks MsgPack005 rather than the mixed-keys diagnostic, and it has just one mismatched member. It cannot show that the skipped member is excluded from the output. Removing the `continue` would probably still pass, because the member would just be added under a distinct key.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 remove-guard: delete `continue;`; expected to survive because MixedKeyKindsAreReportedWithoutAnalyzerFailure only checks diagnostics, and the mismatched key is distinct so no duplicate-key exception occurs. Also run it for the second copy at line 1148."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-4",
+      "lens": "test-quality",
+      "claim": "The diff contains no source change that makes the analyzer run for SuppressSourceGeneration types, nor any change to skip MsgPack011/016/017. Yet tests assert MsgPack004/003/015 are reported and that MsgPack011/016/017 are not. The tests may pass on base, so they may not reproduce the bug. The only source hunks are the duplicate-key guards. MsgPack004, MsgPack003 and MsgPack015 on a suppressed type may already pass on base, so those tests do not demonstrate the fix.",
+      "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:19",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run SuppressSourceGenerationAnalyzerTests on the base commit. Tests that pass on base (MemberWithoutKeyIsReported, AllowPrivateRequiredIsReported, MemberTypeMustBeMessagePackObjectIsReported, SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed) do not reproduce the bug."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-5",
+      "lens": "test-quality",
+      "claim": "NoFormatterIsGeneratedForSuppressedType and the round-trip test cover runtime/generation behavior, not the analyzer. The round-trip test would pass on base. The tests also do not assert that no generated formatter source is emitted in snapshot output.",
+      "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:20",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run SuppressedSourceGenerationTests on base; expected to pass, so it does not reproduce the REQ-2234 analyzer bug."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-4",
+      "lens": "logic-edge",
+      "claim": "None of the in-scope hunks touches the SuppressSourceGeneration gating. Whatever skips analysis for `[MessagePackObject(SuppressSourceGeneration = true)]` types is unchanged here. The acceptance criterion that MsgPack003/004/005 are still reported for such types (L19) is not shown to be met by this change.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "Read the diff: only the duplicate-key and mixed-key handling in TypeCollector and DepthStep change. A test with [MessagePackObject(SuppressSourceGeneration = true)] and a public property without [Key] should expect MsgPack004. This lens only sees in-scope hunks, so this is unverified."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "unconfirmed-product-context-2",
+      "lens": "product-context",
+      "claim": "suppressed by unconfirmed context entry: [L14] area=docs by bench-oracle (simulated human): Q: For types with SuppressSourceGeneration = true, should the analyzer report the generation-only diagnostics (MsgPack011 partial class, MsgPack016, MsgPack017)? A: Deliberate, not a defect: `SuppressSourceGeneration = true` types get no generated formatter. Generation-only diagnostics (MsgPack011, MsgPack016, MsgPack017) are deliberately not reported for them; the dynamic resolver handles KeyAttribute-derived keys at run time (area: analyzer, source-generator).; [L20] area=docs by bench-oracle (simulated human): Q: For a type marked `[MessagePackObject(SuppressSourceGeneration = true)]`, should the analyzer report MsgPack011 (partial requirement), MsgPack016 and MsgPack017, as the new README says it does not? A: Deliberate, not a defect: `SuppressSourceGeneration = true` types get no generated formatter. Generation-only diagnostics (MsgPack011, MsgPack016, MsgPack017) are deliberately not reported for them; the dynamic resolver handles KeyAttribute-derived keys at run time (area: analyzer, source-generator). (would-be finding: README and tests say MsgPack011/016/017 are not reported for suppressed types. This matches the deliberate decisions in L14-L16 and L20, so it is not a defect.)",
+      "location": "README.md:1630",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "ledger-citation",
+        "detail": "[L14] [L20] generation-only diagnostics MsgPack011/016/017 are deliberately not reported for SuppressSourceGeneration=true types; L19 confirms the other validation diagnostics still apply."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "refused": [],
+  "not_checked": [
+    {
+      "what": "tests/MessagePack.SourceGenerator.ExecutionTests (changed by this diff)",
+      "why": "not run: it does not compile in this sandbox even on base (SDK 8.0.402 ships Roslyn 4.11; the source generator needs 4.12, CS9057, so no generated code exists); see notes/sandbox.md"
+    },
+    {
+      "what": "tests/MessagePack.Tests and other runtime test suites",
+      "why": "not built or run in the sandbox; only the source generator test project is in scope"
+    },
+    {
+      "what": "NativeAOT, Unity and non-net8.0 target frameworks",
+      "why": "the sandbox builds and tests net8.0 only"
+    }
+  ],
+  "residual_risk": "This change touches 5 files (0 generated) in security, tests, type-collector; the highest routed risk is 8/10. 3 file(s) were routed for deep review, 2 for light review and 0 to the regeneration check. The existing source generator tests ran on head: 175 of 175 passed, 0 failed. 14 unverified hunch(es) remain without an executed receipt. It touches risky areas (security), so a human must sign off. 3 thing(s) were not checked, including tests/MessagePack.SourceGenerator.ExecutionTests (changed by this diff); tests/MessagePack.Tests and other runtime test suites; NativeAOT, Unity and non-net8.0 target frameworks. By signing off, the signer accepts any defect that only those unchecked paths would have revealed. The change is blocked; signing off is not offered until the blocker is fixed.",
+  "routing": {
+    "README.md": "light",
+    "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs": "deep",
+    "src/MessagePack/MessagePackSecurity.cs": "deep",
+    "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs": "light",
+    "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs": "deep"
+  },
+  "counts": {
+    "source": 2,
+    "test": 2,
+    "docs": 1,
+    "generated": 0,
+    "template": 0,
+    "total": 5,
+    "not_generated": 5
+  },
+  "questions": [],
+  "interpretations": [],
+  "narrative": "",
+  "mock_llm": false
+}

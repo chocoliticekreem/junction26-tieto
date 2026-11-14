@@ -1,0 +1,48 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The original closed-generic-struct repro is not fully fixed. GetObjectInfo still contains the third unguarded DeclaringSyntaxReferences[0] access at TypeCollector.cs:735. When that diagnostic path is reached for Lib.Item<int>, the metadata symbol has no declaring syntax, so the generator/analyzer can still throw IndexOutOfRangeException before ReportIfLocatedInCompilation receives any diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:735",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.MetadataGenericValueTypeAndSecurityDepthTests.ClosedGenericStructFromMetadataDoesNotCrashGeneratorOrAnalyzer. It compiles the requirement's generic record struct into a metadata reference, runs the generator and all MessagePack analyzers on the consuming record, and requires completion without CS8785 or AD0001. The test fails while the remaining unguarded metadata-symbol path throws."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "UntrustedData now permits object graphs ten times deeper than the recorded security limit. Inputs nested between 501 and 5000 levels, previously rejected at the depth guard, are now recursively processed, weakening the denial-of-service/stack-exhaustion protection. Ledger L9 records the deliberate 500-level limit even for trusted data, so raising the untrusted-data limit to 5000 contradicts that security decision.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.MetadataGenericValueTypeAndSecurityDepthTests.UntrustedDataStillRejectsGraphDeeperThan500. It deserializes 501 nested one-element arrays using MessagePackSecurity.UntrustedData and expects MessagePackSerializationException. The depth-500 implementation throws; the depth-5000 implementation accepts the payload. Ledger L9 independently records the intended limit."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataGenericValueTypeAndSecurityDepthTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Buffers;\nusing FluentAssertions;\nusing MessagePack;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MetadataGenericValueTypeAndSecurityDepthTests\n{\n    [Fact]\n    public async Task ClosedGenericStructFromMetadataDoesNotCrashGeneratorOrAnalyzer()\n    {\n        const string libSource = \"\"\"\n            using MessagePack;\n            namespace Lib;\n\n            [MessagePackObject]\n            public partial record struct Item<T>([property: Key(0)] string Key);\n            \"\"\";\n\n        const string appSource = \"\"\"\n            using MessagePack;\n            using Lib;\n            namespace App;\n\n            [MessagePackObject]\n            public sealed partial record Cmd([property: Key(0)] string Scope)\n            {\n                [Key(1)]\n                public Item<int> Member { get; init; }\n            }\n            \"\"\";\n\n        var references = new List<MetadataReference>();\n        references.AddRange(await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None));\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        var libCompilation = CSharpCompilation.Create(\n            \"ReceiptsMetadataLib\",\n            new[] { CSharpSyntaxTree.ParseText(libSource, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));\n\n        using var peImage = new MemoryStream();\n        var emitResult = libCompilation.Emit(peImage);\n        emitResult.Success.Should().BeTrue(string.Join(Environment.NewLine, emitResult.Diagnostics));\n\n        var test = new VerifyCS.Test(ReferencesSet.MessagePack)\n        {\n            LanguageVersion = LanguageVersion.Latest,\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(appSource);\n        test.TestState.AdditionalReferences.Add(MetadataReference.CreateFromImage(peImage.ToArray()));\n\n        await test.RunAsync();\n    }\n\n    [Fact]\n    public void UntrustedDataStillRejectsGraphDeeperThan500()\n    {\n        var buffer = new ArrayBufferWriter<byte>();\n        var writer = new MessagePackWriter(buffer);\n        for (var i = 0; i < 501; i++)\n        {\n            writer.WriteArrayHeader(1);\n        }\n\n        writer.WriteNil();\n        writer.Flush();\n\n        var options = MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData);\n        Action deserialize = () => MessagePackSerializer.Deserialize<object>(buffer.WrittenMemory, options);\n\n        deserialize.Should().Throw<MessagePackSerializationException>();\n    }\n}\n",
+        "test_names": [
+          "ClosedGenericStructFromMetadataDoesNotCrashGeneratorOrAnalyzer",
+          "UntrustedDataStillRejectsGraphDeeperThan500"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 5593,
+  "output_tokens": 7930,
+  "ms": 84858,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.135729
+}

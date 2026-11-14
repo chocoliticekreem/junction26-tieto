@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The guard test counts attribute occurrences against guarded occurrences, but it only accepts guarded forms with a tab or no indentation before the attribute. It never compiles the generated output for a netstandard2.0 or net framework target. A wrong guard symbol (for example NETSTANDARD2_1) would still pass if the template and the test constant drifted together. The test is a tautological string match on the same literal and does not prove that the generated code compiles on every supported TFM.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:96",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 negate-condition: '#if !NETSTANDARD2_0 && !NETFRAMEWORK' -> '#if NETSTANDARD2_0' in both the template and the Guard constant; expected to survive because the test only compares strings and never compiles or preprocesses the output under a defined symbol."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "AllGeneratedTypesAreExcludedFromCodeCoverage checks only that the attribute appears somewhere in each generated file. Files with multiple types, such as the resolver's FormatterCache and GetFormatterHelper, or the nested types, would pass if only one of the types were decorated. Removing the attribute from FormatterCache or GetFormatterHelper in ResolverTemplate would not fail this test. The guard test's count check (attributeCount>0 and attributeCount==guardedCount) also would not notice that one nested type lost its attribute.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:77",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:67 delete-statement: remove the '[ExcludeFromCodeCoverage]' guard block before 'private static class <Resolver>GetFormatterHelper' -> deleted; expected to survive because the resolver file still contains the attribute on the partial class and on FormatterCache, so the Contains checks pass."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test input never exercises generic types, nested types or the CompositeResolver template. The change adds attributes to CompositeResolverTemplate, and a related TransformUtilities change alters the brace emission for nesting types with constraints (`{` -> `{\\r\\n`). No test in the diff covers the CompositeResolver output or a nested generic type with constraints. Removing the attribute from CompositeResolverTemplate, or reverting the TransformUtilities fix, would not fail the new tests; only the snapshots would notice.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: writer(anyConstraints ? \"{\\r\\n\" : ...) -> writer(anyConstraints ? \"{\" : ...); expected to survive in CodeCoverageExclusionTests because no test input has a generic nested type with constraints. Also delete the attribute in CompositeResolverTemplate.tt:7 and rerun the tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "TypesThatSuppressSourceGenerationGetNoGeneratedFormatter does not test the change. It asserts existing behavior of SuppressSourceGeneration and would pass identically on base, so it adds no coverage for the ExcludeFromCodeCoverage requirement.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:84",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run TypesThatSuppressSourceGenerationGetNoGeneratedFormatter against the base-built generator; expected to pass, showing it does not reproduce the missing attribute."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12562,
+  "output_tokens": 1466,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `reportDiagnostic` wrapper is broader than the metadata case it targets. It drops every diagnostic whose location is not in source, including `Location.None` diagnostics about types declared in the compiling assembly. `GetPropertyIdentifierLocation` returns null whenever the declaring syntax is not a `PropertyDeclarationSyntax`. A positional record property such as `record Cmd([property: Key((string)null)] string Scope)` is declared by a `ParameterSyntax`, so it hits this case. Base crashed with InvalidCastException (AD0001). Head now silently drops BothStringAndIntKeyAreNull for a source-declared member, so an error-level invalid-key diagnostic disappears for the compiling assembly's own type. Reporting `Location.None` is allowed for analyzers; only locations outside the compilation are not.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.PositionalRecordNullKeyDiagnosticTests.NullStringKeyOnPositionalRecordPropertyIsStillReported. It uses a C# 9 positional record with `[property: Key((string)null)]` and expects the null-key diagnostic (MsgPack005) on the parameter. On head no diagnostic is produced. Better fix: fall back to the declaring syntax's location (as the MemberNeedsKey branch at line 1077 does) and drop only locations outside the compilation, not `Location.None`."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper drops all `Location.None` and out-of-compilation diagnostics, not only those about metadata symbols. Any existing TypeCollector diagnostic for a type in this compilation is now silently suppressed whenever its location helper (`GetIdentifierLocation`, `GetLocation(parameter)`, `GetParameterListLocation`) returns null. Base reported these at `Location.None`. Example: a source `[MessagePackObject]` type whose diagnostic target is a compiler-synthesized or implicitly declared member. This silently widens suppression well beyond the metadata symbols the requirement targets.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Mutate `ReportIfLocatedInCompilation` to report when `diagnostic.Location == Location.None`. Run the existing MsgPack00x analyzer test suite. If no test fails, no test pins which diagnostics may legitimately carry `Location.None`, and the suppression is unguarded."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement's repro (closed generic `record struct Item<T>` from a referenced assembly used as a member of a source `[MessagePackObject]` record) is never exercised end to end. The reporter named three unguarded `DeclaringSyntaxReferences[0]` sites. The diff changes the null-key and MemberNeedsKey sites and gates the derived-key branch. It is not evident from the hunks that every unguarded indexer reachable from `CollectGeneric` -> `GetObjectInfo` for a metadata type has been removed (e.g. checks earlier in `GetObjectInfo`).",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:912",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a lib `CSharpCompilation` with `[MessagePackObject] public partial record struct Item<T>([property: Key(0)] string Key);` and emit it to a `MetadataReference`. Then run VerifyCS on the app source `Cmd` with `[Key(1)] public Item<int> Member { get; init; }`, using `TestState.AdditionalReferences` plus `[GeneratedMessagePackResolver]`. Assert there is no CS8785 and no AD0001, and that a resolver is generated."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/PositionalRecordNullKeyDiagnosticTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class PositionalRecordNullKeyDiagnosticTests\n{\n    [Fact]\n    public async Task NullStringKeyOnPositionalRecordPropertyIsStillReported()\n    {\n        string testSource = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public partial record Cmd([property: Key((string)null)] string {|MsgPack005:Scope|});\n            \"\"\";\n\n        var test = new VerifyCS.Test\n        {\n            LanguageVersion = LanguageVersion.CSharp9,\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(testSource);\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "NullStringKeyOnPositionalRecordPropertyIsStillReported"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 12209,
+  "output_tokens": 9154,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

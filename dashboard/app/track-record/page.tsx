@@ -59,9 +59,12 @@ function headlineTiles(s: MetricsSummary | undefined) {
   if (c.questions_per_change !== undefined) {
     tiles.push({
       label: "Questions per change",
-      value: w?.questions_per_change !== undefined ? `${c.questions_per_change.toFixed(2)} → ${w.questions_per_change.toFixed(2)}` : c.questions_per_change.toFixed(2),
+      // Compare like for like: cold restricted to the cases the warm run covered, when available.
+      value: w?.questions_per_change !== undefined
+        ? `${(s.cold_on_warm_cases?.questions_per_change ?? c.questions_per_change).toFixed(2)} → ${w.questions_per_change.toFixed(2)}`
+        : c.questions_per_change.toFixed(2),
       unit: w ? "cold → warm" : "cold",
-      definition: `Questions to the human per change. Warm = same cases with the ledger filled${w?.cases ? ` (${w.cases} cases complete)` : ""}.`,
+      definition: `Questions to the human per change, on the same ${s.cold_on_warm_cases?.cases ?? w?.cases ?? ""} cases before and after the ledger was filled.`,
     });
   }
   const r = s["ju26-issue-2297_routed_away_from_humans"];
@@ -266,12 +269,12 @@ export default function TrackRecordPage() {
           </div>
           <div className="text-xs text-muted-foreground" data-testid="provenance">
             <p>
-              Measured on {summary?.cold?.cases ?? "—"} practice runs, pipeline as of PR #11, 14 Nov 2026. &ldquo;Warm&rdquo; answers came from a simulated human (a script that knows the
+              Measured on {summary?.cold?.cases ?? "—"} practice runs, final pipeline, 14 Nov 2026. &ldquo;Warm&rdquo; answers came from a simulated human (a script that knows the
               planted answers), not a person.
             </p>
             <Disclosure label="Limits" testId="provenance-toggle">
               <p className="max-w-3xl leading-5">
-                The warm run is incomplete: the API usage limit hit, so {excluded || 11} cases ran without lenses and are excluded, not counted as misses. Planted defects are a proxy for
+                The warm run covers the 2283 and 2234 issues only (18 cases), to stay inside the spend cap{excluded ? `; ${excluded} runs without every lens are excluded, not counted as misses` : ""}. Planted defects are a proxy for
                 reverts and incidents. Tile definitions are in each tile’s tooltip. Full limits: <span className="font-mono">metrics/README.md</span>.
               </p>
             </Disclosure>

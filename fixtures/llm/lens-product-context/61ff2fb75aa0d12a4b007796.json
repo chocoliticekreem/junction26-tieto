@@ -1,0 +1,76 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Unrelated serializer-format change: DecimalFormatter.Serialize now passes StandardFormat('F') to Utf8Formatter.TryFormat. This is outside REQ-2297 (attribute on generated code) and changes the bytes written for decimals (e.g. no exponent notation, trailing zeros/scale handling). Ledger L8 says numeric serialization is bug-prone. Wire-format drift is possible for existing data.",
+        "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a set of decimals (0, 1.0m, 1.50m, 1e-10m, decimal.MaxValue, decimal.MinValue, 79228162514264337593543950335m) with the base-built and head-built MessagePack and compare the bytes; also check that the existing decimal tests pass."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Requirement says all generated code should be decorated, but the README says only 'all generated formatters and resolvers'. The diff adds the attribute to the formatter, resolver, and nested helper types, but the generated MessagePackAssemblyAttribute or other generated pieces (e.g. nesting partial types, any other templates) may not be covered. The new test only checks that the attribute string appears at least once per file, not once per emitted type.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:63",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Remove the attribute from the nested FormatterCache<T> or GetFormatterHelper in one template; the test still passes because other occurrences in the same file satisfy Contains. Run the mutant against CodeCoverageExclusionTests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README states the attribute is not emitted for netstandard2.0/.NET Framework, so coverage is still skewed for those consumers. This partially falls short of 'all generated code', while the guard is needed for compilation. The guard symbols (NETSTANDARD2_0, NETFRAMEWORK) are also incomplete: netstandard2.1/.NET Core 2.x/netcoreapp3.1 coverage is mixed, and the attribute exists in netstandard2.1 and netcoreapp2.0+, but older frameworks (e.g. netstandard1.x, Xamarin/Unity profiles) would not compile.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile generated output against netstandard1.6, a Unity-like profile, and a TFM with no ExcludeFromCodeCoverage, and check for CS0234 errors."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change from '{' to '{\\r\\n' alters the output for every generated nesting type with constraints. It is unrelated to the requirement but needed so the preprocessor #if starts at a line start. Worth recording as a deliberate formatting fix.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests for nested generic types with constraints and confirm only whitespace and attribute diffs."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the ExcludeFromCodeCoverage attribute be emitted unconditionally with no opt-out, or should there be a setting to turn it off?",
+        "options": [
+          "Unconditional, no setting",
+          "Add an opt-out MSBuild/attribute property"
+        ],
+        "why_it_matters": "The requirement allows both. If an opt-out is expected, the change is incomplete; if not, it is fine as is.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditional attribute on all generated formatters, resolvers, and helper classes, guarded with #if for netstandard2.0/.NET Framework, with no setting."
+      },
+      {
+        "label": "B",
+        "summary": "Same attribute emission plus an opt-out generator option (e.g. a property on GeneratedMessagePackResolver or an MSBuild property) that suppresses the attribute, with the templates conditioned on that option."
+      }
+    ]
+  },
+  "input_tokens": 13767,
+  "output_tokens": 1513,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

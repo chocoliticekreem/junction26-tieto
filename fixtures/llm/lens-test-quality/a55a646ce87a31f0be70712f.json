@@ -1,0 +1,57 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The serializer behavior change for decimal formatting has no test in the diff. In particular, nothing verifies that decimals requiring more than the default fixed-point precision still round-trip without losing fractional digits.",
+        "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148 delete-statement: TryFormat(value, dest.Slice(1, MessagePackRange.MaxFixStringLength), out var written, new System.Buffers.StandardFormat('F')) -> TryFormat(value, dest.Slice(1, MessagePackRange.MaxFixStringLength), out var written); expected to survive because no test in the change exercises DecimalFormatter.Serialize or asserts decimal round-trip fidelity. Add a round-trip test using a value such as 1.234567m and compare the result with the original decimal."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new tests check only that each generated file contains at least one guarded attribute, so they do not verify the stated per-type requirement for files containing multiple generated types. Removing the attribute from a resolver's FormatterCache<T> or GetFormatterHelper would leave both tests green.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:78",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:55 delete-statement: #if !NETSTANDARD2_0 && !NETFRAMEWORK\\n\\t[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]\\n#endif -> removed; expected to survive because AllGeneratedTypesAreExcludedFromCodeCoverage only calls text.Contains once per file and ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable only compares counts of remaining attributes and guards. Parse the generated resolver and assert the attribute on the resolver, FormatterCache<T>, and GetFormatterHelper declarations."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The target-framework test validates preprocessor text but never compiles the generated output for either an unavailable-attribute target or an available-attribute target, so it does not test the acceptance criterion that generated code still compiles on every supported target framework.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:87",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator with preprocessor symbols NETSTANDARD2_0 and NETFRAMEWORK, respectively, and assert successful compilation against corresponding reference assemblies without ExcludeFromCodeCoverage; also compile without those symbols against a modern reference set. The current ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable test would not detect compilation errors that occur despite the expected guard text."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The newline fix for constrained nesting types has no regression test: the new test input contains no nested generic type with constraints and does not assert generator compilation diagnostics.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: writer(anyConstraints ? \"{\\r\\n\" : \" {\\r\\n\") -> writer(anyConstraints ? \"{\" : \" {\\r\\n\"); expected to survive because CodeCoverageExclusionTests uses only non-generic top-level test types and never checks output compilation diagnostics. Add a generation-and-compilation test for a MessagePackObject nested in a generic type with a type parameter constraint."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7204,
+  "output_tokens": 1789,
+  "ms": 25604,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.048447
+}

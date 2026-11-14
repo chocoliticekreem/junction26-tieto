@@ -1,0 +1,87 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The acceptance criterion that MessagePack attributes on T are honoured has no test. Every execution-test T is explicitly attribute-free, so the suite would still pass if attributed types were always serialized with contractless member names and string keys.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:90",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a generator or execution test where T has [MessagePackObject] and integer [Key] annotations (or explicit string keys different from member names), without a surrogate; assert that the generated formatter uses those keys rather than contractless member names."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No added test uses the required body-less declaration form. Both execution and diagnostic tests declare formatters with braces, so discovery or syntax handling that only works for body-bearing classes would go unnoticed.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypes.cs:10",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a successful generator test using `[GeneratedMessagePackFormatter] public partial class MyFormatter : IMessagePackFormatter<MyType>;` and verify that generation compiles and the formatter round-trips MyType."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The accessible-parameterless-constructor guard is not covered: every formatted class in the new tests has an implicit public parameterless constructor.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:76",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:76 remove-guard: `if (isClass && !type.InstanceConstructors.Any(c => c.Parameters.Length == 0 && compilation.IsSymbolAccessibleWithin(c, formatter))) { ... }` -> delete the guard; expected to survive because no test formats a class without an accessible parameterless constructor or expects MsgPack003 on this path."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The duplicate-surrogate-key rejection has no test; all successful and failing surrogate fixtures use distinct keys.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:199",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:199 remove-guard: `if (!claimedKeys.Add(key)) { ... }` -> delete the guard; expected to survive because no fixture assigns the same integer or string key to two surrogate members and expects MsgPack006."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The missing-or-invalid-surrogate-key guard is untested: every non-ignored surrogate member in the tests has a valid integer or string [Key].",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:170",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:170 remove-guard: `if (key is not (int or string)) { ... }` -> delete the guard; expected to survive because no test has an unkeyed surrogate member and expects MsgPack004."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "There is no successful all-string-key surrogate case. The only successful surrogate uses integer keys, while the string-key fixture is rejected for mixing key kinds, so selection of string-key formatter generation is unverified.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:210",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:210 swap-boolean: `isIntKey = keyKindIsInt ?? false` -> `isIntKey = keyKindIsInt ?? true`; expected to survive because no valid surrogate contains only string keys and asserts map output."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Public field serialization is not exercised despite being part of the new attribute's documented contractless behavior; all external test members are properties.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:280",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:280 swap-boolean: `IFieldSymbol field => field.DeclaredAccessibility == Accessibility.Public && !field.IsReadOnly && !field.IsConst` -> `IFieldSymbol field => false`; expected to survive because every execution fixture uses properties and no test round-trips a public mutable field."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 13912,
+  "output_tokens": 5491,
+  "ms": 58459,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.124101
+}

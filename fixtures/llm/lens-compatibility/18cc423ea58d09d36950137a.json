@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Inverted condition in the second (property/field) path: `if (stringMembers.ContainsKey(member.StringKey)) { stringMembers.Add(...) }` only adds when the key already exists. This throws ArgumentException on duplicate string keys and never adds any string-keyed member, so those types get no members and the generated formatter is empty. The first hunk uses `!ContainsKey`, so the two paths are inconsistent.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Take a [MessagePackObject] class with two string-keyed members, e.g. [Key(\"a\")] int A; [Key(\"b\")] int B, in the second member-collection path. Generate and serialize with base and head. On head, string members are missing from the generated formatter, or a duplicate key throws, while base emits both keys. Also run the generator snapshot tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys skips members whose key kind mismatches. Previously these members fell through and were added to the member dictionaries. For types that mix key kinds, which is an error diagnostic, the generated output now drops members and can differ from base. Dedup via ContainsKey also silently drops the second member on a duplicate key, and the first member wins, so generated code changes for those types.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests with a type that has mixed int/string keys and one with duplicate keys. Compare the generated output between base and head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 6811,
+  "output_tokens": 643,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_016ZTRtoFx12DniTJbHDKck6"
+}

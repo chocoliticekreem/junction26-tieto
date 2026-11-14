@@ -1,0 +1,55 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The duplicate-key guard covers only half the cases. In the fields loop (second region), only `stringMembers.Add` is wrapped in `ContainsKey`. Between hunk 4 (new line 1145) and hunk 5 (new line 1173) no line changes, so the field-branch `intMembers.Add(member.IntKey, ...)` is unguarded and still throws ArgumentException. Example input: `[MessagePackObject] public class C { [Key(0)] public int First; [Key(0)] public int Second; }`. The generator fails with CS8785 and the analyzer path with AD0001, which is the same crash class this change removes for properties. A property and a field sharing an int key also still crashes.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1173",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeyMemberReceiptTests.DuplicateIntKeyOnFields_DoesNotThrow. It drives CSharpGeneratorDriver over two fields that both carry [Key(0)] and asserts GeneratorRunResult.Exception is null and no CS8785 is reported. It is expected to fail on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate keys are now silently dropped. With source generation enabled, `[Key(0)] public int First {get;set;}` plus `[Key(0)] public int Second {get;set;}` used to fail loudly (exception on Add). Now the second member is skipped with no diagnostic, and the generated formatter never serializes or deserializes `Second`. That is silent data loss, and it changes behaviour when SuppressSourceGeneration is unset, which the requirement says must not change. The same applies to duplicate string keys in both loops.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeyMemberReceiptTests.DuplicateIntKeyOnProperties_IsReportedOrBothMembersGenerated. It asserts that either an error diagnostic is reported or the generated formatter references `Second`. It is expected to fail on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Nothing in the change refers to SuppressSourceGeneration or the analyzer's handling of it. The diff only changes key bookkeeping in TypeCollector. If the 3.1.1 regression comes from how the analyzer behaves when generation is suppressed, rather than from an exception thrown on duplicate or mixed keys, the requirement stays unmet. This is a hunch from reading the diff, not a verified result.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "In TypeCollector.cs, the hunks at new lines 1008, 1023, 1039, 1148 and 1176 contain no reference to SuppressSourceGeneration. Check this with an analyzer test that sets `[assembly: GeneratedMessagePackResolver]`-style options with SuppressSourceGeneration=true and expects MsgPack004 on an un-keyed public member."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeyMemberReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeyMemberReceiptTests\n{\n    private static async Task<(GeneratorRunResult Result, ImmutableArray<Diagnostic> Diagnostics)> RunGeneratorAsync(string source)\n    {\n        var parseOptions = new CSharpParseOptions(Microsoft.CodeAnalysis.CSharp.LanguageVersion.CSharp7_3);\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = frameworkRefs.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.WithUpdatedParseOptions(parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out var diagnostics);\n        GeneratorRunResult result = driver.GetRunResult().Results.Single();\n        return (result, diagnostics);\n    }\n\n    [Fact]\n    public async Task DuplicateIntKeyOnFields_DoesNotThrow()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace TestNs\n            {\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n\n                [MessagePackObject]\n                public class DupFields\n                {\n                    [Key(0)]\n                    public int First;\n\n                    [Key(0)]\n                    public int Second;\n                }\n            }\n            \"\"\";\n\n        var (result, diagnostics) = await RunGeneratorAsync(source);\n\n        result.Exception.Should().BeNull(\"duplicate int keys on fields must not crash the type collector\");\n        diagnostics.Where(d => d.Id == \"CS8785\").Should().BeEmpty();\n    }\n\n    [Fact]\n    public async Task DuplicateIntKeyOnProperties_IsReportedOrBothMembersGenerated()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace TestNs\n            {\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n\n                [MessagePackObject]\n                public class DupProps\n                {\n                    [Key(0)]\n                    public int First { get; set; }\n\n                    [Key(0)]\n                    public int Second { get; set; }\n                }\n            }\n            \"\"\";\n\n        var (result, diagnostics) = await RunGeneratorAsync(source);\n\n        bool errorReported = result.Exception is not null\n            || diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error)\n            || result.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error);\n        bool secondGenerated = result.GeneratedSources.Any(s => s.SourceText.ToString().Contains(\"Second\"));\n\n        (errorReported || secondGenerated).Should().BeTrue(\"a member with a duplicate key must not be silently dropped from the generated formatter\");\n    }\n}\n",
+        "test_names": [
+          "DuplicateIntKeyOnFields_DoesNotThrow",
+          "DuplicateIntKeyOnProperties_IsReportedOrBothMembersGenerated"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 7737,
+  "output_tokens": 7638,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

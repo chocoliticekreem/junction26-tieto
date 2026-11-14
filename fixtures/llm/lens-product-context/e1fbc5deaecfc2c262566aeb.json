@@ -1,0 +1,56 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The early return for generic types whose OriginalDefinition has no syntax matches the ledger decision that metadata-only types are deliberately not analysed and get no formatter from the compiling assembly. The missing formatter and diagnostics for such types is deliberate, not a defect.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] Types from a referenced assembly are deliberately not analysed and get no formatter; a missing diagnostic or formatter for them is not a defect."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README and MsgPack004 docs state that diagnostics for referenced-assembly types are reported by the defining assembly. This is consistent with [L8]. However, the new early return runs for all generic types without syntax, and this includes non-MessagePackObject generics that previously went through collection (e.g. closed generics of metadata types with custom formatters are handled earlier, but other paths are now skipped). The docs claim of support is not backed by a generated formatter for the member's type; the doc states the type is usable, but the resolver gets no formatter registration for Item<int>.",
+        "location": "README.md:1639",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize Cmd with Item<int> member using the head-built generated resolver and verify a formatter for Item<int> is resolved at runtime (not FormatterNotRegistered); compare bytes against a dynamic-resolver round-trip."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "For a closed generic [MessagePackObject] struct from a referenced assembly, should the consuming assembly's generated resolver include a formatter for it (e.g. Item<int>), or rely on the defining assembly's resolver and the user to register it?",
+        "options": [
+          "Consumer resolver must generate a formatter for the closed generic (NativeAOT works out of the box)",
+          "Skipping is fine; the user must register the defining assembly's resolver"
+        ],
+        "why_it_matters": "The early return skips generating a formatter for Item<int>. Under the first answer this is a requirement gap for trimmed/NativeAOT apps (the issue's motivation). Under the second it is acceptable and consistent with [L8].",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Skip metadata-only generic types in CollectCore (early return before GetObjectInfo) and drop diagnostics not located in the compilation; no formatter is generated for the closed generic in the consumer."
+      },
+      {
+        "label": "B",
+        "summary": "Keep collecting closed generic metadata types and generate their formatter in the consuming assembly's resolver, making GetObjectInfo null-safe for missing syntax references (FirstOrDefault) instead of returning early."
+      }
+    ]
+  },
+  "input_tokens": 11559,
+  "output_tokens": 998,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

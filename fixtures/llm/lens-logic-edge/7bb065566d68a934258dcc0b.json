@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new GetPropertyIdentifierLocation helper still indexes DeclaringSyntaxReferences[0], so the BothStringAndIntKeyAreNull path continues to throw IndexOutOfRangeException for a property on a metadata symbol. For example, a referenced generic struct with [Key(null)] on a property, consumed as Item<int> by a source [MessagePackObject], still makes the analyzer throw instead of dropping the metadata diagnostic; the helper's documentation and return contract are also contradicted by its implementation.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a Lib assembly containing [MessagePackObject] generic struct Item<T> with a [Key(null)] property, reference its metadata image from an app containing [MessagePackObject] Cmd with an Item<int> keyed member, and run MessagePackGenerator plus all MessagePack analyzers. On head, MsgPack00xMessagePackAnalyzer throws AD0001/IndexOutOfRangeException at GetPropertyIdentifierLocation instead of completing cleanly."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataGenericStructDiagnosticsTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MetadataGenericStructDiagnosticsTests\n{\n    [Fact]\n    public async Task MetadataGenericStructWithNullKeyDoesNotCrashAnalyzer()\n    {\n        const string libSource = \"\"\"\n            using MessagePack;\n\n            namespace Lib;\n\n            [MessagePackObject]\n            public partial struct Item<T>\n            {\n                [Key(null)]\n                public string Value { get; set; } = \"\";\n            }\n            \"\"\";\n\n        const string appSource = \"\"\"\n            using MessagePack;\n            using Lib;\n\n            namespace App;\n\n            [MessagePackObject]\n            public partial class Cmd\n            {\n                [Key(0)]\n                public Item<int> Member { get; set; }\n            }\n            \"\"\";\n\n        var references = new List<MetadataReference>(\n            await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None));\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        var libCompilation = CSharpCompilation.Create(\n            assemblyName: \"Lib\",\n            syntaxTrees: new[] { CSharpSyntaxTree.ParseText(libSource, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references: references,\n            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using var libImage = new MemoryStream();\n        var emitResult = libCompilation.Emit(libImage);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n\n        var test = new VerifyCS.Test\n        {\n            LanguageVersion = LanguageVersion.Latest,\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(appSource);\n        test.TestState.AdditionalReferences.Add(MetadataReference.CreateFromImage(libImage.ToArray()));\n\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "MetadataGenericStructWithNullKeyDoesNotCrashAnalyzer"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 5662,
+  "output_tokens": 5408,
+  "ms": 62738,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.098106
+}

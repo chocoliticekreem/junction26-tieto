@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys skips mismatched-kind members, and duplicate keys are now silently dropped from intMembers/stringMembers instead of throwing. For invalid types that still reach generation (SuppressSourceGeneration unset or false), the generated formatter output changes: before, a mismatched member was either added or threw ArgumentException on a duplicate; now it is omitted. The diagnostic still fires, but the snapshot of generated code for invalid inputs, and anything compiled with warnings-as-errors off, differs. This is a behavior change for users who don't set SuppressSourceGeneration, which the acceptance criteria say must not change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests, with a new case for a [MessagePackObject] type that mixes int and string [Key]s and one with duplicate keys, using base and head. Compare the generated formatter output and any exceptions or diagnostics. The fix is intended to be limited to SuppressSourceGeneration=true, so any difference with it unset is a regression."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The diff only makes TypeCollector tolerate duplicate and mixed keys. It does not touch whatever disables the analyzer when SuppressSourceGeneration=true. The reported bug (the analyzer not running at all under that setting) may therefore not be fixed. The hunks show no gating change, so the requirement may be unmet. Duplicate-key diagnostics (KeysMustBeUnique) are still reported before the guarded add, which suggests the change targets a crash rather than the missing-diagnostics symptom.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1016",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Write an analyzer test with [MessagePackObject(SuppressSourceGeneration = true)] on a type missing [Key] (MsgPack004) and one with duplicate keys. Run it on head and assert the diagnostics are reported without exceptions. Check that it fails on base."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7191,
+  "output_tokens": 800,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01LRnr97VeVc8UU8nVuQdTKz"
+}

@@ -1,0 +1,76 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change generates a formatter for a type that comes from a referenced assembly. A context-free reviewer might see this as conflicting with TypeCollector skipping metadata-only types. Ledger L11 records that skipping as deliberate for implicit analysis, and the new path is an explicit opt-in via [GeneratedMessagePackFormatter]. It is a separate collector that leaves CollectCore untouched, and the check `type.DeclaringSyntaxReferences.IsEmpty` rejects a type that has no source declaration.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:60",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] types from referenced assemblies get no implicit formatter or diagnostics. The explicit attribute is a separate opt-in path."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new collector rejects every type with `DeclaringSyntaxReferences.IsEmpty`. That condition is true for any type from a referenced assembly, which is exactly the type this feature targets, so MsgPack021 is reported and no formatter is generated. The new tests only pass if the ExternalTypes reference is a ProjectReference. It is a ProjectReference, so the type still has source declarations in the test setup. A real NuGet or binary reference to Project A will fail.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:60",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile ExternalTypes to a DLL and reference it via a metadata reference (or PackageReference). Apply [GeneratedMessagePackFormatter] to a formatter for ExternalPerson. Expect a generated formatter, but the current code reports MsgPack021."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode uses a name-sorted order and ignores DataContract/MessagePackObject/Key attributes on T. The requirement says that if T carries MessagePack attributes they are honoured. No honouring of attributes on T exists in the collector (only surrogate attributes). This is an unmet acceptance criterion.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:100",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Format a type with [MessagePackObject] and [Key(1)]/[IgnoreMember] attributes via a generated formatter without a surrogate. Check that the bytes match the keys declared on the type."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new MsgPack019-022 diagnostics are reported by the generator through RegisterSourceOutput. The tests, however, use the generator test verifier, and the descriptors are registered in the analyzer's SupportedDiagnostics. The surrogate collector also reuses MsgPack003/005/006 descriptors, so the MsgPack005 expectation is the only evidence of coverage. There is no coverage for the NoDeserializingConstructor diagnostic.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Remove the parameterless-constructor check in GeneratedFormatterCollector.Collect. The tests still pass, so no test covers it."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the feature's default contractless mode honour MessagePack/DataContract attributes on T, given the issue discussion also offers a surrogate design?",
+        "options": [
+          "Honour attributes on T when present, and fall back to contractless when absent",
+          "Contractless only, with surrogate for customization (current)"
+        ],
+        "why_it_matters": "If the maintainer's 'use attributes if present' note is binding, ignoring them is a requirement miss. If the surrogate design replaces it, the current behaviour is acceptable.",
+        "area": "source-generator",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Contractless by default plus an optional SurrogateType property on the attribute. The surrogate's [Key]/[IgnoreMember] define keys, and attributes on T itself are not read."
+      },
+      {
+        "label": "B",
+        "summary": "No surrogate. The collector reads existing MessagePack/DataContract attributes on T when present and falls back to contractless for unattributed types. This drops the SurrogateType property and MsgPack022."
+      }
+    ]
+  },
+  "input_tokens": 29010,
+  "output_tokens": 1581,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

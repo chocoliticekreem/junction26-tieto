@@ -1,0 +1,50 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early return suppresses analysis as well as formatter generation. It runs before the member and type validation below it, so a suppressed type with an unannotated public member or an inaccessible type produces no MsgPack004 or MsgPack012 diagnostic, contrary to both the acceptance criteria and the newly added README contract. Validation must still run; only the collected formatter information should be discarded.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:713",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerTests.SuppressedType_MissingKey_ReportsMsgPack004 and SuppressedType_InaccessibleNestedType_ReportsMsgPack012. Each expects the named MsgPack diagnostic with SuppressSourceGeneration = true; the early return produces no such diagnostic, so the tests fail."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests\n{\n    [Fact]\n    public async Task SuppressedType_MissingKey_ReportsMsgPack004()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                public int {|MsgPack004:Value|} { get; set; }\n            }\n            \"\"\";\n\n        await RunAsync(source);\n    }\n\n    [Fact]\n    public async Task SuppressedType_InaccessibleNestedType_ReportsMsgPack012()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            class Outer\n            {\n                [MessagePackObject(SuppressSourceGeneration = true)]\n                class {|MsgPack012:MyObject|}\n                {\n                    [Key(0)]\n                    public int Value { get; set; }\n                }\n            }\n            \"\"\";\n\n        await RunAsync(source);\n    }\n\n    [Fact]\n    public async Task UnsuppressedType_MissingKey_StillReportsMsgPack004()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public partial class MyObject\n            {\n                public int {|MsgPack004:Value|} { get; set; }\n            }\n            \"\"\";\n\n        await RunAsync(source);\n    }\n\n    private static async Task RunAsync(string source)\n    {\n        var test = new VerifyCS.Test();\n        test.TestState.Sources.Add(source);\n        test.TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck;\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "SuppressedType_MissingKey_ReportsMsgPack004",
+          "SuppressedType_InaccessibleNestedType_ReportsMsgPack012",
+          "UnsuppressedType_MissingKey_StillReportsMsgPack004"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Suppression opts out only of formatter-dependent behavior. The collector must still perform runtime-contract validation such as MsgPack003, MsgPack004, MsgPack005, MsgPack012 and MsgPack015, omit MsgPack011, MsgPack016 and MsgPack017, and then return no formatter information. This is the behavior described by the new README section, but it requires moving the return until after validation rather than returning at line 713."
+      },
+      {
+        "label": "B",
+        "summary": "Suppression changes only whether source is emitted, while analyzer behavior remains exactly the same as for an unsuppressed type, as suggested by the broad requirement to keep reporting MsgPack0xx diagnostics and match 3.1.0. Under this reading, otherwise-applicable MsgPack011, MsgPack016 and MsgPack017 diagnostics must also remain, and the collected information is discarded only after all analysis has completed."
+      }
+    ]
+  },
+  "input_tokens": 5453,
+  "output_tokens": 5886,
+  "ms": 78057,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.104649
+}

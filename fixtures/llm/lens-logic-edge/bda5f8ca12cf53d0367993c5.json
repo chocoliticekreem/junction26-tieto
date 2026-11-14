@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new duplicate-key guards silently discard every member after the first with the same integer or string key, without reporting MsgPack007. For example, a [MessagePackObject] with two properties both annotated [Key(0)] now gets through TypeCollector without the duplicate-key diagnostic from the generator/collector path (the path relied on when source generation is suppressed). Two [Key(\"same\")] properties have the same problem. Avoiding the Dictionary.Add exception must not turn the invalid object into a silently accepted one.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run DuplicateKeyDiagnosticsReceiptTests.DuplicateKeysAreReported for both integer and string keys. It drives MessagePackGenerator over a MessagePackObject containing duplicate keys and asserts that the generator run contains MsgPack007; on head the guards drop the duplicate and the assertion fails."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeyDiagnosticsReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeyDiagnosticsReceiptTests\n{\n    [Theory]\n    [InlineData(false)]\n    [InlineData(true)]\n    public async Task DuplicateKeysAreReported(bool useStringKeys)\n    {\n        string key = useStringKeys ? \"\\\"same\\\"\" : \"0\";\n        string source = $$\"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class DuplicateKeyObject\n            {\n                [Key({{key}})]\n                public int First { get; set; }\n\n                [Key({{key}})]\n                public int Second { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        var frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = frameworkReferences\n            .Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n            .ToArray();\n        var compilation = CSharpCompilation.Create(\n            assemblyName: \"DuplicateKeyDiagnosticsReceipt\",\n            syntaxTrees: new[] { CSharpSyntaxTree.ParseText(source) },\n            references: references,\n            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator());\n        driver = driver.RunGenerators(compilation);\n\n        GeneratorDriverRunResult result = driver.GetRunResult();\n        result.Diagnostics.Should().Contain(\n            diagnostic => diagnostic.Id == \"MsgPack007\",\n            \"duplicate MessagePack keys must still be diagnosed rather than silently discarded\");\n    }\n}\n",
+        "test_names": [
+          "DuplicateKeysAreReported"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 4480,
+  "output_tokens": 7277,
+  "ms": 100823,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.122595
+}

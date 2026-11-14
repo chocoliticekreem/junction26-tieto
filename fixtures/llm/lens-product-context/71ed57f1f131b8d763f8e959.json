@@ -1,0 +1,96 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Requirement says ALL generated code must be decorated. The change decorates only formatter classes (object, string-key, enum, union). The generated resolver (GeneratedMessagePackResolver and its templates) and any other emitted types are not decorated. The README also says only 'generated formatters', so the scope is narrowed relative to the requirement.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshot tests and grep the generated resolver output (e.g. GeneratedMessagePackResolver.g.cs and resolver templates) for ExcludeFromCodeCoverage; expect it to be missing. Also extend CodeCoverageExclusionTests to include non-'Formatters.' files."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The test only checks files whose names start with 'Formatters.', so the resolver output is never asserted. The test claims 'every formatter' but cannot detect undecorated resolver code. The Count>=4 assertion is also weak.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:125",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Remove the attribute from the resolver template emission, or add it nowhere; the tests still pass, showing the resolver is unchecked."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The guard `#if !NETSTANDARD2_0 && !NETFRAMEWORK` is evaluated against the consumer's compilation symbols. The README claims behaviour for 'targets', but multi-target projects that define other symbols (e.g. UNITY, or older netcoreapp2.x / netcoreapp3.0 lacking the attribute before .NET 5) would still emit the attribute and fail to compile. The guard may be inexact, so the 'compiles on every supported target' criterion is not proven.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile generated output with a netcoreapp3.1 / Unity-like symbol set (no NETSTANDARD2_0 or NETFRAMEWORK defined) against a reference set lacking ExcludeFromCodeCoverage and assert no CS0234/CS0246."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change from `{` to `{\\r\\n` alters the emitted output for nesting types with constraints. It is unrelated to the requirement and changes formatting in snapshots beyond the attribute.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun snapshot tests and inspect snapshot diffs for nested generic-constraint types; changes unrelated to the attribute indicate scope creep."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README note is placed in the custom-formatter/resolver section, not in a generator-focused section. It says 'All generated formatters' while the requirement says all generated code, and it states no opt-out.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read README.md around line 1639 and compare against the requirement wording 'all generated code'."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the attribute be applied to all generated types, including the generated resolver, or only to formatters?",
+        "options": [
+          "All generated types, including resolvers",
+          "Formatters only"
+        ],
+        "why_it_matters": "If all types, the resolver templates need the attribute and the current change is incomplete. If formatters only, the change meets the intent and the README wording is fine.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      },
+      {
+        "text": "Should there be an opt-out setting for the attribute?",
+        "options": [
+          "Unconditional, no setting",
+          "Add an opt-out MSBuild/attribute setting"
+        ],
+        "why_it_matters": "The requirement allows either. Unconditional means the change is complete. An opt-out means a missing setting is a gap.",
+        "area": "docs",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditional, no setting. Decorate only the formatter classes (object, string-key, enum, union) with ExcludeFromCodeCoverage guarded by #if !NETSTANDARD2_0 && !NETFRAMEWORK. Update snapshots and the README."
+      },
+      {
+        "label": "B",
+        "summary": "Decorate every generated type, including the resolver and any other emitted classes, with ExcludeFromCodeCoverage. Add the attribute to the resolver template(s) and extend the test to cover non-formatter files. Optionally add an opt-out setting."
+      }
+    ]
+  },
+  "input_tokens": 9964,
+  "output_tokens": 1708,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

@@ -1,0 +1,250 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The change raises MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth from 500 to 5000. REQ-2283 is a generator/analyzer crash fix and asks for nothing like this. The change weakens the untrusted-data stack-depth guard: ledger L9 records that a 500-deep limit is deliberate. A 5000-deep hostile payload can now recurse ten times deeper, which risks a StackOverflow DoS that cannot be caught.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add a test asserting MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth == 500. Also deserialize a 1000-level nested array (0x91 repeated 1000 times, then 0xC0) with MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData) and expect MessagePackSerializationException. Both pass on base and fail on head."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "`MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth` was raised from 500 to 5000. This is unrelated to REQ-2283 and weakens the secure-by-default untrusted-data profile. Attacker-controlled payloads can now nest 10x deeper before rejection, which brings back stack-exhaustion risk (an uncatchable StackOverflowException in .NET) that the 500 limit was there to prevent (ledger L9 records the 500 depth limit).",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.UntrustedDataDepthLimitTests.UntrustedData_MaximumObjectGraphDepth_Is500. It asserts MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth == 500 and fails on head (5000)."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-3",
+    "lens": "logic-edge",
+    "claim": "The new wrapper drops every analyzer diagnostic whose location is not in source, including Location.None. `GetPropertyIdentifierLocation` uses `as PropertyDeclarationSyntax`, so a source-declared positional record property (its declaring syntax is a ParameterSyntax) gets a null location. Example: `[MessagePackObject] public record R([property: Key(null)] string A);` in the compiling assembly. That property's BothStringAndIntKeyAreNull error is now silently dropped by `ReportIfLocatedInCompilation`, even though the offending symbol is in this compilation. The same applies to any other diagnostic created with a null location for a source symbol: it is now dropped where it was reported before.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run the analyzer (CompilationWithAnalyzers with MsgPack00xMessagePackAnalyzer, LanguageVersion.Latest) on a source record `[MessagePackObject] public record R([property: Key(null)] string A);`. Assert that a diagnostic with descriptor MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull is reported. On head none is reported, because the null location is filtered out."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth raised from 500 to 5000, a tenfold increase unrelated to the generator crash requirement. It weakens the stack-overflow/DoS protection for untrusted data, and users on UntrustedData would silently accept much deeper graphs and risk stack exhaustion. The ledger (L9) records a stack depth limit of 500 as a deliberate security decision.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Assert MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth == 500, or deserialize a 600-deep nested array with UntrustedData: it throws InsufficientExecutionStackException/MessagePackSerializationException at base but succeeds at head. Also inspect stack usage at depth 5000 on a small-stack thread."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-2",
+    "lens": "compatibility",
+    "claim": "The reportDiagnostic wrapper now silently drops every diagnostic whose location is not in a syntax tree of the current compilation. This includes diagnostics with Location.None, which the old code could report (e.g. FirstOrDefault()?.GetLocation() returning null yields Location.None). It also covers any diagnostics with source locations from other compilations. Users may stop seeing MsgPack00x diagnostics that were previously reported, e.g. on global/project-level diagnostics.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run the analyzer tests for MsgPack003/004/005/etc. at base and head, including cases with partial types and types in another source tree or location-less diagnostics, and confirm the same diagnostics are reported. Add a test where a diagnostic is created with a null/None location."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "security-1",
+    "lens": "security",
+    "claim": "The change raises MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth from 500 to 5000. This is a tenfold loosening of the recursion/depth limit that protects against stack overflow when deserializing untrusted data. It is unrelated to the requirement, which concerns a generator/analyzer crash. A deeply nested payload now gets through up to 5000 nested levels, and the default stack may be exhausted before the limit trips. That is an uncatchable StackOverflow crash (DoS).",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Deserialize a payload nested about 4000 levels (e.g. arrays of arrays) with MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData). On the base build it throws InsufficientExecutionStackException at depth 500. On the head build it is accepted, or it overflows the stack on a small-stack thread. Also assert MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth == 500."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "security-2",
+    "lens": "security",
+    "claim": "The reportDiagnostic wrapper silently drops any diagnostic whose location is not in a syntax tree of the compilation. Several diagnostics are created with a null location, e.g. MemberNeedsKey, and for the BothStringAndIntKeyAreNull diagnostic, GetPropertyIdentifierLocation can now return null. A null location is Location.None, which is not in source. These diagnostics are discarded even for source types where the identifier cast fails, for example when the member is a field or the syntax is not a PropertyDeclarationSyntax. This can suppress user-protective diagnostics, such as MsgPack004 or the AOT key diagnostics, for source-declared members.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add an analyzer test where a source-declared member that lacks a Key is declared in a way that produces a null location, e.g. a partial or primary-constructor-synthesized property. Assert that the diagnostic is still reported. Compare against the base build."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "MessagePackSecurity.UntrustedData MaximumObjectGraphDepth raised from 500 to 5000. This is unrelated to the crash fix and loosens a stack-depth DoS limit. No test in the diff covers it, and ledger L9 records the 500 depth limit as a deliberate secure-by-default decision.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack/MessagePackSecurity.cs:38 off-by-one: 5000 -> 500 (revert); expected to survive because no test in the diff asserts UntrustedData.MaximumObjectGraphDepth or deep-graph rejection"
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The ReportIfLocatedInCompilation filter in the constructor has no test that proves it drops diagnostics. Tests only assert no crash and no warnings, so removing the guard (always report) would not fail them: the metadata-only struct's MemberNeedsKey diagnostic now has a null location and would be Location.None. Also, `diagnostic.Location.IsInSource` is the only thing being tested, and the Unkeyed test member is public so it would reach the path, but a null-location diagnostic would not necessarily make the analyzer test fail.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:239 remove-guard: reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(...) -> reportAnalyzerDiagnostic; expected to survive if the test harness does not flag Location.None diagnostics for the metadata struct"
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The condition in ReportIfLocatedInCompilation (IsInSource && ContainsSyntaxTree) is not tested for negation or for a positive case. The new tests have no case where a diagnostic in the compiling assembly's own source must still be reported (e.g. a same-assembly generic struct missing a key still raising MsgPack004/MemberNeedsKey), so negating or over-filtering would go unnoticed.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:1445 negate-condition: if (IsInSource && ContainsSyntaxTree) -> if (!(...)); expected to survive because no new test asserts an expected diagnostic is still reported for same-assembly types"
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "The BothStringAndIntKeyAreNull path (GetPropertyIdentifierLocation) has no test. The tests use keyed members and an unkeyed member only, so a metadata property with a null key attribute never exercises this line; reverting to DeclaringSyntaxReferences[0] would survive.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:985 delete-statement: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no test has a metadata property with [Key] having null int and string values"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-1",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L9] area=security: Recent history includes secure-by-default changes, a collision-resistant hash for untrusted data, a stack depth limit of 500 even for trusted data, and a revert to v2's insecure-by-default mode. (source: git log) (would-be finding: The change modifies MessagePackSecurity.UntrustedData MaximumObjectGraphDepth from 500 to 5000. This is unrelated to REQ-2283 and weakens a security default. The ledger records a stack depth limit of 500 even for trusted data as a deliberate hardening, and 5000 raises the stack-overflow/DoS risk on untrusted input.)",
+    "location": "src/MessagePack/MessagePackSecurity.cs:38",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L9] records the secure-by-default history and a stack depth limit of 500. Also run a test that deserializes a 1000-deep nested payload with MessagePackSecurity.UntrustedData and expects MessagePackSerializationException, which now fails to throw."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-2",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L8] area=analyzer, generator: Types that come from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly. In `TypeCollector.CollectCore`, after the custom-formatter, enum and generic checks, a non-generic type whose symbol is metadata-only exits with a bare `if (type.Locations[0].IsInMetadata) { return; }` (TypeCollector.cs:367-370), so no MsgPack003/004/005 diagnostic and no generated formatter appear for it. The defining assembly owns validating and formatting its own types (rationale inferred: the code has no comment). A missing diagnostic or formatter for such a type is not a defect. (source: src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367) (would-be finding: Metadata-only types are deliberately not analysed and get no diagnostics from the compiling assembly. Dropping diagnostics with no location in the compilation (ReportIfLocatedInCompilation) and the new docs saying the defining assembly reports its own problems are consistent with this convention.)",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1429",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L8] Types from a referenced assembly are deliberately not analysed; the defining assembly owns validation of its own types."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-3",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L8] area=analyzer, generator: Types that come from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly. In `TypeCollector.CollectCore`, after the custom-formatter, enum and generic checks, a non-generic type whose symbol is metadata-only exits with a bare `if (type.Locations[0].IsInMetadata) { return; }` (TypeCollector.cs:367-370), so no MsgPack003/004/005 diagnostic and no generated formatter appear for it. The defining assembly owns validating and formatting its own types (rationale inferred: the code has no comment). A missing diagnostic or formatter for such a type is not a defect. (source: src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367) (would-be finding: The docs state that a defining assembly reports diagnostics for its own members. For a closed generic from a NuGet package built before this analyzer existed, or built without the analyzer, no one ever reports. The README and MsgPack004.md claims are broader than what is guaranteed. The ledger covers this behavior, so this is low risk.)",
+    "location": "README.md:1641",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L8] The defining assembly owns validating and formatting its own types."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m5",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects linq-first at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation(); -> private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.First()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation();"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m6",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects logical-operator at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (diagnostic.Location.IsInSource || this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-suite-only-TypeCollector",
+    "lens": "test-quality",
+    "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239, 1448; the existing suite does",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:239 negate-condition: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> this.reportDiagnostic = reportAnalyzerDiagnostic is not null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic);; TypeCollector.cs:239 delete-statement: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> (statement deleted); TypeCollector.cs:1448 delete-statement: report(diagnostic); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

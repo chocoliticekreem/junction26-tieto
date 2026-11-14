@@ -1,0 +1,77 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "EnumTemplate guard is inverted relative to all other templates: it uses `#if NETSTANDARD2_0 || NETFRAMEWORK`, so the attribute is emitted only on targets where it is unavailable (compile error on netstandard2.0/net framework) and omitted on modern targets. This fails the requirement that all generated code is decorated and still compiles on every target.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run CodeCoverageExclusionTests.AllGeneratedTypesAreExcludedFromCodeCoverage and ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable; the enum formatter text will not contain the guard `#if !NETSTANDARD2_0 && !NETFRAMEWORK` and the unguarded-count assertion fails. Also compile generated enum formatter with NETSTANDARD2_0 defined."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "EnumTemplate.cs mirrors the inverted guard `#if NETSTANDARD2_0 || NETFRAMEWORK`, so the generated enum formatter is not excluded from coverage on modern targets.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshot tests and inspect enum formatter snapshots: attribute appears under the inverted guard instead of `!NETSTANDARD2_0 && !NETFRAMEWORK`."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests' first assertion checks only that the attribute string appears somewhere in the file, and the guard test counts only the two guarded forms. Neither catches the inverted enum guard unless the enum formatter is among generated files; the assertion wording does not verify the guard condition polarity for the enum case, so test coverage of this defect is weak.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:73",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Mutate the guard in the other templates to `#if NETSTANDARD2_0 || NETFRAMEWORK`; check that the tests fail. The enum template already has this mutation and should be caught by ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The guard is based on the preprocessor symbols NETSTANDARD2_0/NETFRAMEWORK, which is a guess about target availability. Netstandard2.1 and netcoreapp targets are covered, but the attribute is also unavailable on older targets like netstandard1.x. Also the TransformUtilities change from `{` to `{\\r\\n` alters output for all nested-type constraints, which is unrelated formatting churn.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun snapshot tests and diff nested-type-with-constraint snapshots to confirm only whitespace changes."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the ExcludeFromCodeCoverage attribute be emitted unconditionally for every generated type (with a fallback such as an internal polyfill on netstandard2.0), or only on targets where it exists?",
+        "options": [
+          "Guard with #if and omit on netstandard2.0/.NET Framework (current)",
+          "Emit a polyfill attribute so every target is excluded",
+          "Add an opt-out MSBuild/attribute setting"
+        ],
+        "why_it_matters": "The requirement says all generated code should be decorated. Under the guard, netstandard2.0 and .NET Framework consumers still skew coverage, so the requirement is not met there. A polyfill would satisfy it fully.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditionally decorate all generated formatters and resolvers (and their nested helper classes) with ExcludeFromCodeCoverage, guarded by #if so it is omitted on netstandard2.0/.NET Framework, with no setting."
+      },
+      {
+        "label": "B",
+        "summary": "Add an opt-out setting (e.g. a generator option or MSBuild property) that controls emission of the attribute, and either polyfill the attribute on netstandard2.0/.NET Framework or emit it on all targets, so all generated code is excluded by default."
+      }
+    ]
+  },
+  "input_tokens": 13133,
+  "output_tokens": 1632,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

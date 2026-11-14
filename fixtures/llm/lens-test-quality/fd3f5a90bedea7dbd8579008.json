@@ -1,0 +1,87 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The acceptance criterion that MessagePack attributes on the formatted type are honored has no test. Every formatted type in the execution tests is attribute-free, and the non-surrogate path always builds a contractless model, so attribute handling can be absent without any test failing.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:92",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a positive generator/execution test for a formatted type marked [MessagePackObject] with integer [Key] values and an [IgnoreMember] member. Assert the generated wire format uses those keys and excludes the ignored member; the current contractless-only path should fail this test."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test exercises the explicitly supported bodyless declaration form. All test formatters have braces, so a generator or partial-class check that rejects 'partial class F : IMessagePackFormatter<T>;' would go unnoticed.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:32",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a generator test using '[GeneratedMessagePackFormatter] public partial class MyFormatter : IMessagePackFormatter<MyType>;' and verify successful generation and compilation without a manually supplied body."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate string keys are never tested successfully: the only surrogate execution test uses integer keys, while the string-key surrogate unit test stops at the mixed-key diagnostic. Emitting the member name instead of the requested surrogate string key would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:211",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:211 mutation: stringKey: (string)key -> stringKey: target.Name; expected to survive because no successful surrogate test uses a string key different from the target member name. Add a surrogate with [Key(\"wire_name\")] on member Name and assert the serialized map contains wire_name and not Name."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The duplicate-surrogate-key rejection is untested. Existing surrogate tests use distinct keys or mixed key kinds, so deleting the uniqueness guard would not fail any added test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:202",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:202 remove-guard: if (!claimedKeys.Add(key)) -> no duplicate-key check; expected to survive because no test declares two surrogate members with the same integer key or the same string key. Add negative tests expecting MsgPack006 for both cases."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The exactly-one-formatter-interface check is tested only for zero interfaces. A formatter implementing IMessagePackFormatter<T> for two different types is not covered, allowing the upper-bound part of the guard to regress.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:57",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:57 negate-condition: formatterInterfaces.Length != 1 -> formatterInterfaces.Length == 0; expected to survive because FormatterMustImplementFormatterOfT supplies zero interfaces and no test supplies two. Add a two-interface formatter test expecting MsgPack020."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The accessible-parameterless-constructor validation has no negative test; the only invalid-data-type test covers an abstract class. Removing this guard would leave all added tests passing.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:78",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:78 remove-guard: delete the isClass/accessible-parameterless-constructor rejection; expected to survive because every constructible test type has an accessible parameterless constructor. Add a class with only a parameterized constructor and assert MsgPack003 at the formatter."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless field handling is completely untested: all external test members are properties. Thus public mutable fields could be omitted, or readonly fields included, without failing the round-trip and wire-shape assertions.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:285",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:285 swap-boolean: field.DeclaredAccessibility == Accessibility.Public && !field.IsReadOnly && !field.IsConst -> false; expected to survive because no external test type declares fields. Add public mutable, public readonly, private, and static fields and assert only the public mutable field is serialized and round-tripped."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 13795,
+  "output_tokens": 5083,
+  "ms": 56460,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.11763
+}

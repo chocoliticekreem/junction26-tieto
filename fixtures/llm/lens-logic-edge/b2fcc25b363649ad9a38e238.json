@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "When no surrogate is specified, the collector unconditionally creates contractless string-key members and never inspects MessagePack attributes on the formatted type or its members. Consequently, a referenced type marked [MessagePackObject] with [Key] or [IgnoreMember] is serialized using a name-keyed map containing every public read-write member, rather than the declared integer keys and membership, violating the acceptance criterion that MessagePack attributes be honoured.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:92",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run GeneratedFormatterReferencedAttributesTests.MessagePackObjectKeysOnReferencedTypeAreHonored. It compiles a referenced assembly containing [MessagePackObject] AttributedType with [Key(0)] Value, generates an annotated formatter in a consuming compilation, and requires the formatter to use WriteArrayHeader rather than WriteMapHeader. On head it fails because the generated formatter is contractless and string-keyed."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterReferencedAttributesTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterReferencedAttributesTests\n{\n    [Fact]\n    public async Task MessagePackObjectKeysOnReferencedTypeAreHonored()\n    {\n        ImmutableArray<MetadataReference> frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        ImmutableArray<MetadataReference> messagePackReferences = frameworkReferences.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpParseOptions parseOptions = new(LanguageVersion.Latest);\n\n        CSharpCompilation referencedCompilation = CSharpCompilation.Create(\n            \"ProjectA\",\n            new[]\n            {\n                CSharpSyntaxTree.ParseText(\n                    \"\"\"\n                    using MessagePack;\n\n                    [MessagePackObject]\n                    public class AttributedType\n                    {\n                        [Key(0)]\n                        public int Value { get; set; }\n                    }\n                    \"\"\",\n                    parseOptions),\n            },\n            messagePackReferences,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using MemoryStream referencedImage = new();\n        referencedCompilation.Emit(referencedImage).Success.Should().BeTrue();\n        MetadataReference referencedAssembly = MetadataReference.CreateFromImage(referencedImage.ToArray());\n\n        CSharpCompilation consumingCompilation = CSharpCompilation.Create(\n            \"ProjectB\",\n            new[]\n            {\n                CSharpSyntaxTree.ParseText(\n                    \"\"\"\n                    using MessagePack;\n                    using MessagePack.Formatters;\n\n                    [GeneratedMessagePackFormatter]\n                    public partial class AttributedTypeFormatter : IMessagePackFormatter<AttributedType>\n                    {\n                    }\n                    \"\"\",\n                    parseOptions),\n            },\n            messagePackReferences.Add(referencedAssembly),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(consumingCompilation, out _, out _, CancellationToken.None);\n\n        string[] formatterSources = driver.GetRunResult().Results\n            .SelectMany(result => result.GeneratedSources)\n            .Select(source => source.SourceText.ToString())\n            .Where(source => source.Contains(\"partial class AttributedTypeFormatter\", StringComparison.Ordinal))\n            .ToArray();\n\n        formatterSources.Should().ContainSingle();\n        string formatterSource = formatterSources.Single();\n        formatterSource.Should().Contain(\"WriteArrayHeader\");\n        formatterSource.Should().NotContain(\"WriteMapHeader\");\n    }\n}\n",
+        "test_names": [
+          "MessagePackObjectKeysOnReferencedTypeAreHonored"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 11311,
+  "output_tokens": 9239,
+  "ms": 129581,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.172518
+}

@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early return in CollectGeneric (`type.OriginalDefinition.DeclaringSyntaxReferences.IsEmpty`) fires for every closed generic type whose definition comes from a referenced assembly. That includes generic classes, which are 'ok' rows in the requirement and must keep working as before. The return happens before the closed-generic branch walks `type.TypeArguments` with CollectCore. Concrete input: lib declares `[MessagePackObject] public class Item<T> { [Key(0)] public T Value {get;set;} }`. App declares `[MessagePackObject] class Cmd { [Key(0)] public Item<Bad> Member {get;set;} }`, where `Bad` is an unattributed app class. On base, Bad was reached and MsgPack003 was reported. On head, Bad is never visited, so the error disappears and no formatter is collected for it. The same skip drops source enums, multi-dimensional arrays and closed source generics used only as type arguments of a lib generic. The app resolver then lacks those formatters at AOT runtime, which is the failure mode the requirement is about. The fix should skip only GetObjectInfo or the formatter for the metadata type, and still collect its type arguments.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.MetadataGenericTypeArgumentTests.UnattributedTypeArgumentOfReferencedGenericClass_StillReportsMsgPack003. It emits lib to a PE image, references it from app, runs all MessagePack analyzers and expects MsgPack003 for `Bad`. Head reports none."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The constructor now routes every analyzer diagnostic through ReportIfLocatedInCompilation, which silently drops any diagnostic whose location is null or not in a compilation syntax tree. This affects MemberNeedsKey (MsgPack004, an Error per L2) when a [MessagePackObject] type declared in the app inherits a public member without [Key] from a base class in a referenced assembly. Base crashed in this case. Head now reports nothing, so the app type compiles cleanly even though a serialized member has no key. Reporting at the derived type's identifier would keep the error. This also suppresses any other existing diagnostic that was created with a null location for a source type.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Lib: `public class Base { public int X {get;set;} }` (emitted as image). App: `[MessagePackObject] public class D : Base { [Key(0)] public int Y {get;set;} }`. Run the analyzers and assert a MsgPack004 is produced. Head produces none."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataGenericTypeArgumentTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MetadataGenericTypeArgumentTests(ITestOutputHelper logger)\n{\n    [Fact]\n    public async Task UnattributedTypeArgumentOfReferencedGenericClass_StillReportsMsgPack003()\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        string libSource = \"\"\"\n            using MessagePack;\n            namespace Lib\n            {\n                [MessagePackObject]\n                public class Item<T>\n                {\n                    [Key(0)]\n                    public T Value { get; set; }\n                }\n            }\n            \"\"\";\n\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(libSource) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        using MemoryStream ms = new();\n        var emitResult = lib.Emit(ms);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n        MetadataReference libRef = MetadataReference.CreateFromImage(ms.ToArray());\n\n        string appSource = \"\"\"\n            using MessagePack;\n            using Lib;\n            namespace App\n            {\n                [MessagePackObject]\n                public class Cmd\n                {\n                    [Key(0)]\n                    public Item<Bad> Member { get; set; }\n                }\n\n                public class Bad\n                {\n                    public int X { get; set; }\n                }\n            }\n            \"\"\";\n\n        CSharpCompilation app = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(appSource) },\n            references.Append(libRef),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly\n            .GetTypes()\n            .Where(t => typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && !t.IsAbstract && !t.ContainsGenericParameters && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n        Assert.NotEmpty(analyzers);\n\n        ImmutableArray<Diagnostic> diagnostics = await app.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n        foreach (Diagnostic d in diagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack003\");\n    }\n}\n",
+        "test_names": [
+          "UnattributedTypeArgumentOfReferencedGenericClass_StillReportsMsgPack003"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 11807,
+  "output_tokens": 9827,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

@@ -1,0 +1,76 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change deliberately generates formatters for types from referenced assemblies via a separate GeneratedFormatterCollector, while TypeCollector.CollectCore still skips metadata-only types. This is consistent with L15, which says the TypeCollector skip is deliberate. The new path is opt-in and bypasses that skip.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L15] TypeCollector.cs:367 skips metadata-only types and emits no diagnostic or formatter. The new collector is a separate explicit opt-in path and does not alter that skip."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change edits the runtime Timestamp writer in MessagePackPrimitives.Writers.cs, which is unrelated to REQ-2129. It flips the mask from 0xffffffff00000000 to 0x00000000ffffffff. The timestamp32 fast path is used only when the upper 32 bits are zero, so the new mask selects the wrong encoding and corrupts DateTime serialization. Numeric serialization is recorded as bug-prone in L16.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Serialize a DateTime with nonzero nanoseconds, such as 2020-01-01T00:00:00.5Z, and one with zero nanoseconds. Round-trip both, and byte-diff against the base build. The existing timestamp tests should fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README and the attribute doc describe the contractless and surrogate-less formatter as serializing members under their names as string keys. Members are sorted by name and given int keys, but those are ignored for string-key maps. Contractless mode in this product also honours attributes on T, per the requirement: 'If T does carry MessagePack attributes, they are honoured'. The collector ignores [DataContract], [MessagePackObject], [Key] and [IgnoreMember] on T entirely. This is a requirement gap.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an external type with [IgnoreMember] or [Key(0)] members in a MessagePack-referencing library. Declare a generated formatter with no surrogate and assert that the attributes are honoured. It currently serializes all public members as string keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new MsgPack019-022 diagnostics are added to the analyzer's release notes and docs. However, the diagnostics are raised only from the generator, not from MsgPack00xMessagePackAnalyzer's analysis. The analyzer's Initialize registers no action for them, so the analyzer never reports the diagnostics it declares. This is a convention mismatch.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:378",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare the SupportedDiagnostics additions with the Initialize registrations. Check whether any code fix or analyzer action consumes MsgPack019-022."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the contractless default for a type with no attributes serialize only public read-write members as string-keyed maps? Or should it match ContractlessStandardResolver, which includes read-only members?",
+        "options": [
+          "Public read-write only, as implemented",
+          "Match ContractlessStandardResolver"
+        ],
+        "why_it_matters": "If the intent is parity with ContractlessStandardResolver, skipping read-only members is a behavioural divergence. If the requirement's 'only public members' prerequisite is enough, it is fine.",
+        "area": "source-generator",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Implement the surrogate-type design, with [GeneratedMessagePackFormatter(SurrogateType=...)]. The default is contractless over public read-write members, with the generator emitting into the user's partial class."
+      },
+      {
+        "label": "B",
+        "summary": "Support attributes on T, or an attribute-copy design. Alternatively use the requirement's other proposals: DataMember attributes, user-defined attribute copies, or post-initialization source-generated attributes. Without a surrogate, the generator would read the existing MessagePack, DataContract and DataMember attributes on T, which requires reading them from the referenced type."
+      }
+    ]
+  },
+  "input_tokens": 29491,
+  "output_tokens": 1620,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

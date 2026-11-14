@@ -1,0 +1,76 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change generates a formatter for a type from a referenced assembly, which looks like it contradicts the TypeCollector rule that metadata-only types get no formatter from the compiling assembly. Ledger L11 says that rule is deliberate and covers only automatic collection. The new path is explicit opt-in through a partial formatter class and never goes through CollectCore, so the two do not conflict.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] metadata-only types are deliberately skipped by TypeCollector.CollectCore. GeneratedFormatterCollector is a separate explicit opt-in path, so there is no contradiction."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode is the default for types without attributes, with no [MessagePackObject] required. This looks like it breaks the explicitness convention in L8, but the opt-in [GeneratedMessagePackFormatter] attribute is itself the explicit marker, so the convention holds.",
+        "location": "README.md:1636",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] requiring MessagePackObject is intentional to enforce explicitness. The explicit [GeneratedMessagePackFormatter] attribute provides that explicitness."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "IsPublicReadWrite treats a public field as writable only when field.IsReadOnly is true, which is inverted. Public mutable fields are skipped and readonly fields are included. This contradicts the documented contractless behaviour of serializing public read-write properties and fields. Readonly fields will fail at deserialization, or the generated code will not compile.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:279",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an external type with `public int F;` and a formatter for it. Assert that F round-trips; the test currently fails. Also add a type with `public readonly int R;` and check that the generated code compiles."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new MsgPack019-022 diagnostics are only reported by the source generator via ReportDiagnostic. They are not added to the analyzer, and the pre-existing MsgPack00xMessagePackAnalyzer was not changed to report them. The diagnostic IDs and descriptors are declared there, so descriptor and report locations are inconsistent.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:112",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare the SupportedDiagnostics list in MsgPack00xMessagePackAnalyzer with where the generator reports the diagnostics. Check whether the analyzer ever reports MsgPack019-022."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the generated formatter honour MessagePack attributes (e.g. [MessagePackObject], [Key], [DataContract]) when they are present on T, as the requirement says?",
+        "options": [
+          "Yes: honour attributes on T, and fall back to contractless only when none are present",
+          "No: ignore them, and use contractless mode or a surrogate only"
+        ],
+        "why_it_matters": "The requirement says that if T carries attributes they are honoured. The change ignores attributes on T entirely. If honouring is required, the change does not meet the requirement; if the surrogate design supersedes it, the current behaviour is fine.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Implement the surrogate-type design: add SurrogateType to the attribute, match keys by member name, and use contractless mode when no surrogate is given. Attributes present on T itself are not read."
+      },
+      {
+        "label": "B",
+        "summary": "Implement only contractless mode and honour attributes already present on T. Drop SurrogateType, so the collector reads [Key], [IgnoreMember] and [DataContract] from T and falls back to contractless when none exist."
+      }
+    ]
+  },
+  "input_tokens": 28982,
+  "output_tokens": 1449,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

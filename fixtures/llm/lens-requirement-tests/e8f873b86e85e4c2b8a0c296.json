@@ -1,0 +1,66 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "None of the TypeCollector hunks reads or branches on SuppressSourceGeneration. They only change the key-collection loops: they skip members whose key kind does not match, and they skip duplicate keys instead of calling Dictionary.Add, which throws. Unless the base failure was exactly that analyzer crash, the type is probably still excluded early when SuppressSourceGeneration = true, so MsgPack004 and the other rules are still not reported. The core requirement may be unmet.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerTests.SuppressedType_MemberWithoutKey_ReportsMsgPack004 on head. It must pass on head (and fail on base). If it fails on head, the fix does not restore analysis of suppressed types."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change removes the `case <= byte.MaxValue` Str8 branch from the string-header writer, which is unrelated to the requirement. Strings of 32-255 UTF-8 bytes now get a 3-byte Str16 header instead of a 2-byte Str8 header. That changes serialized bytes for every user, whether or not SuppressSourceGeneration is set, which contradicts 'Behaviour with SuppressSourceGeneration unset or false does not change'. Any caller that pre-computes the header length for this range as 2 bytes would then write misaligned output.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:916",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a 100-character ASCII string with MessagePackSerializer.Serialize<string> using base-built and head-built MessagePack.dll and compare the bytes. Base starts 0xD9 0x64; head starts 0xDA 0x00 0x64. Also round-trip strings of length 32, 200 and 255 through MessagePackWriter.WriteString and the reader to check for corruption."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README asserts behaviour that no code hunk implements. It says suppressed types are validated for MsgPack003/004/005/012/015 and are exempt from MsgPack011/016/017. The diff has no code that gates rules on SuppressSourceGeneration, so the docs may describe behaviour the analyzer does not have.",
+        "location": "README.md:1620",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests on head. Also add a non-partial suppressed type with a private [Key] member and AllowPrivate = true, and assert that MsgPack011 is absent and MsgPack015 behaves as documented."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public SuppressSourceGenerationAnalyzerTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task SuppressedType_MemberWithoutKey_ReportsMsgPack004()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace TestNs\n            {\n                [MessagePackObject(SuppressSourceGeneration = true)]\n                public class MyObject\n                {\n                    [Key(0)]\n                    public int A { get; set; }\n\n                    public int B { get; set; }\n                }\n            }\n            \"\"\";\n\n        ImmutableArray<Diagnostic> diagnostics = await this.GetAnalyzerDiagnosticsAsync(source);\n\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack004\");\n    }\n\n    [Fact]\n    public async Task SuppressedType_DuplicateKey_ReportsMsgPack005()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace TestNs\n            {\n                [MessagePackObject(SuppressSourceGeneration = true)]\n                public class MyObject2\n                {\n                    [Key(0)]\n                    public int A { get; set; }\n\n                    [Key(0)]\n                    public int B { get; set; }\n                }\n            }\n            \"\"\";\n\n        ImmutableArray<Diagnostic> diagnostics = await this.GetAnalyzerDiagnosticsAsync(source);\n\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack005\");\n    }\n\n    private async Task<ImmutableArray<Diagnostic>> GetAnalyzerDiagnosticsAsync(string source)\n    {\n        var references = new List<MetadataReference>();\n        references.AddRange(await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None));\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        SyntaxTree tree = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest));\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { tree },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly\n            .GetTypes()\n            .Where(t => typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && !t.IsAbstract && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n\n        Assert.NotEmpty(analyzers);\n\n        ImmutableArray<Diagnostic> diagnostics = await compilation.WithAnalyzers(analyzers).GetAllDiagnosticsAsync();\n        foreach (Diagnostic d in diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        return diagnostics;\n    }\n}\n",
+        "test_names": [
+          "SuppressedType_MemberWithoutKey_ReportsMsgPack004",
+          "SuppressedType_DuplicateKey_ReportsMsgPack005"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "This is the reading the README implements. For SuppressSourceGeneration = true types, the analyzer reports only the contract rules: MsgPack003, 004, 005, 012 and 015. It skips MsgPack011 (partial class) and the AOT-only MsgPack016 and 017, because no formatter is generated. The collector must still visit suppressed types for those contract checks and gate the 011/016/017 reports on !SuppressSourceGeneration."
+      },
+      {
+        "label": "B",
+        "summary": "'The analyzer still reports its diagnostics' means every MsgPack0xx rule fires for suppressed types exactly as for normal types, matching 3.1.0. The only difference is that no formatter source is emitted. This minimal edit of the change removes any SuppressSourceGeneration gating from the diagnostic paths (including 011/016/017) and applies the flag only where formatter source is added to the generator output. The README paragraph excluding MsgPack011/016/017 is then dropped."
+      }
+    ]
+  },
+  "input_tokens": 9773,
+  "output_tokens": 7508,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01Dbg3xnSVbJt6wK1KGzecTi"
+}

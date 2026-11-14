@@ -1,0 +1,65 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "New analyzer diagnostics MsgPack019-022 are added as Errors, but the generator and analyzer registrations only apply to types annotated with the new attribute. Separately, MsgPack022 is declared in SupportedDiagnostics but the diff shows no AnalyzerReleases.Unshipped.md update; RS2008 (release tracking) is typically an error/warning in this repo, so users' and the repo's own builds can break.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:318",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build MessagePack.SourceGenerator and check for RS2000/RS2008 warnings about MsgPack019-022 not being in AnalyzerReleases.Unshipped.md."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless members are sorted ordinally by name and written with string keys, but the generated code uses IntKey = index and isIntKey=false. Contractless mode in MessagePack's dynamic ContractlessStandardResolver keeps declaration order for string-key maps. Since the formatter output is generated for a user-selected type, the bytes may differ from ContractlessStandardResolver on the same type. A user switching an existing resolver-based setup to the generated formatter would see different map key order, and field order matters to some consumers.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:132",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a sample class with public properties declared in non-alphabetical order (Zeta, Alpha) using ContractlessStandardResolver and the generated formatter, and compare the bytes."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The generated formatter emits `partial class` with no accessibility modifier, so it inherits the user's declaration. However, the template wraps the class in the nesting types/namespace of Info.Formatter, and the generated resolver (ResolverTemplate) probably still instantiates it as `new Formatter()`. A user-declared formatter that is private/nested or has no parameterless constructor will produce a resolver compile error in user projects. The diagnostics do not check this.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with a [GeneratedMessagePackFormatter] class declared with an explicit private constructor or nested private, and verify the generated resolver compiles."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated formatter is registered in the generated resolver, but the resolver may also carry other registrations for the same data type if the type is itself a [MessagePackObject] type in the same assembly. This produces duplicate registrations or two formatters for one type, and a changed formatter selection in existing projects only if the new attribute is used. Existing code is not affected without opting in.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:70",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check how modelPerType merging handles two ObjectSerializationInfo with the same DataType."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should contractless generated formatters serialize members in declaration order or sorted by name?",
+        "options": [
+          "Declaration order, matching ContractlessStandardResolver",
+          "Sorted by name (deterministic across compilers)"
+        ],
+        "why_it_matters": "If parity with the dynamic contractless resolver is expected, the sorted order is a wire-compat defect; if deterministic ordering is intended, it is fine.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 18021,
+  "output_tokens": 1328,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

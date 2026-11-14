@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "DepthStep changed from `>=` to `>`, so the object graph depth limit is now off by one: a graph one level deeper than MaximumObjectGraphDepth is accepted and no longer throws InsufficientExecutionStackException. This is unrelated to the SuppressSourceGeneration analyzer fix. Users, including those with a lowered limit, would see the changed deserialization behavior without opting in. It also weakens a security limit (see ledger L9 on the stack depth limit).",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Set MessagePackSecurity.Default.WithMaximumObjectGraphDepth(N), and deserialize a nested array of depth N+1 with the base build and the head build. Base throws InsufficientExecutionStackException. Head succeeds. Also check that the boundary at depth N behaves the same on both builds."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys skips mixed-key members. The generated formatter and the generated resolver's member list change for types that mix key kinds: previously the member was still added, and now it is dropped. The diagnostic is an Error (MsgPack005 class), so the build fails either way, but snapshot tests of generator output for such types would differ. If the diagnostic is not reported, for example in a suppressed-diagnostics project, the generated output silently loses members.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests against a [MessagePackObject] type that mixes [Key(0)] and [Key(\"a\")] members with base and head, and diff the generated formatter output."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate int or string keys are now silently deduplicated with first-wins. The collector previously threw ArgumentException on Add, so the generator crashed. Now it emits a formatter that omits the later member. If the duplicate-key diagnostic (MsgPack006) is not reported on this path, generated output changes and members are dropped without any error. It is also not clear that the diagnostic is still reported in analyzer builds.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer/generator test with two members sharing [Key(0)] on a type with SuppressSourceGeneration unset. Assert that MsgPack006 is reported and that generation does not emit a formatter that silently drops the second member. Run on base and head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7199,
+  "output_tokens": 974,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_016ZTRtoFx12DniTJbHDKck6"
+}

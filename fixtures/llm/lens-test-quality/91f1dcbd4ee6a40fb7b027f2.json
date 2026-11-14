@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The last of the six TypeCollector edits inverts the guard: the string-key add in the second member-collection loop uses `if (stringMembers.ContainsKey(...))` instead of `!ContainsKey`. A non-duplicate string key is therefore never added, and a duplicate hits Add and throws ArgumentException. The tests only exercise the string-key path of this loop with duplicates in a SuppressSourceGeneration type (DuplicateStringKeysAreReportedWithoutAnalyzerFailure), and that duplicate case may not reach this branch or may only fail through an analyzer exception. No test covers string-key members through this loop with non-duplicate keys.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179 negate-condition: if (stringMembers.ContainsKey(member.StringKey)) -> if (!stringMembers.ContainsKey(member.StringKey)); expected to survive because every string-key test uses a duplicate-key layout or an attribute-only type that never checks the resulting member list. Also add a test with a valid string-keyed type and assert no analyzer exception and correct generated output."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `continue` guards added after DoNotMixStringAndIntKeys (lines ~1008 and ~1148) are not clearly covered. MixedKeyKindsAreReportedWithoutAnalyzerFailure only asserts the diagnostic is reported, so removing the `continue` would likely still pass. Without the `continue`, the member falls through to key handling, which is the bug it guards against, but the test does not pin the member-skipping behavior.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 delete-statement: `continue;` -> removed; expected to survive because MixedKeyKindsAreReportedWithoutAnalyzerFailure only checks the MsgPack005 markup and the downstream fallthrough is guarded by the ContainsKey check. Same for line 1148."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests do not show the fix works for the reported bug. With SuppressSourceGeneration=true the analyzer previously failed or skipped; the added analyzer tests (MsgPack004/015/003) may already pass on base if the base reports these diagnostics. No test pins the base-versus-head behavior difference, and the ExecutionTests round-trip test passes trivially through the dynamic resolver on base as well.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:15",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests and SuppressedSourceGenerationTests against base-built code; any that pass on base do not reproduce the bug. The change contains no source hunk that handles the suppress flag, so the tests rely on unseen code."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed uses a TestCode with no expected diagnostics, so it passes if the analyzer reports nothing at all. It would not detect an analyzer that is silent for everything, which is the reported bug. It also covers only the simplest layout and never pairs an unrelated reported diagnostic with the suppressed ones.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:166",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Mutate the analyzer to skip all diagnostics for suppressed types; expected to survive in this test because it asserts only the absence of diagnostics, though the other tests would catch the broad case."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9992,
+  "output_tokens": 1475,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01LRnr97VeVc8UU8nVuQdTKz"
+}

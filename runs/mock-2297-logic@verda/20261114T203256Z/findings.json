@@ -1,0 +1,116 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "Enum formatters use the inverse target-framework condition from every other template. Consequently, on modern targets such as net8.0 the enum formatter's ExcludeFromCodeCoverage attribute is inactive, so not all generated code is decorated. On NETSTANDARD2_0 or NETFRAMEWORK it is instead active even though the change identifies those as targets where the attribute is unavailable, breaking the supported-target compilation criterion there.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:9",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.EnumExcludeFromCodeCoverageRequirementTests.EnumFormatter_HasActiveExcludeFromCodeCoverageAttributeOnModernTargets. It parses the generated enum formatter with modern-target preprocessor symbols and fails on head because the attribute occurs only inside inactive '#if NETSTANDARD2_0 || NETFRAMEWORK' text. Additionally, compiling that generated formatter with NETSTANDARD2_0 against netstandard2.0 references exercises the reversed availability branch."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The enum formatter's preprocessor condition is inverted. On modern targets, including .NET 8, the generated EnumFormatter has no ExcludeFromCodeCoverage attribute, while NETSTANDARD2_0 and NETFRAMEWORK are the only targets where the attribute is emitted. This misses enum formatters in the requested coverage and risks using the attribute on precisely the legacy targets for which every other template suppresses it.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:9",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Generate a formatter for an enum referenced by a MessagePackObject using normal .NET 8 preprocessor symbols and inspect the active attributes on the generated enum formatter class. EnumFormatter_IsExcludedFromCodeCoverage_OnModernTargets demonstrates that ExcludeFromCodeCoverage is absent."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "Applying ExcludeFromCodeCoverage unconditionally to the generated partial resolver causes CS0579 when the consumer has already applied the same attribute to their partial resolver declaration. Attributes from partial declarations are combined, and ExcludeFromCodeCoverageAttribute does not allow multiples, so existing user workarounds become compile errors.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:15",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Compile a [GeneratedMessagePackResolver] partial class that is also annotated with [ExcludeFromCodeCoverage]. ResolverWithUserSuppliedCoverageAttributeStillCompiles expects no generated-code compilation diagnostics and fails on head with the duplicate-attribute error."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "Enum formatters use the inverse framework condition from every other template: the attribute is emitted only for NETSTANDARD2_0/NETFRAMEWORK and omitted on modern target frameworks. Consequently, enum generated code is not decorated with ExcludeFromCodeCoverage for those targets.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Regenerate the source-generator snapshots for an enum formatter on a modern target (for example net8.0) and on netstandard2.0; verify that the modern output contains [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage] on the formatter and that EnumTemplate.cs and EnumTemplate.tt use the same condition."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "The enum formatter template reverses the target-framework guard: it emits ExcludeFromCodeCoverage only for NETSTANDARD2_0 or NETFRAMEWORK, where the attribute is unavailable, and omits it on other targets. This breaks enum formatter coverage exclusion on modern targets and can make generated enum formatters fail to compile on the older targets.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:10",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run CodeCoverageExclusionTests.ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable; the generated enum formatter contains the attribute behind '#if NETSTANDARD2_0 || NETFRAMEWORK', so its guardedCount is zero and the assertion fails. Also inspect that generated enum source: the preprocessor symbol must be negated to match the other templates."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The new tests do not exercise EnumTemplate, so its inverted preprocessor condition survives: the attribute is emitted only on NETSTANDARD2_0/NETFRAMEWORK instead of being excluded there. MyEnum is not referenced by any generated formatter input, so neither test inspects enum output.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:9",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:9 negate-condition: #if NETSTANDARD2_0 || NETFRAMEWORK -> #if !NETSTANDARD2_0 && !NETFRAMEWORK; expected to survive because the test's standalone, unreferenced MyEnum produces no enum formatter, leaving EnumTemplate output unexamined."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The tests check only that each generated file contains at least one guarded attribute, not that every generated type has one. Removing the attribute from FormatterCache (and likewise the resolver's GetFormatterHelper) leaves both the per-file containment assertion and the equal attribute/guard counts passing.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:32",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:32 delete-statement: [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage] -> remove the attribute and its guard; expected to survive because the enclosing resolver class still supplies the one attribute required by AllGeneratedTypesAreExcludedFromCodeCoverage, and ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable only compares file-wide counts."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The TransformUtilities constrained-nesting newline change has no coverage in the added test source, which contains no nested generic types with constraints. Restoring the old constrained branch would not affect any output inspected by these tests.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: anyConstraints ? \"{\\r\\n\" : \" {\\r\\n\" -> anyConstraints ? \"{\" : \" {\\r\\n\"; expected to survive because the added tests declare no constrained nested generic type and therefore never execute the changed true branch."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  }
+]

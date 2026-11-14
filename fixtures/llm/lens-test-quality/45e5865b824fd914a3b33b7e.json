@@ -1,0 +1,77 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The requirement to honour MessagePack attributes already present on T is neither implemented nor tested. When no surrogate is supplied, the collector always builds contractless members, and every external-type fixture is deliberately attribute-free, so the tests cannot detect ignored [MessagePackObject]/[Key] contracts.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:89",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an external type annotated with [MessagePackObject] and non-consecutive integer [Key] values plus an [IgnoreMember] property, generate its formatter without SurrogateType, and assert the array header, round-trip values, and ignored member. The current contractless implementation should emit a string-keyed map instead and fail the test."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The explicit bodyless-declaration acceptance criterion has no test: all new formatter declarations use brace bodies. A regression specific to 'partial class X : IMessagePackFormatter<T>;' would therefore go unnoticed.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a generator test whose only formatter declaration is '[GeneratedMessagePackFormatter] public partial class MyFormatter : IMessagePackFormatter<MyType>;' and verify that generation completes without MsgPack019 or compiler errors and supplies Serialize/Deserialize."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Public-field serialization in contractless mode is untested because ExternalPerson, ExternalPoint, and ExternalWidget expose only properties. The field arm of IsPublicReadWrite can stop accepting fields without failing any new test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:280",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:280 negate-condition: field.DeclaredAccessibility == Accessibility.Public && !field.IsReadOnly && !field.IsConst -> false; expected to survive because no external fixture declares a public instance field."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No negative test covers duplicate surrogate keys, so removal of the uniqueness guard is not detected despite the risk of generating an invalid or ambiguous wire contract.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:199",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:199 remove-guard: if (!claimedKeys.Add(key)) { report KeysMustBeUnique; return null; } -> remove the complete block; expected to survive because all test surrogates use unique keys and no test expects MsgPack006 for a surrogate."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate members without a valid integer or string [Key] are not tested. Existing negative cases all have a valid key and fail later on member matching or mixed key kinds, leaving the MemberNeedsKey guard uncovered.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:170",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:170 remove-guard: if (key is not (int or string)) { report MemberNeedsKey; return null; } -> remove the complete block; expected to survive because no test surrogate has an unkeyed, non-ignored member or an invalid key argument type."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The accessible parameterless-constructor requirement has no negative test. Removing its guard survives because all successful fixtures have implicit public parameterless constructors.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:75",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:75 remove-guard: if (isClass && !type.InstanceConstructors.Any(c => c.Parameters.Length == 0 && compilation.IsSymbolAccessibleWithin(c, formatter))) { report NoDeserializingConstructor; return null; } -> remove the complete guard; expected to survive because no test formatter targets a class lacking an accessible parameterless constructor."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 13669,
+  "output_tokens": 4917,
+  "ms": 64148,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.114762
+}

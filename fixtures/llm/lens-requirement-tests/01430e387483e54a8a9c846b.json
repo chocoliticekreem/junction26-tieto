@@ -1,0 +1,76 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "No hunk touches how `SuppressSourceGeneration` is handled. The TypeCollector edits only add `continue` after the mixed-key diagnostic and de-duplicate keys before `Dictionary.Add`, and that applies to every type. Nothing in the diff makes the analyzer visit types marked `[MessagePackObject(SuppressSourceGeneration = true)]` again. So the core acceptance criterion (MsgPack0xx diagnostics are reported for such types) does not appear to be met.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerTests on head. If PublicPropertyWithoutKey_StillReportsMsgPack004 and PublicFieldWithoutKey_StillReportsMsgPack004 fail because the expected MsgPack004 is missing, the requirement is not met."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`DepthStep` changed from `reader.Depth >= MaximumObjectGraphDepth` to `>`. This lets the reader go one level deeper than the configured maximum before it throws, which weakens the stack-depth protection (ledger L9: a depth limit of 500 even for trusted data). The requirement is an analyzer bug, so this runtime security change is out of scope and changes behaviour for every user.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Deserialize nested arrays of exactly MaximumObjectGraphDepth+1 levels (e.g. options.WithSecurity(MessagePackSecurity.TrustedData.WithMaximumObjectGraphDepth(2)) and bytes for [[[ ]]] read as object). Base throws InsufficientExecutionStackException (wrapped in MessagePackSerializationException); head succeeds. Also mutation: reverting `>` to `>=` should be killed by an existing depth test, which shows the change is behavioural."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README states that for suppressed types the analyzer reports MsgPack003/004/005/012/015 but not MsgPack011/016/017. No code in this diff implements or enforces that split, so the documentation describes behaviour this change does not deliver.",
+        "location": "README.md:1625",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare README.md:1620-1632 with the TypeCollector hunks: none of them reference SuppressSourceGeneration or condition MsgPack011/016/017 on it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `ContainsKey` guards silently drop a second member that has a duplicate int or string key, and the new `continue` drops mixed-key members. Both apply when SuppressSourceGeneration is unset. Generator/analyzer behaviour for normal types therefore changes: previously `Dictionary.Add` threw, surfacing as AD0001/CS8785. The requirement says behaviour with SuppressSourceGeneration unset must not change, unless a MsgPack005 error is still reported for the duplicate.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "VerifyCS test on a non-suppressed [MessagePackObject] with two members both [Key(0)]. Check whether MsgPack005 is reported on head; if no diagnostic appears and a formatter is generated that omits a member, behaviour changed silently."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests\n{\n    [Fact]\n    public async Task PublicPropertyWithoutKey_StillReportsMsgPack004()\n    {\n        string testSource = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                public int {|MsgPack004:B|} { get; set; }\n            }\n            \"\"\";\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(testSource);\n        await test.RunAsync();\n    }\n\n    [Fact]\n    public async Task PublicFieldWithoutKey_StillReportsMsgPack004()\n    {\n        string testSource = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A;\n\n                public int {|MsgPack004:B|};\n            }\n            \"\"\";\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(testSource);\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "PublicPropertyWithoutKey_StillReportsMsgPack004",
+          "PublicFieldWithoutKey_StillReportsMsgPack004"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "The analyzer validates suppressed types only for rules that matter to dynamic, run-time serialization: MsgPack003/004/005/012/015. It skips MsgPack011 (partial), MsgPack016 and MsgPack017 because no formatter is generated. This is the split the README documents. The TypeCollector must still visit suppressed types, but must gate the MsgPack011/016/017 reports on `!SuppressSourceGeneration`."
+      },
+      {
+        "label": "B",
+        "summary": "\"Matches 3.1.0\" and \"reports its diagnostics (MsgPack0xx rules)\" are read broadly: every rule that 3.1.0 reported for a suppressed type is reported again, with no exemption for MsgPack011/016/017. The TypeCollector visits suppressed types with exactly the 3.1.0 diagnostic set and only skips formatter emission. The README paragraph excluding MsgPack011/016/017 is removed."
+      }
+    ]
+  },
+  "input_tokens": 9518,
+  "output_tokens": 4786,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

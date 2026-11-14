@@ -1,0 +1,50 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The fix leaves the third unguarded metadata-symbol diagnostic path at TypeCollector.cs:735 unchanged. Indexing DeclaringSyntaxReferences[0] there can still throw for a symbol with no source declaration, and wrapping reportDiagnostic cannot help because the index is evaluated before the diagnostic is passed to ReportIfLocatedInCompilation. Thus the acceptance criterion that diagnostics needing source locations not crash on metadata symbols is only partially implemented.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:735",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Inspect the diagnostic construction at TypeCollector.cs:735 and the new wrapper at TypeCollector.cs:236. The former still directly indexes DeclaringSyntaxReferences[0], whereas the two later sites were changed to null-tolerant helpers. Constructing that diagnostic evaluates the indexing expression before reportDiagnostic or ReportIfLocatedInCompilation is invoked."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "An unrelated security change raises MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth from 500 to 5000. This is outside REQ-2283 and weakens the recorded secure-by-default stack-depth protection for untrusted data rather than fixing the generator/analyzer crash.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "Ledger entry L9 records secure-by-default changes and a stack depth limit of 500 even for trusted data. The diff changes the UntrustedData limit to 5000 without any corresponding requirement."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ClosedGenericMetadataValueTypeTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack.SourceGenerator.Analyzers;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ClosedGenericMetadataValueTypeTests\n{\n    [Theory]\n    [InlineData(\"public partial record struct Item<T>([property: Key(0)] string Key);\", \"Item<int>\")]\n    [InlineData(\"public partial struct Item<T> { [Key(0)] public string Key { get; set; } = string.Empty; }\", \"Item<int>\")]\n    public async Task ClosedGenericValueTypeFromReferencedAssembly_GeneratesResolverWithoutCrashes(string itemDeclaration, string memberType)\n    {\n        await RunCrossAssemblyScenarioAsync(itemDeclaration, memberType);\n    }\n\n    [Theory]\n    [InlineData(\"public partial class Item<T> { [Key(0)] public string Key { get; set; } = string.Empty; }\", \"Item<int>\")]\n    [InlineData(\"public partial record class Item<T>([property: Key(0)] string Key);\", \"Item<int>\")]\n    [InlineData(\"public partial struct Item { [Key(0)] public string Key { get; set; } = string.Empty; }\", \"Item\")]\n    [InlineData(\"public partial record struct Item([property: Key(0)] string Key);\", \"Item\")]\n    public async Task PreviouslyWorkingMetadataTypeShapesRemainSupported(string itemDeclaration, string memberType)\n    {\n        await RunCrossAssemblyScenarioAsync(itemDeclaration, memberType);\n    }\n\n    private static async Task RunCrossAssemblyScenarioAsync(string itemDeclaration, string memberType)\n    {\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        MetadataReference[] frameworkReferences = (await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None)).ToArray();\n        MetadataReference[] messagePackReferences = ReferencesHelper.GetReferences(ReferencesSet.MessagePack).ToArray();\n\n        string librarySource = $$\"\"\"\n            using MessagePack;\n            namespace Lib;\n\n            [MessagePackObject]\n            {{itemDeclaration}}\n            \"\"\";\n\n        CSharpCompilation libraryCompilation = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(librarySource, parseOptions) },\n            frameworkReferences.Concat(messagePackReferences),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        Assert.Empty(libraryCompilation.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));\n\n        using var libraryImage = new MemoryStream();\n        var emitResult = libraryCompilation.Emit(libraryImage);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n        MetadataReference libraryReference = MetadataReference.CreateFromImage(libraryImage.ToArray());\n\n        string appSource = $$\"\"\"\n            using MessagePack;\n            using Lib;\n            namespace App;\n\n            [MessagePackObject]\n            public sealed partial record Cmd([property: Key(0)] string Scope)\n            {\n                [Key(1)]\n                public {{memberType}} Member { get; init; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        CSharpCompilation appCompilation = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(appSource, parseOptions) },\n            frameworkReferences.Concat(messagePackReferences).Append(libraryReference),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        Assert.Empty(appCompilation.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new MessagePack.SourceGenerator.MessagePackGenerator(),\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(\n            appCompilation,\n            out Compilation generatedCompilation,\n            out ImmutableArray<Diagnostic> driverDiagnostics,\n            CancellationToken.None);\n\n        GeneratorDriverRunResult runResult = driver.GetRunResult();\n        Assert.All(runResult.Results, result => Assert.Null(result.Exception));\n        Assert.DoesNotContain(runResult.Diagnostics.Concat(driverDiagnostics), diagnostic => diagnostic.Id == \"CS8785\");\n        Assert.Contains(\n            runResult.Results.SelectMany(result => result.GeneratedSources),\n            source => source.HintName == \"App.TestResolver.g.cs\");\n\n        CompilationWithAnalyzers compilationWithAnalyzers = generatedCompilation.WithAnalyzers(\n            ImmutableArray.Create<DiagnosticAnalyzer>(new MsgPack00xMessagePackAnalyzer()));\n        ImmutableArray<Diagnostic> analyzerDiagnostics = await compilationWithAnalyzers.GetAnalyzerDiagnosticsAsync();\n        Assert.DoesNotContain(analyzerDiagnostics, diagnostic => diagnostic.Id == \"AD0001\");\n    }\n}\n",
+        "test_names": [
+          "ClosedGenericValueTypeFromReferencedAssembly_GeneratesResolverWithoutCrashes",
+          "PreviouslyWorkingMetadataTypeShapesRemainSupported"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 6539,
+  "output_tokens": 7319,
+  "ms": 79472,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.129402
+}

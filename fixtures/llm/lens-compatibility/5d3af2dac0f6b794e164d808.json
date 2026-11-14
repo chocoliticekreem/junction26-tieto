@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The copy constructor MessagePackSecurity(MessagePackSecurity copyFrom) no longer copies HashCollisionResistant. Any options derived via WithMaximumObjectGraphDepth or similar clone paths silently drop collision resistance and revert to the default. That is a security regression and a behavior change for existing users, and it is unrelated to the ExcludeFromCodeCoverage requirement.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:62",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Create MessagePackSecurity.UntrustedData (HashCollisionResistant=true), call WithMaximumObjectGraphDepth(10) or use the copy ctor via a derived class, and assert HashCollisionResistant is still true. Base passes, head fails. Also run the existing MessagePackSecurityTests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is wrapped in #if !NETSTANDARD2_0 && !NETFRAMEWORK. A consumer targeting netstandard2.1, or netstandard2.0 plus netcoreapp, behaves as intended. A consumer targeting only netstandard2.0 or net4x still gets no exclusion, so 'all generated code decorated' is not met on those TFMs. ExcludeFromCodeCoverage exists in netstandard2.0 and net45+, so the guard is unnecessarily restrictive. Generated output also now differs per TFM.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "ExcludeFromCodeCoverage is available in netstandard2.0 (System.Diagnostics.CodeAnalysis) and .NET Framework 4.0+. Compile a generated formatter against netstandard2.0 without the #if to confirm it builds; the guard then needlessly skips these TFMs."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change from \"{\" to \"{\\r\\n\" for nesting types with constraints alters the generated text for every nested generic type with constraints, so users' checked-in or snapshotted generator output changes. It is a formatting-only change outside the requirement. It is harmless for compilation, but it adds snapshot churn.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests, including the nested-generic-with-constraints cases, and diff the generated files against base to find output that changed beyond the attribute."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "A #if/#endif block is placed directly before a type declaration after the nesting-type output. The StringKey, Formatter and Union templates emit the preprocessor directive at the start of a line right after the previous write, with no guaranteed leading newline. With the TransformUtilities newline fix this is probably fine. If a previous write does not end in a newline, the '#if' will not be at line start and the generated code will fail to compile.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.cs:37",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the snapshot and compile tests for nested non-generic, nested generic with constraints, and global-namespace types for StringKey, Formatter and Union templates, and check that '#if' begins a line in each."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10347,
+  "output_tokens": 1262,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

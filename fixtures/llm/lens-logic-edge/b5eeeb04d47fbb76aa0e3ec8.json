@@ -1,0 +1,48 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The framework guards suppress the attribute on .NET Standard 2.0 and every .NET Framework target, even though ExcludeFromCodeCoverageAttribute is available on those frameworks. Generated code for those supported targets therefore remains undecorated, contrary to the unconditional coverage requirement.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageTemplateEdgeTests.NetStandard20GeneratedTypesAreDecorated: generate formatter and resolver sources, parse them with NETSTANDARD2_0 defined, and verify every generated class has ExcludeFromCodeCoverage. The guarded attribute fragments are inactive, so the test fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Adding ExcludeFromCodeCoverage to the generated half of a user-declared partial resolver produces CS0579 when the user has already applied the same non-repeatable attribute to that resolver. Previously valid source no longer compiles.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:15",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageTemplateEdgeTests.UserAttributedPartialResolverStillCompiles. It declares a GeneratedMessagePackResolver partial class that already has ExcludeFromCodeCoverage; compilation succeeds on base and reports duplicate-attribute CS0579 on head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageTemplateEdgeTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System;\nusing System.Collections.Generic;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageTemplateEdgeTests\n{\n    [Fact]\n    public async Task NetStandard20GeneratedTypesAreDecorated()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class Sample\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class SampleResolver\n            {\n            }\n            \"\"\";\n\n        string[] generatedSources = await GenerateAsync(source);\n        var parseOptions = new CSharpParseOptions(\n            LanguageVersion.CSharp7_3,\n            preprocessorSymbols: new[] { \"NETSTANDARD\", \"NETSTANDARD2_0\" });\n        ClassDeclarationSyntax[] generatedClasses = generatedSources\n            .SelectMany(text => CSharpSyntaxTree.ParseText(text, parseOptions)\n                .GetRoot()\n                .DescendantNodes()\n                .OfType<ClassDeclarationSyntax>())\n            .ToArray();\n\n        Assert.NotEmpty(generatedClasses);\n        Assert.All(\n            generatedClasses,\n            type => Assert.Contains(\n                type.AttributeLists.SelectMany(list => list.Attributes),\n                attribute => attribute.Name.ToString().Contains(\"ExcludeFromCodeCoverage\", StringComparison.Ordinal)));\n    }\n\n    [Fact]\n    public async Task UserAttributedPartialResolverStillCompiles()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class Sample\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]\n            public partial class SampleResolver\n            {\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(source);\n        await test.RunAsync();\n    }\n\n    private static async Task<string[]> GenerateAsync(string source)\n    {\n        IEnumerable<MetadataReference> references = (await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None))\n            .Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptCompilation\",\n            new[] { CSharpSyntaxTree.ParseText(source) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);\n        return driver.GetRunResult().Results\n            .SelectMany(result => result.GeneratedSources)\n            .Select(generatedSource => generatedSource.SourceText.ToString())\n            .ToArray();\n    }\n}\n",
+        "test_names": [
+          "NetStandard20GeneratedTypesAreDecorated",
+          "UserAttributedPartialResolverStillCompiles"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 6975,
+  "output_tokens": 5615,
+  "ms": 61730,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.10515
+}

@@ -1,0 +1,74 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `continue` added in the int-key branch of CollectCore (mixed key kinds) is not covered by a failing test. MixedKeyKindsAreReportedWithoutAnalyzerFailure has the int-key member first, so the string-keyed member hits the continue in the string-key path only on the mismatched member. Removing the continue may still produce the same diagnostics and no crash, because the later ContainsKey guards also prevent exceptions.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 delete-statement: `continue;` -> removed; expected to survive because the test only asserts MsgPack005 markup and the added ContainsKey guards already prevent the exception, so no test observes the skipped member."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `continue` in the second collection path (line ~1148) has no dedicated test. The tests use only properties in a class with [MessagePackObject]. It is unclear that the mixed-key test reaches this path rather than only the first one. Deleting the continue would likely survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148 delete-statement: `continue;` -> removed; expected to survive because no test in the diff distinguishes the mixed-key path for this branch (fields/other member kinds) and the ContainsKey guards mask the effect."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ContainsKey guards on the string-key branches are only weakly tested. The duplicate-string-key test exists, but the second guard location (~1176 and 1039) can be removed or negated and the diagnostics would still be reported if the analyzer swallows exceptions. The tests assert no analyzer failure only implicitly through the test harness, with no direct assertion on the collected member set.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1039",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1039 remove-guard: `if (!stringMembers.ContainsKey(...)) Add` -> unconditional Add; check whether DuplicateStringKeysAreReportedWithoutAnalyzerFailure fails (it should, if exceptions surface as AD0001), and likewise for the other three guard sites."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test reproduces the reported bug. The tests do not demonstrate that the analyzer previously failed with SuppressSourceGeneration = true. MemberWithoutKeyIsReported, AllowPrivateRequiredIsReported and MemberTypeMustBeMessagePackObjectIsReported may already pass on base, since the diff touches only duplicate and mixed key handling. The change does not alter the code path that decides whether suppressed types are analysed, so these tests would pass whether or not the regression is fixed.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:17",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests against the base build; tests MemberWithoutKeyIsReported, AllowPrivateRequiredIsReported and MemberTypeMustBeMessagePackObjectIsReported expected to pass on base, so they do not reproduce #2234."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The negative test SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed covers MsgPack011/016/017 for the suppressed case only. No paired positive test shows that the same code with SuppressSourceGeneration unset or false still reports them, so the requirement that unset/false behaviour is unchanged is untested and a regression that dropped these diagnostics generally would not be caught.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:163",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Mutate the analyzer so MsgPack011/016/017 are never reported for any type (negate the SuppressSourceGeneration check); expected to survive in this diff because the only test about those diagnostics is the suppressed case that expects none."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The execution test NoFormatterIsGeneratedForSuppressedType asserts only that GetFormatter returns null. The ExecutionTests file has no usings in the diff, and the round trip test would pass on base since the dynamic resolver always worked. Neither test exercises the analyzer fix.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:20",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressedSourceGenerationTests on the base build; expected to pass there, so it does not reproduce the bug."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10372,
+  "output_tokens": 1907,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_016ZTRtoFx12DniTJbHDKck6"
+}

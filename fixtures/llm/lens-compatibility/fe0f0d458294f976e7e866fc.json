@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "ReportIfLocatedInCompilation drops every diagnostic whose Location is not in source (Location.None or null location). Previously diagnostics created with a null/None location, such as MemberNeedsKey (MsgPack004) for an inherited member from a base type in a referenced assembly, or other reports using GetIdentifierLocation/GetLocation that can return null, were still reported. Now they are silently suppressed, so users stop seeing MsgPack003/004/005 etc. in their builds. That is a behavior change beyond the metadata-struct crash fix.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1448",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] class in the compiling assembly derives from a base class in a referenced assembly that has a public property without [Key]. Run on base and head and compare MsgPack004 diagnostics. Head should drop the diagnostic if it was previously reported with Location.None or a derived location."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The new early return skips every generic type whose OriginalDefinition is in metadata, including those that previously went through CollectGeneric and registered closed generic formatters. Examples are generic [MessagePackObject] types from a referenced assembly, and generic types handled by the dynamic/resolver paths (for example ones with custom formatters or collection-like generics handled later). The return sits before the `type.IsDefinition` check, so it may also change which formatters or resolver entries are generated for closed generic classes from referenced assemblies, which the requirement says must keep working as before (the 'class Item<T> ok' rows). A generated resolver's output could change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests, and add a case where a referenced assembly defines generic class Item<T> and the compiling assembly has a member of type Item<int>. Compare the generated resolver on base vs head for any dropped formatter registration or ResolverRegisterInfo."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 8863,
+  "output_tokens": 779,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01TXFAUAfmhX4Q4kLmeUPGJA"
+}

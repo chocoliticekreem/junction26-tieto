@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "UntrustedData's MaximumObjectGraphDepth is raised from 500 to 5000, a tenfold increase unrelated to the generator crash fix. Deserializing untrusted data with deep nesting that previously threw InsufficientExecutionStackException or hit the depth limit is now accepted, and the stack-overflow protection is weakened. This is a behavior change and security regression that the requirement did not ask for, and it contradicts the ledger's stack depth limit of 500 (L9).",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Deserialize a payload nested 1000 levels deep (e.g. nested single-element arrays) with MessagePackSecurity.UntrustedData using base-built and head-built code. Base throws MessagePackSerializationException (depth exceeded); head succeeds, or risks a stack overflow at deeper nesting."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "ReportIfLocatedInCompilation wraps every analyzer diagnostic and silently drops any whose location is not in a syntax tree of the compilation. Diagnostics previously reported with Location.None (or null locations) would no longer appear in users' builds, e.g. MemberNeedsKey on an inherited member from a referenced base type, as ledger L13 considers. This is broader than the crash fix, so some MsgPack00x diagnostics (MsgPack003/004/005) would stop being reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] class in the compiling assembly derives from a base class in a referenced assembly with a public member lacking [Key]. Compare MsgPack004 reporting at base vs head. Also test diagnostics that use Location.None or a null location."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9005,
+  "output_tokens": 699,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}
