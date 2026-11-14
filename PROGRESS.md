@@ -32,6 +32,10 @@
 - 09:39 Track record page redesigned with headline tiles, per-area trust charts, T2/T4/T6/T7; receipt exportable as a PR comment (PR #23).
 - 09:52 Mutation receipts two-tier (own tests, then full suite) plus logical-operator and linq-first operators; 2283 now matches Stryker (2 full-suite survivors); four reviews re-run offline from fixtures, verdicts unchanged (PR #24). Deliverables corrected (PR #25).
 - 09:40 Anson asked how to cut API cost; answered (batch API for bench, lower effort on the two Opus lenses, subset re-runs, no Haiku router re-run). Waiting for his go before implementing.
+- 10:54 SQL migration adapter in throwaway Postgres (PR #27): irreversible down and data-losing rename blocked with receipts, about 3 s each, no API.
+- 11:05 Dashboard decluttered on Anson's request (PR #28): change pages from 2,300-6,900 visible words to 250-680; decision first, detail behind disclosures.
+- 11:08 Cost cuts (PR #29): Message Batches for the bench, spend guard, dry-run estimate (cold re-run $9.93 batched vs $19.86 live), per-lens effort. BLOCKED.md now asks for about $20, not $60 (PR #30).
+- 11:14 Positive proof above the fold on change pages (PR #31).
 
 ## In progress (started ~05:38, parallel subagents in worktrees)
 | Track | Model | Scope |
@@ -44,8 +48,8 @@
 | F1 bench | opus | 36 deterministic plants, manifest, `bench generate` |
 
 ## Next
-- Track N running since 09:57: SQL migration sandbox adapter in throwaway Postgres (polish item 6), deterministic, no API.
-- On Anson's go: batch mode and per-lens effort for the bench, then the final-pipeline bench re-run and 2297 round 2 (about $12-18 after the limit is raised).
+- Waiting on Anson: raise the API limit by about $20 and run the BLOCKED.md commands (final-pipeline bench, 2297 round 2); confirm the context; make the A/B merge by name; record the video.
+- Polish backlog: items 1 (Stryker), 3 (trust chart), 5 (PR comment export) and 6 (SQL adapter) are done. Item 2 is covered by the harness's reflection-based API diff. Item 4 (LLM narrative) needs the API.
 
 ## Decisions
 - CHALLENGE.md (added by Anson) outranks SPEC.md on scope and judging. Added from it: MIT LICENSE, top-level README, docs/submission.md (pending numbers), self-check answered in PROGRESS.md with evidence, time to merge and escapes in measurement. No tech side challenge is genuinely used (no CRACI CI, no Modal, no Codex, no Entire), so none will be ticked.
@@ -75,4 +79,4 @@
 | Peer review in 3 minutes | ready | demo script: 2-minute flow plus walkthrough |
 
 ## Time elapsed
-- 09:58: 4 h 26 m. Definition of done: met except the items that need the API limit raised or a named human (A/B merge, bench re-run on the final pipeline). See BLOCKED.md.
+- 11:15: 5 h 43 m. Definition of done: met except the items that need the API limit raised or a named human. See BLOCKED.md.
