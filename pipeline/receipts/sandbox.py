@@ -10,6 +10,7 @@ build the same worktree at once. A caller that needs patch -> build -> test -> r
 
 import fcntl
 import os
+import re
 import shutil
 import subprocess
 import threading
@@ -21,6 +22,7 @@ from pathlib import Path
 from . import config
 from .gitutil import GitError, git, rev_parse
 from .models import CommandReceipt, TestCase, TestRun, now_iso
+from .runstore import portable, portable_file
 
 TRX_NS = {"t": "http://microsoft.com/schemas/VisualStudio/TeamTest/2010"}
 BUILD_TIMEOUT_S = 1800
@@ -64,8 +66,21 @@ def lock(wt: Path):
     return _flock(config.WORK / ".locks" / f"{Path(wt).name}.lock")
 
 
+ENV_PASS = ("PATH", "HOME", "TMPDIR", "LANG")
+ENV_PASS_PREFIXES = ("DOTNET_", "NUGET_")
+ENV_DENY = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|^ANTHROPIC|^JEV", re.I)
+
+
 def dotnet_env() -> dict[str, str]:
-    return {**os.environ, **config.DOTNET_ENV}
+    """Environment for every process that builds or runs code from the change under review.
+
+    The change is untrusted (MSBuild targets, source generators and tests execute its code), so it
+    gets an allowlist, never os.environ: API keys and tokens must not be readable by it.
+    """
+    env = {k: v for k, v in os.environ.items()
+           if k in ENV_PASS or k.startswith(ENV_PASS_PREFIXES)}
+    env.update(config.DOTNET_ENV)
+    return {k: v for k, v in env.items() if not ENV_DENY.search(k)}
 
 
 def run_cmd(
@@ -77,7 +92,7 @@ def run_cmd(
     started = now_iso()
     t0 = time.monotonic()
     with open(log_path, "w") as log:
-        log.write(f"$ {' '.join(cmd)}\n# cwd: {cwd}\n# started: {started}\n\n")
+        log.write(portable(f"$ {' '.join(cmd)}\n# cwd: {cwd}\n# started: {started}\n\n"))
         log.flush()
         try:
             proc = subprocess.run(cmd, cwd=str(cwd), stdout=log, stderr=subprocess.STDOUT,
@@ -89,7 +104,9 @@ def run_cmd(
     duration = round(time.monotonic() - t0, 2)
     with open(log_path, "a") as log:
         log.write(f"\n# exit: {code}  duration: {duration}s\n")
-    return CommandReceipt(id=receipt_id, cmd=cmd, cwd=str(cwd), exit_code=code,
+    portable_file(log_path)
+    return CommandReceipt(id=receipt_id, cmd=[portable(c) for c in cmd], cwd=portable(str(cwd)),
+                          exit_code=code,
                           duration_s=duration, log_path=log_rel, started_at=started)
 
 
@@ -189,6 +206,7 @@ def test(
     trx = results_dir / trx_name
     if trx.exists():
         run = parse_trx(trx, receipt_id, side, filter or "")
+        portable_file(trx)
     else:
         run = TestRun(receipt_id=receipt_id, side=side, filter=filter or "", compiled=False)
     if commands is not None:

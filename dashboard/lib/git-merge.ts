@@ -22,11 +22,21 @@ export function branchExists(repo: string, branch: string): boolean {
   }
 }
 
+export function branchSha(repo: string, branch: string): string | undefined {
+  try {
+    return git(["-C", repo, "rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
- * Merge `branch` into `main` of a bare repo with --no-ff, authored by `who`.
+ * Merge commit `sha` (the reviewed head of `branch`) into `main` of a bare repo with --no-ff,
+ * authored by `who`. Merging the sha, not the branch name, means a branch that moves after the
+ * staleness check still cannot bring unreviewed commits in.
  * Bare repos cannot merge in place, so: temporary worktree on main -> merge -> remove worktree.
  */
-export function mergeIntoMain(repo: string, branch: string, who: string, message: string): string {
+export function mergeIntoMain(repo: string, branch: string, sha: string, who: string, message: string): string {
   if (!fs.existsSync(repo)) throw new Error(`Mock repo not found at ${repo}`);
   if (!branchExists(repo, "main")) throw new Error("Mock repo has no main branch");
   if (!branchExists(repo, branch)) throw new Error(`Branch ${branch} does not exist in the mock repo`);
@@ -37,7 +47,7 @@ export function mergeIntoMain(repo: string, branch: string, who: string, message
   git(["-C", repo, "worktree", "add", wt, "main"]);
   try {
     const email = `${who.toLowerCase().replace(/[^a-z0-9]+/g, ".").replace(/^\.|\.$/g, "") || "human"}@receipts.local`;
-    git(["-C", wt, "-c", `user.name=${who}`, "-c", `user.email=${email}`, "merge", "--no-ff", "--no-edit", "-m", message, branch]);
+    git(["-C", wt, "-c", `user.name=${who}`, "-c", `user.email=${email}`, "merge", "--no-ff", "--no-edit", "-m", message, sha]);
     return git(["-C", wt, "rev-parse", "HEAD"]);
   } catch (e) {
     const msg = e instanceof Error && "stderr" in e ? String((e as { stderr?: unknown }).stderr || e.message) : String(e);

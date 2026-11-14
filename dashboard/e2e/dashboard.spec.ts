@@ -115,6 +115,51 @@ test("answering a question appends to ledger.jsonl and removes it from pending",
   await expect(page.getByTestId("inbox-row").filter({ hasText: "ju26-issue-2297" })).not.toContainText("pending");
 });
 
+test("sign-off is refused on a blocked change, in the UI and the API", async ({ page }) => {
+  await signIn(page);
+  await page.goto(`/change/${encodeURIComponent("mock/2283/logic")}`);
+  await expect(page.getByTestId("sign-off")).toBeDisabled();
+  await expect(page.getByTestId("sign-off-refused")).toContainText("blocked (A verified finding");
+  const res = await page.request.post("/api/decisions/sign-off", { data: { change_id: "mock/2283/logic" } });
+  expect(res.status()).toBe(409);
+  expect((await res.json()).error).toContain("A verified finding: two edge tests");
+  const ab = await page.request.post("/api/decisions/sign-off", { data: { change_id: "ju26-issue-2297" } });
+  expect(ab.status()).toBe(409);
+  expect(fs.existsSync(path.join(E2E_TMP, "decisions", "mock", "2283", "logic.json"))).toBe(false);
+});
+
+test("merge is refused when the parent verdict is not decision-A-B", async ({ page }) => {
+  await signIn(page);
+  const res = await page.request.post("/api/decisions/merge", { data: { change_id: "ju26-issue-2283", choice: "A" } });
+  expect(res.status()).toBe(409);
+  expect((await res.json()).error).toContain("not decision-A-B");
+  expect(fs.existsSync(path.join(E2E_TMP, "decisions", "ju26-issue-2283.json"))).toBe(false);
+});
+
+test("merge is refused when the branch moved after its review", async ({ page }) => {
+  await signIn(page);
+  const repo = path.join(E2E_TMP, "mock-repo.git");
+  const ref = "refs/heads/review/ju26-issue-2297/B";
+  const reviewed = execFileSync("git", ["-C", repo, "rev-parse", ref], { encoding: "utf8" }).trim();
+  const tree = execFileSync("git", ["-C", repo, "rev-parse", `${reviewed}^{tree}`], { encoding: "utf8" }).trim();
+  const moved = execFileSync(
+    "git",
+    ["-C", repo, "-c", "user.name=Intruder", "-c", "user.email=i@x", "commit-tree", tree, "-p", reviewed, "-m", "unreviewed"],
+    { encoding: "utf8" },
+  ).trim();
+  execFileSync("git", ["-C", repo, "update-ref", ref, moved]);
+  const mainBefore = execFileSync("git", ["-C", repo, "rev-parse", "main"], { encoding: "utf8" }).trim();
+  try {
+    const res = await page.request.post("/api/decisions/merge", { data: { change_id: "ju26-issue-2297", choice: "B" } });
+    expect(res.status()).toBe(409);
+    expect((await res.json()).error).toContain("moved since it was reviewed");
+    expect(execFileSync("git", ["-C", repo, "rev-parse", "main"], { encoding: "utf8" }).trim()).toBe(mainBefore);
+    expect(fs.existsSync(path.join(E2E_TMP, "decisions", "ju26-issue-2297.json"))).toBe(false);
+  } finally {
+    execFileSync("git", ["-C", repo, "update-ref", ref, reviewed]);
+  }
+});
+
 test("Merge A creates a --no-ff commit in the bare repo authored by the human and writes the decision", async ({ page }) => {
   await signIn(page);
   await page.goto("/decision/ju26-issue-2297");

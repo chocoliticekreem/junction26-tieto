@@ -18,7 +18,8 @@ from .models import (
     Question, Refusal, RoutingReport, TestRun, TrustReceipt, now_iso,
 )
 
-RISKY_AREAS = {"public-api", "serializer-format", "serializer-runtime", "security"}
+RISKY_AREAS = {"public-api", "serializer-format", "serializer-runtime", "security",
+               "codegen-templates", "source-generator"}
 ALL_LENSES = ["requirement-tests", "logic-edge", "compatibility", "security", "product-context",
               "test-quality"]
 AUTO_READY_MAX_RISK = 5

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { loadRun, pendingQuestions, readDecision } from "@/lib/data";
+import { loadRun, pendingQuestions, readDecision, signOffRefusal } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
 import { EvidenceCard } from "@/components/evidence-card";
 import { FindingCard, HunchList } from "@/components/finding-card";
@@ -47,7 +47,9 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
                 Open A/B decision
               </Button>
             )}
-            {r.verdict !== "decision-A-B" && <SignOffButton changeId={changeId} human={human} decision={decision} />}
+            {r.verdict !== "decision-A-B" && (
+              <SignOffButton changeId={changeId} human={human} decision={decision} refusal={signOffRefusal(r)} />
+            )}
           </>
         }
       >

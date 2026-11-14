@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "CompositeResolverTemplate emits ExcludeFromCodeCoverage unconditionally (no Options.Generator.ExcludeFromCodeCoverage check), unlike every other template. No test covers the opt-out for composite resolvers, so the inconsistency is undetected. The opt-out test only exercises GeneratedMessagePackResolver and never generates a composite resolver.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27 remove-guard: delete the ExcludeFromCodeCoverage attribute emission -> expected to survive because TestSource has no CompositeResolver and only snapshot tests (withheld) cover it; and no test asserts opt-out on composite output"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The guard test counts guarded occurrences only for two exact string shapes, and the opt-out test only asserts the absence of the attribute text. No test compiles generated output under netstandard2.0/NETFRAMEWORK defines, so a wrong guard symbol (e.g. NETSTANDARD2_0 mistyped) would still pass because the test compares against the same constant Guard.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:76",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14 swap guard symbol: '#if !NETSTANDARD2_0 && !NETFRAMEWORK' -> '#if !NETSTANDARD2_1'; the test would fail only if Guard constant is unchanged, so the real defect of the guard being semantically wrong on net472/netstandard2.0 consumers is not checked (no compile with those preprocessor symbols); survives if the constant is edited with the template"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The AnalyzerUtilities parsing `is not false` is only tested via explicit false and the default. The unset/default path is covered by the first test, but nothing tests that explicit `ExcludeFromCodeCoverage = true` works, or that the option is honored for the other generator options flow (e.g., an assembly-level or multi-resolver case). Mutation swapping `is not false` to `is true` would be caught by the default test, but a mutation that ignores the argument entirely (`-> true`) is killed only by the opt-out test, which is OK; the nested-type brace change has no direct test.",
+        "location": "src/MessagePack.SourceGenerator/Utils/AnalyzerUtilities.cs:76",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Utils/AnalyzerUtilities.cs:76 negate-condition: `is not false` -> `is not true`; expected to be killed by default test, confirm by running tests"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "TransformUtilities change from writer(\"{\") to writer(\"{\\r\\n\") for the constrained nesting type case has no dedicated test; the new tests use non-generic, unconstrained types so this branch (anyConstraints true) is never exercised by the new tests, only possibly by withheld snapshots.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: revert `\"{\\r\\n\"` -> `\"{\"`; expected to survive in CodeCoverageExclusionTests because no constrained generic nesting type is in TestSource"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 16534,
+  "output_tokens": 1388,
+  "ms": 10512,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

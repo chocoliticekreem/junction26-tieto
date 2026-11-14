@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys changes the collected ObjectSerializationInfo for types with mixed key kinds. Previously the mismatched member fell through and could be added to intMembers or stringMembers, and the generator could still emit a formatter for it. Now that member is dropped. Users who ignore or downgrade MsgPack005 (or disable it via .editorconfig) get different generated formatter output, and so different wire bytes, without opting in. The change is not obviously tied to the REQ-2234 fix, which concerns the analyzer under SuppressSourceGeneration.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot or generator test with a [MessagePackObject] type that mixes [Key(0)] and [Key(\"a\")] members. Run it on base and head and diff the generated formatter output. If the members differ, an existing user's output changed."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `ContainsKey` guards silently keep the first member when two members share the same int or string key, where the previous `Add` threw ArgumentException. Duplicate-key detection (a diagnostic MsgPack006-style rule) may be emitted from elsewhere. If it is not, the generator now emits a formatter using only the first member for a duplicate-key type. That differs from the earlier crash and drops a member from the wire format. Which member wins depends on enumeration order and is not documented.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a [MessagePackObject] type with two members using [Key(0)] and run the analyzer and generator. Assert that a duplicate-key diagnostic (MsgPack006) is reported and that no exception occurs. Also compare the generated formatter against base to confirm which member is kept."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5013,
+  "output_tokens": 726,
+  "ms": 5960,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

@@ -1,0 +1,75 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The attribute is only emitted under `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, so the requirement 'all generated code is decorated' is met only for some target frameworks. The guard is a judgement call about what 'all' means. It also relies on the consuming project defining those preprocessor symbols, which holds for SDK-style projects. The README documents the limitation.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare the guard in all templates with the requirement's 'attribute must exist there or be conditionally emitted'. Confirm that netstandard2.0 and net472 consumers compile, and decide whether they should be excluded from coverage some other way."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change does not cover every generated type. Types emitted via other paths, such as the nesting partial types from EmitNestingTypesAndNamespaces, the `GetFormatterHelper` static class (decorated only in the ResolverTemplate), and any other helper or attribute emission, are not all decorated. The new test only asserts that the attribute appears at least once per file, not on every type. A file containing an undecorated type would still pass.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:68",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Remove the attribute from one of two types in a multi-type generated file, for example FormatterCache<T> in ResolverTemplate.tt. Run CodeCoverageExclusionTests and check whether the mutant survives, since the test only checks per-file presence and that every attribute occurrence is guarded."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README note is placed in the custom-formatter mixing section, just before the MagicOnion section. It is not near the source generator documentation, and it says 'All generated formatters and resolvers' while omitting the netstandard2.0 impact on coverage tools. The docs placement is questionable.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the README section around line 1636 and check whether it covers the source generator, or whether a dedicated generator section should hold this note."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "An unrelated behavioural change to the nesting-type emitter appears in the diff: the writer emits `{\\r\\n` instead of `{` when constraints exist. It alters generated output for constrained nested generics and is not required by the coverage attribute. It is in an area with many recent fixes ([L4]), so it carries regression risk and has no dedicated test.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests, especially the nested generic types with constraints. Check that the snapshot diffs for them are limited to the added newline and the attribute."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should generated code on netstandard2.0 or .NET Framework targets get any coverage exclusion, for example `[GeneratedCode]` or a pragma, or is leaving it undecorated acceptable?",
+        "options": [
+          "Leave undecorated on those targets, as currently implemented",
+          "Emit a fallback such as a locally defined ExcludeFromCodeCoverage-named attribute or GeneratedCode"
+        ],
+        "why_it_matters": "If netstandard2.0 or .NET Framework consumers must also be excluded, the conditional guard fails the 'all generated code' criterion. If not, the current guard is fine.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditional, with no setting: every generated formatter, resolver, and helper class gets `[ExcludeFromCodeCoverage]`, guarded by `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, with no opt-out option."
+      },
+      {
+        "label": "B",
+        "summary": "Add an opt-out setting, for example a property on `GeneratedMessagePackResolver` or an MSBuild property, that suppresses the attribute. This requires threading the option through the generator into the templates and emitting the attribute conditionally."
+      }
+    ]
+  },
+  "input_tokens": 13137,
+  "output_tokens": 1525,
+  "ms": 11579,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

@@ -1,0 +1,76 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The docs describe a `SurrogateType` option that this change does not implement. doc/analyzers/MsgPack022.md and the README analyzer index show `[GeneratedMessagePackFormatter(SurrogateType = typeof(...))]` and title MsgPack022 \"Surrogate member does not match the formatted type\". But `GeneratedMessagePackFormatterAttribute` has no members, and the MsgPack022 descriptor and AnalyzerReleases.Unshipped.md use the title \"Serialized member must be public and read-write\". A user who follows the documented example gets a compile error.",
+        "location": "doc/analyzers/MsgPack022.md:15",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile `[GeneratedMessagePackFormatter(SurrogateType = typeof(S))] partial class F : IMessagePackFormatter<T>;` against head-built MessagePack.Annotations. Expect CS0246 or CS0117 for `SurrogateType`, which proves the documented example cannot compile. Separately, diff the MsgPack022 title in doc/analyzers/index.md against `SerializedMemberNotSupported.title`."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode serializes only public read-write members, and a class needs an accessible parameterless constructor (otherwise NoDeserializingConstructor is reported). MessagePack's contractless behaviour also covers public get-only members, with deserialization through a matching constructor. So an immutable Project A type with `public int X { get; }` and a constructor is rejected. A type that also has a parameterless constructor silently loses its get-only members, and can serialize as an empty map.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:138",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Take a type `public class P { public P() {} public int X { get; } = 5; public int Y { get; set; } }` with no attributes. Serialize it with ContractlessStandardResolver and with the head-generated `[GeneratedMessagePackFormatter]` formatter, then compare bytes: the generated formatter omits X. Also run the generator on a class that has only `P(int x)` and observe the NoDeserializingConstructor diagnostic."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Contractless mode ignores `[IgnoreMember]` and `[IgnoreDataMember]`. `CreateContractlessMembers` takes every public read-write member without checking ignore attributes, so a member that T explicitly marks as ignored is still serialized. This breaks the criterion \"If T does carry MessagePack attributes, they are honoured\".",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:138",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Define a Project A type without `[DataContract]` that has `[IgnoreDataMember] public string Secret { get; set; }` plus `public int Id { get; set; }`. Run the generator for a `[GeneratedMessagePackFormatter]` class and assert the generated formatter text does not contain `Secret`. It fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`[MessagePackFormatter]` attributes on T's members (and on T itself) are not honoured. `CreateMember` always sets `CustomFormatter: null`, so a member with a custom formatter is written with the default resolver formatter. Its bytes then differ from the dynamic or attributed behaviour the criterion \"If T does carry MessagePack attributes, they are honoured\" requires.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:280",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Use a `[MessagePackObject]` type with `[Key(0)][MessagePackFormatter(typeof(MyIntFormatter))] public int A { get; set; }`. Serialize it with DynamicObjectResolver and with the head-generated `[GeneratedMessagePackFormatter]` formatter, then compare bytes. They differ because the custom formatter is ignored."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterForReferencedTypeTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterForReferencedTypeTests\n{\n    private const string ProjectBSource = \"\"\"\n        using MessagePack;\n        using MessagePack.Formatters;\n\n        namespace ProjectB\n        {\n            [GeneratedMessagePackFormatter]\n            partial class MyTypeFormatter : IMessagePackFormatter<ProjectA.MyType>;\n\n            [GeneratedMessagePackResolver]\n            partial class MyResolver\n            {\n            }\n        }\n        \"\"\";\n\n    private static readonly CSharpParseOptions ParseOptions = new(LanguageVersion.CSharp12);\n\n    [Fact]\n    public async Task BodylessFormatter_ForTypeInReferencedAssembly_IsGenerated()\n    {\n        MetadataReference projectA = await CompileProjectAAsync(\"\"\"\n            namespace ProjectA\n            {\n                public class MyType\n                {\n                    public int Identifier { get; set; }\n                    public string Label { get; set; }\n                }\n            }\n            \"\"\");\n\n        (string generated, ImmutableArray<Diagnostic> errors) = await RunProjectBAsync(projectA, ProjectBSource);\n\n        Assert.True(errors.IsEmpty, string.Join(Environment.NewLine, errors));\n        Assert.Contains(\"MyTypeFormatter\", generated);\n        Assert.Contains(\"Serialize\", generated);\n    }\n\n    [Fact]\n    public async Task ContractlessType_SerializesPublicMembersOnly()\n    {\n        MetadataReference projectA = await CompileProjectAAsync(\"\"\"\n            namespace ProjectA\n            {\n                public class MyType\n                {\n                    private int hiddenCounter;\n                    public int Identifier { get; set; }\n                    public string Label { get; set; }\n                    public int Peek() => hiddenCounter;\n                }\n            }\n            \"\"\");\n\n        (string generated, ImmutableArray<Diagnostic> errors) = await RunProjectBAsync(projectA, ProjectBSource);\n\n        Assert.True(errors.IsEmpty, string.Join(Environment.NewLine, errors));\n        Assert.Contains(\"Identifier\", generated);\n        Assert.Contains(\"Label\", generated);\n        Assert.DoesNotContain(\"hiddenCounter\", generated);\n    }\n\n    [Fact]\n    public async Task DataContractType_HonoursDataMemberAttributes()\n    {\n        MetadataReference projectA = await CompileProjectAAsync(\"\"\"\n            using System.Runtime.Serialization;\n\n            namespace ProjectA\n            {\n                [DataContract]\n                public class MyType\n                {\n                    [DataMember(Order = 0)]\n                    public int Identifier { get; set; }\n\n                    [DataMember(Order = 1)]\n                    public string Label { get; set; }\n\n                    public string Secret { get; set; }\n                }\n            }\n            \"\"\");\n\n        (string generated, ImmutableArray<Diagnostic> errors) = await RunProjectBAsync(projectA, ProjectBSource);\n\n        Assert.True(errors.IsEmpty, string.Join(Environment.NewLine, errors));\n        Assert.Contains(\"Identifier\", generated);\n        Assert.Contains(\"Label\", generated);\n        Assert.DoesNotContain(\"Secret\", generated);\n    }\n\n    private static async Task<MetadataReference> CompileProjectAAsync(string source)\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        CSharpCompilation projectA = CSharpCompilation.Create(\n            \"ProjectA\",\n            new[] { CSharpSyntaxTree.ParseText(source, ParseOptions) },\n            framework,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        using MemoryStream stream = new();\n        var emitResult = projectA.Emit(stream);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n        return MetadataReference.CreateFromImage(stream.ToArray());\n    }\n\n    private static async Task<(string Generated, ImmutableArray<Diagnostic> Errors)> RunProjectBAsync(MetadataReference projectA, string source)\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = Enumerable.Concat<MetadataReference>(framework, ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        references.Add(projectA);\n\n        CSharpCompilation projectB = CSharpCompilation.Create(\n            \"ProjectB\",\n            new[] { CSharpSyntaxTree.ParseText(source, ParseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: ParseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(projectB, out Compilation output, out ImmutableArray<Diagnostic> generatorDiagnostics);\n\n        GeneratorDriverRunResult result = driver.GetRunResult();\n        string generated = string.Join(\"\\n\", result.GeneratedTrees.Select(t => t.ToString()));\n        ImmutableArray<Diagnostic> errors = generatorDiagnostics\n            .Concat(output.GetDiagnostics())\n            .Where(d => d.Severity == DiagnosticSeverity.Error)\n            .ToImmutableArray();\n        return (generated, errors);\n    }\n}\n",
+        "test_names": [
+          "BodylessFormatter_ForTypeInReferencedAssembly_IsGenerated",
+          "ContractlessType_SerializesPublicMembersOnly",
+          "DataContractType_HonoursDataMemberAttributes"
+        ],
+        "expects": "new-api"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "'Contractless behaviour over public members' means only public, read-write instance properties and fields are serialized, under string keys. Get-only members are skipped. A class must have an accessible parameterless constructor, and no constructor parameters are matched. This is what `CreateContractlessMembers` / `IsPublicReadWrite` and the NoDeserializingConstructor check in GeneratedFormatterCollector implement."
+      },
+      {
+        "label": "B",
+        "summary": "'Contractless behaviour' means the same member and constructor rules as MessagePack's ContractlessStandardResolver. All public readable instance members, including get-only properties, are serialized, and members marked `[IgnoreMember]` or `[IgnoreDataMember]` are skipped. Deserialization picks a public constructor whose parameters match member names and passes them as `constructorParameters`. Minimal edit: in `CreateContractlessMembers`, filter on public readable members instead of `IsPublicReadWrite` and skip ignore-attributed members. Set `IsWritable` from the actual setter. Replace the parameterless-constructor-only check with constructor matching that fills `ObjectSerializationInfo.Create(constructorParameters: ...)`."
+      }
+    ]
+  },
+  "input_tokens": 25358,
+  "output_tokens": 15776,
+  "ms": 131881,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -141,6 +141,13 @@ export function writeDecision(d: Decision): void {
   fs.writeFileSync(f, JSON.stringify(d, null, 2) + "\n", { flag: "wx" });
 }
 
+/** Why a sign-off is not allowed for this verdict, or undefined when it is. */
+export function signOffRefusal(receipt: TrustReceipt): string | undefined {
+  if (receipt.verdict === "blocked") return `Sign-off refused: the change is blocked (${receipt.verdict_reason}).`;
+  if (receipt.verdict === "decision-A-B") return "Sign-off refused: this change needs an A/B decision, not a sign-off.";
+  return undefined;
+}
+
 // Context + ledger -----------------------------------------------------------
 
 export function readLedger(): LedgerEntry[] {

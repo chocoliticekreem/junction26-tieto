@@ -1,0 +1,84 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guard skips the attribute on netstandard2.0 and .NET Framework builds, so generated code in those projects is still counted in coverage. The requirement says all generated code should be decorated. ExcludeFromCodeCoverage exists on net472 and netstandard2.0 in .NET Framework 4.0+, so the guard looks unnecessary and the outcome is inconsistent across TFMs. The guard is evaluated against the user's compilation symbols, so netstandard2.1 and net8 builds get the attribute while net472 builds do not.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Compile a generated formatter in a net472 or netstandard2.0 project, then use reflection or a coverage run to check whether the formatter carries ExcludeFromCodeCoverage. The attribute is absent despite being available."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The CompositeResolverTemplate emits the attribute unconditionally, ignoring the new Options.Generator.ExcludeFromCodeCoverage setting, while every other template honors it. Setting ExcludeFromCodeCoverage=false on the attribute therefore still leaves the composite resolver and its FormatterCache decorated, so the opt-out is inconsistent.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate with [GeneratedMessagePackResolver(ExcludeFromCodeCoverage=false)] on a composite resolver and assert the output has no ExcludeFromCodeCoverage."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new public property `GeneratedMessagePackResolverAttribute.ExcludeFromCodeCoverage` is added to the runtime assembly's public API. Its default is true, which changes generated output for every existing user without opt-in. Users who check in or snapshot generated output, or who build with analyzers enabled, will see the diff. This is the purpose of the requirement, but the new public surface is optional per the requirement.",
+        "location": "src/MessagePack/GeneratedMessagePackResolverAttribute.cs:34",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Public API additions in the 4 PublicAPI.Unshipped.txt files; the requirement states that a setting is optional."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The TransformUtilities change from `{` to `{\r\n` when nesting types have constraints alters whitespace in generated output for every nested generic-constrained type. This is unrelated to the requirement, and it matters because the new `#if` line follows the nesting brace. Without the newline `{#if` could be glued on the same line, but the change also modifies output for users who snapshot generated files.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests for nested types with generic constraints and check the diff in the generated files."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Generated code does not decorate every generated type. Options.Generator.ExcludeFromCodeCoverage is read from the GeneratedMessagePackResolver attribute, so it controls only resolver-based generation. If formatters are generated through analyzer-only paths that have no GeneratedMessagePackResolver attribute, the option falls back to true, which is fine; but any attribute named argument parsing with `is not false` treats a non-bool value as true, so the setting is hard to disable.",
+        "location": "src/MessagePack.SourceGenerator/Utils/AnalyzerUtilities.cs:76",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read AnalyzerUtilities.cs: GetSingleNamedArgumentValue(...) is not false defaults to true when the argument is missing or null."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the ExcludeFromCodeCoverage decoration apply on all target frameworks, or be skipped on netstandard2.0 and .NET Framework?",
+        "options": [
+          "Emit on all TFMs unconditionally",
+          "Keep the current guard and skip netstandard2.0 and .NETFRAMEWORK"
+        ],
+        "why_it_matters": "If the attribute must apply on all targets, the guard is a defect because the requirement says all generated code. If skipping is acceptable, the guard is intended behavior.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      },
+      {
+        "text": "Is an opt-out property on GeneratedMessagePackResolverAttribute wanted, given the requirement says no setting is needed?",
+        "options": [
+          "Keep the opt-out property",
+          "Remove it and emit unconditionally"
+        ],
+        "why_it_matters": "Keeping it commits a new public API surface and requires the composite resolver to honor it. Removing it simplifies the change and avoids an API commitment.",
+        "area": "serializer-runtime",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 13947,
+  "output_tokens": 1816,
+  "ms": 13468,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

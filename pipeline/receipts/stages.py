@@ -97,8 +97,8 @@ def _tie_findings_to_tests(findings: list[Finding], tests: list) -> list[Finding
         text = f"{f.receipt_plan.detail} {f.location} {f.claim}"
         named = [t for t in own
                  if Path(t.path).stem in text or any(n.rsplit(".", 1)[-1] in text for n in t.test_names)]
-        plans = sum(1 for g in findings if g.lens == f.lens and g.receipt_plan.kind == "test")
-        tied = named or (own if len(own) == 1 and plans == 1 else [])
+        # Only a test the finding itself names is tied; a lone test is not assumed to be its receipt.
+        tied = named
         names_any = any(n.rsplit(".", 1)[-1] in text for t in tied for n in t.test_names)
         names = [] if names_any else [n for t in tied for n in t.test_names]
         if names:
@@ -108,14 +108,26 @@ def _tie_findings_to_tests(findings: list[Finding], tests: list) -> list[Finding
     return out
 
 
-def _citation_evidence(citations: list[Finding], ledger: list[dict]) -> list[Evidence]:
+def _citation_evidence(citations: list[Finding], ledger: list[dict],
+                       confirmed: bool = True) -> tuple[list[Evidence], list[Finding]]:
+    """A ledger citation suppresses a would-be finding. Only a human-confirmed context earns it a
+    "checked, pass" receipt; against a draft context it stays visible as an unverified hunch."""
     from .lenses.base import render_ledger
 
     rendered = render_ledger(ledger).splitlines() if ledger else []
-    out = []
+    out: list[Evidence] = []
+    hunches: list[Finding] = []
     for f in citations:
         refs = [int(n) for n in re.findall(r"\[L(\d+)\]", f.receipt_plan.detail)]
         cited = [rendered[n - 1] for n in refs if 0 < n <= len(rendered)]
+        if not confirmed:
+            entry = "; ".join(cited) or f.receipt_plan.detail
+            hunches.append(f.model_copy(update={
+                "id": f"unconfirmed-{f.id}",
+                "claim": f"suppressed by unconfirmed context entry: {entry} "
+                         f"(would-be finding: {f.claim})",
+                "verified": False, "evidence_ids": []}))
+            continue
         out.append(Evidence(
             id=f"ledger-{f.id}", kind="ledger-citation",
             title=f"{f.lens}: deliberate per ledger, not a defect: {f.claim}",
@@ -123,7 +135,7 @@ def _citation_evidence(citations: list[Finding], ledger: list[dict]) -> list[Evi
             details={"lens": f.lens, "claim": f.claim, "location": f.location,
                      "cited_entries": cited, "plan": f.receipt_plan.detail},
             excerpt="\n".join(cited)[:1000] or "cited ledger entry not found"))
-    return out
+    return out, hunches
 
 
 def run_lenses(ctx: ReviewContext) -> StageResult:
@@ -162,9 +174,11 @@ def run_lenses(ctx: ReviewContext) -> StageResult:
         "generated_tests": [{"lens": t.lens, "path": t.path, "test_names": t.test_names,
                              "expects": t.expects} for t in out.generated_tests],
     })
+    cited, unconfirmed = _citation_evidence(out.citations, ledger, review_context.is_confirmed())
     return StageResult(
-        findings=_tie_findings_to_tests(out.findings + out.hunches, out.generated_tests),
-        evidence=_citation_evidence(out.citations, ledger),
+        findings=_tie_findings_to_tests(out.findings + out.hunches, out.generated_tests)
+        + unconfirmed,
+        evidence=cited,
         questions=out.questions,
         not_checked=out.not_checked,
         refused=out.refusals,

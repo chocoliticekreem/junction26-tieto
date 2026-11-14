@@ -10,11 +10,11 @@ Contract:
     fail = any differing case, any roundtrip failure, or any removed public API line.
 
 Run artefacts: run_dir/logs/<receipt id>.log and run_dir/compat/{base,head}-{bytes,api}.json,
-head-roundtrip.json, plus the per-side harness build under run_dir/compat/harness-<side>/.
+head-roundtrip.json. The per-side harness build lives under WORK/compat-harness/ (binaries never go
+into run_dir) and is removed when run_compat returns.
 """
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -23,6 +23,8 @@ from pathlib import Path
 
 from . import config
 from .models import CommandReceipt, Evidence, now_iso
+from .runstore import portable
+from .sandbox import dotnet_env
 
 HARNESS_SRC = config.TOOLS / "compat-harness"
 FIXTURE = HARNESS_SRC / "fixtures" / "base.json"
@@ -41,12 +43,12 @@ def _run(cmd: list[str], cwd: Path, run_dir: Path, rid: str) -> tuple[CommandRec
     log.parent.mkdir(parents=True, exist_ok=True)
     started = now_iso()
     t0 = time.monotonic()
-    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                          env={**os.environ, **config.DOTNET_ENV})
+    proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, env=dotnet_env())
     duration = round(time.monotonic() - t0, 2)
-    log.write_text(f"$ {' '.join(cmd)}\n# cwd: {cwd}\n# exit: {proc.returncode}\n\n"
-                   f"--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr}")
-    receipt = CommandReceipt(id=rid, cmd=cmd, cwd=str(cwd), exit_code=proc.returncode,
+    log.write_text(portable(f"$ {' '.join(cmd)}\n# cwd: {cwd}\n# exit: {proc.returncode}\n\n"
+                            f"--- stdout ---\n{proc.stdout}\n--- stderr ---\n{proc.stderr}"))
+    receipt = CommandReceipt(id=rid, cmd=[portable(c) for c in cmd], cwd=portable(str(cwd)),
+                             exit_code=proc.returncode,
                              duration_s=duration, log_path=str(log.relative_to(run_dir)),
                              started_at=started)
     return receipt, proc.stdout
@@ -55,6 +57,10 @@ def _run(cmd: list[str], cwd: Path, run_dir: Path, rid: str) -> tuple[CommandRec
 def mp_bin(tree: Path) -> Path:
     # The repo's Directory.Build.props sets BaseOutputPath to <root>/bin/<project>/.
     return Path(tree) / "bin" / "MessagePack" / "Release" / "net8.0"
+
+
+def harness_root(run_dir: Path) -> Path:
+    return config.WORK / "compat-harness" / f"{run_dir.parent.name}-{run_dir.name}"
 
 
 def build_side(tree: Path, side: str, run_dir: Path, receipts: list[CommandReceipt]) -> Path:
@@ -66,7 +72,7 @@ def build_side(tree: Path, side: str, run_dir: Path, receipts: list[CommandRecei
     if r.exit_code != 0 or not (mp_bin(tree) / "MessagePack.dll").exists():
         raise StepFailed(r, f"build MessagePack ({side})")
 
-    work = run_dir / "compat" / f"harness-{side}"
+    work = harness_root(run_dir) / side
     work.mkdir(parents=True, exist_ok=True)
     for name in HARNESS_FILES:
         shutil.copy2(HARNESS_SRC / name, work / name)
@@ -140,6 +146,15 @@ def run_compat(base_tree: Path, head_tree: Path, run_dir: Path,
     (run_dir / "compat").mkdir(parents=True, exist_ok=True)
     receipts: list[CommandReceipt] = []
     build_s: dict[str, float] = {}
+    try:
+        return _run_compat(base_tree, head_tree, run_dir, evidence_id, receipts, build_s)
+    finally:
+        shutil.rmtree(harness_root(run_dir), ignore_errors=True)
+
+
+def _run_compat(base_tree: Path, head_tree: Path, run_dir: Path, evidence_id: str,
+                receipts: list[CommandReceipt],
+                build_s: dict[str, float]) -> tuple[list[CommandReceipt], Evidence]:
     try:
         sides = {}
         for side, tree in (("base", base_tree), ("head", head_tree)):

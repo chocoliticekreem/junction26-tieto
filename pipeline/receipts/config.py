@@ -6,8 +6,10 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
-load_dotenv(ROOT / ".env")
-load_dotenv(os.environ.get("RECEIPTS_ENV_FILE", ROOT / ".env.local"), override=True)
+# Precedence: process environment > env file (.env.local or RECEIPTS_ENV_FILE) > .env. Nothing
+# overrides the shell, so `MOCK_LLM=1` on the command line can never be undone by a file.
+load_dotenv(os.environ.get("RECEIPTS_ENV_FILE", ROOT / ".env.local"), override=False)
+load_dotenv(ROOT / ".env", override=False)
 
 PIPELINE = ROOT / "pipeline"
 # Env overrides let several git worktrees of this project share one clone and one build cache.

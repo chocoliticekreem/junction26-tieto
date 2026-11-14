@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadRun, readDecision, writeDecision } from "@/lib/data";
-import { mergeIntoMain } from "@/lib/git-merge";
+import { branchSha, mergeIntoMain } from "@/lib/git-merge";
 import { nowIso, requireHuman } from "@/lib/human";
 import { dirs } from "@/lib/paths";
 import type { Decision } from "@/lib/types";
@@ -20,21 +20,32 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: `A decision already exists (${existing.choice} by ${existing.who}). Refusing a second merge.` }, { status: 409 });
   }
 
+  const refuse = (error: string) => NextResponse.json({ error }, { status: 409 });
+  if (run.receipt.verdict !== "decision-A-B") {
+    return refuse(`Merge refused: verdict is ${run.receipt.verdict}, not decision-A-B; only an A/B decision merges a reading.`);
+  }
   const interp = run.receipt.interpretations?.find((i) => i.label === choice);
-  const branch = interp?.branch || `review/${changeId}/${choice}`;
+  const branch = interp?.branch;
+  if (!interp || !branch) return refuse(`Merge refused: the receipt records no branch for reading ${choice}.`);
   const sideRun = loadRun(`${changeId}__${choice}`);
-  if (sideRun?.receipt.verdict === "blocked") {
-    return NextResponse.json(
-      { error: `Reading ${choice} is blocked (${sideRun.receipt.verdict_reason}). Fix the blocker before merging.` },
-      { status: 409 },
+  if (!sideRun) return refuse(`Merge refused: reading ${choice} has no review run of its own (${changeId}__${choice}), so it has no receipts.`);
+  if (sideRun.receipt.verdict === "blocked") {
+    return refuse(`Reading ${choice} is blocked (${sideRun.receipt.verdict_reason}). Fix the blocker before merging.`);
+  }
+  const reviewedSha = sideRun.receipt.head_sha;
+  const currentSha = branchSha(dirs.mockRepo(), branch);
+  if (!currentSha) return refuse(`Merge refused: branch ${branch} does not exist in the mock repo.`);
+  if (currentSha !== reviewedSha) {
+    return refuse(
+      `Merge refused: ${branch} moved since it was reviewed (reviewed ${reviewedSha.slice(0, 12)}, now ${currentSha.slice(0, 12)}). Re-run the review.`,
     );
   }
-  const evidenceIds = (sideRun ?? run).evidence.map((e) => e.id);
+  const evidenceIds = sideRun.evidence.map((e) => e.id);
 
   let mergeSha: string;
   try {
-    const message = `Merge ${branch}: ${run.receipt.requirement_id} interpretation ${choice}\n\nDecided by ${auth.who} in Receipts.${interp?.summary ? `\n\n${interp.summary}` : ""}`;
-    mergeSha = mergeIntoMain(dirs.mockRepo(), branch, auth.who, message);
+    const message = `Merge ${branch}: ${run.receipt.requirement_id} interpretation ${choice}\n\nDecided by ${auth.who} in Receipts.${interp.summary ? `\n\n${interp.summary}` : ""}`;
+    mergeSha = mergeIntoMain(dirs.mockRepo(), branch, reviewedSha, auth.who, message);
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

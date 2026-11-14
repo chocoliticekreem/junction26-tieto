@@ -134,6 +134,10 @@ def route_all(hunks: list[Hunk], requirement_text: str, context: dict,
     usd_per_token = getattr(reg.get(router_name), "usd_per_token", 0.0) if used else 0.0
     if used:
         label = f"rule+{router_name}"
+        scored = [r for h, r in zip(hunks, routes) if h.kind != "generated"]
+        fell_back = sum(not r.router.startswith("rule+") for r in scored)
+        if fell_back:
+            label += f" ({fell_back} of {len(scored)} hunks fell back to rule)"
     elif router_name == "none":
         label = "none"
     else:

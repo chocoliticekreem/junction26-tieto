@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `ContainsKey` guards silently discard a member whose key duplicates an earlier member's key. Repro: a `[MessagePackObject]` with `[Key(0)] int FirstMember` and `[Key(0)] int SecondMember`, or two members with the same string key. Base threw from `Dictionary.Add`, a loud generator or analyzer failure; `DynamicObjectResolver` also rejects duplicate keys at runtime. Head reports no diagnostic, and the generated formatter serializes only FirstMember, so SecondMember's data is lost on every round trip. This also changes behaviour when `SuppressSourceGeneration` is unset, which the acceptance criteria forbid.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeySilentlyDroppedTests (DuplicateIntKey_IsReportedOrBothMembersSerialized, DuplicateStringKey_IsReportedOrBothMembersSerialized). On head no MsgPack/AD0001/generator diagnostic is produced and the generated source never mentions SecondMember, so both tests fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same silent drop applies in the second member loop (the hunks at new lines 1163 and 1179). A duplicate int or string key there is also discarded without a diagnostic, so the defect is not confined to the first loop.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Variant of DuplicateKeySilentlyDroppedTests that uses two public fields (instead of properties) with the same [Key(0)] / [Key(\"k\")]. Expect no diagnostic and only the first field in the generated formatter."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys skips every later per-member check for that member. One example is the `[MessagePackFormatter]` attribute validation that follows (MessageFormatterMustBeMessagePackFormatter). A member that both mixes key kinds and has an invalid formatter now gets only the mix diagnostic. The formatter diagnostic is dropped, though it is still reported when the key kind is fixed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: [MessagePackObject] with [Key(0)] int A and [Key(\"b\")][MessagePackFormatter(typeof(string))] int B. Assert that both DoNotMixStringAndIntKeys and the formatter-type diagnostic are reported. On head only the first appears."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No changed line references SuppressSourceGeneration. The edits only stop TypeCollector from throwing on mixed or duplicate keys. Nothing in scope shows that the 3.1.1 regression came from such a throw. If the analyzer is gated on source generation being enabled elsewhere, MsgPack0xx diagnostics remain missing with SuppressSourceGeneration = true for ordinary violations such as MsgPack004.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Hunch from reading the diff only. To confirm, add a VerifyCS test that enables SuppressSourceGeneration and uses a [MessagePackObject] with an un-keyed public property (expect {|MsgPack004:...|}), then run it on head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeySilentlyDroppedTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Reflection;\nusing FluentAssertions;\nusing MessagePack.SourceGenerator;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeySilentlyDroppedTests(ITestOutputHelper logger)\n{\n    [Fact]\n    public Task DuplicateIntKey_IsReportedOrBothMembersSerialized() => this.RunCaseAsync(\"0\", \"0\");\n\n    [Fact]\n    public Task DuplicateStringKey_IsReportedOrBothMembersSerialized() => this.RunCaseAsync(\"\\\"k\\\"\", \"\\\"k\\\"\");\n\n    private async Task RunCaseAsync(string key1, string key2)\n    {\n        string source = $$\"\"\"\n            using MessagePack;\n\n            namespace N\n            {\n                [GeneratedMessagePackResolver]\n                partial class R { }\n\n                [MessagePackObject]\n                public class Dup\n                {\n                    [Key({{key1}})]\n                    public int FirstMember { get; set; }\n\n                    [Key({{key2}})]\n                    public int SecondMember { get; set; }\n                }\n            }\n            \"\"\";\n\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = frameworkRefs.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack).Cast<MetadataReference>()).ToList();\n        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3);\n        var compilation = CSharpCompilation.Create(\n            \"DupKeyTest\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        var analyzers = typeof(MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetCustomAttribute<DiagnosticAnalyzerAttribute>() is not null && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n\n        ImmutableArray<Diagnostic> analyzerDiagnostics = analyzers.IsEmpty\n            ? ImmutableArray<Diagnostic>.Empty\n            : await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePackGenerator());\n        driver = driver.RunGenerators(compilation);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n\n        var relevant = analyzerDiagnostics\n            .Where(d => d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal) || d.Id == \"AD0001\")\n            .Concat(result.Diagnostics)\n            .ToList();\n        foreach (var d in relevant)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        string generated = string.Join(\"\\n\", result.GeneratedTrees.Select(t => t.ToString()));\n        logger.WriteLine(generated);\n\n        bool reported = relevant.Count > 0;\n        bool bothSerialized = generated.Contains(\"FirstMember\") && generated.Contains(\"SecondMember\");\n\n        (reported || bothSerialized).Should().BeTrue(\"a duplicate key must either be diagnosed or both members must be serialized; silently dropping SecondMember loses data\");\n    }\n}\n",
+        "test_names": [
+          "DuplicateIntKey_IsReportedOrBothMembersSerialized",
+          "DuplicateStringKey_IsReportedOrBothMembersSerialized"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 7957,
+  "output_tokens": 9788,
+  "ms": 84765,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

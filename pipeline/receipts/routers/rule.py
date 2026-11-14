@@ -9,6 +9,9 @@ FLOOR_AREAS = {
     "serializer-format": "compatibility",
     "serializer-runtime": "compatibility",
     "security": "security",
+    # The source generator's emit code and templates define the wire format of generated formatters.
+    "codegen-templates": "compatibility",
+    "source-generator": "compatibility",
 }
 # Generated code correctness depends on the generator's analysis, so its hunks reach mutation.
 GENERATOR_ANALYSIS_FLOOR = 5
