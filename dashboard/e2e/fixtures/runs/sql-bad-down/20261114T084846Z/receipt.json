@@ -1,0 +1,161 @@
+{
+  "change_id": "sql-bad-down",
+  "requirement_id": "REQ-SQL-1",
+  "requirement_title": "Add a discount column to orders",
+  "requirement_text": "# REQ-SQL-1: Add a discount column to orders\n\nAdd a nullable `discount_cents` column to `orders`, default 0. Existing rows keep their totals:\nno order loses or changes its `amount`. The migration must be reversible: the down migration\nreturns the schema to exactly what it was before.",
+  "run_ts": "20261114T084846Z",
+  "head_sha": "13c189e7d0f815c73d49c7af442f1484a3106c2d",
+  "verdict": "blocked",
+  "verdict_reason": "verified high finding(s) backed by receipts: F-sql-reversible",
+  "risk": 7,
+  "areas": [
+    "db-migrations"
+  ],
+  "area_trust": {
+    "db-migrations": 1
+  },
+  "checked": [
+    {
+      "what": "sql-start: run -d exit 0 in 0.18s",
+      "by": "sandbox",
+      "evidence_id": "sql-start",
+      "result": "pass"
+    },
+    {
+      "what": "sql-ready: exec receipts-sql-537c33fda3 exit 0 in 1.6s",
+      "by": "sandbox",
+      "evidence_id": "sql-ready",
+      "result": "pass"
+    },
+    {
+      "what": "sql-port: port receipts-sql-537c33fda3 exit 0 in 0.04s",
+      "by": "sandbox",
+      "evidence_id": "sql-port",
+      "result": "pass"
+    },
+    {
+      "what": "sql-base-up-001_create_orders: exec -i exit 0 in 0.12s",
+      "by": "sandbox",
+      "evidence_id": "sql-base-up-001_create_orders",
+      "result": "pass"
+    },
+    {
+      "what": "sql-teardown: rm -f exit 0 in 0.22s",
+      "by": "sandbox",
+      "evidence_id": "sql-teardown",
+      "result": "pass"
+    },
+    {
+      "what": "Migration not reversible: schema after down differs from base (1 line(s))",
+      "by": "migration-up-down",
+      "evidence_id": "sql-reversible",
+      "result": "fail"
+    },
+    {
+      "what": "No rows lost across the up migration (orders 5 -> 5)",
+      "by": "row-preservation",
+      "evidence_id": "sql-rows",
+      "result": "pass"
+    },
+    {
+      "what": "Repo queries on the migrated schema: 1/1 succeeded",
+      "by": "existing-tests",
+      "evidence_id": "sql-queries",
+      "result": "pass"
+    },
+    {
+      "what": "routed 2 hunks across 2 files",
+      "by": "sql-rule",
+      "evidence_id": "",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F-sql-reversible",
+      "lens": "compatibility",
+      "claim": "Migration not reversible: schema after down differs from base (1 line(s))",
+      "location": "migrations/002_add_discount_cents.down.sql",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "apply the migration up and down in a throwaway Postgres and compare schema, row and value snapshots"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "sql-reversible"
+      ],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "hunches": [],
+  "refused": [],
+  "not_checked": [
+    {
+      "what": "performance of the migration on production-size data",
+      "why": "the sandbox seeds the repo's own fixture rows (5); duration and lock time on large tables are unknown"
+    },
+    {
+      "what": "locking behaviour under concurrent writes",
+      "why": "migrations ran on an idle database over a single connection"
+    },
+    {
+      "what": "values in columns the requirement does not name",
+      "why": "only row counts and the checksums of columns the requirement asks to rename are compared"
+    },
+    {
+      "what": "data restored by the down migration",
+      "why": "down is checked for schema equality with base; rows and values it fails to bring back are not compared"
+    },
+    {
+      "what": "other Postgres versions and other databases",
+      "why": "the sandbox runs postgres:16-alpine only"
+    },
+    {
+      "what": "application code that reads these tables",
+      "why": "only the repo's queries/*.sql were run against the migrated schema"
+    },
+    {
+      "what": "requirement-tests lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    },
+    {
+      "what": "logic-edge lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    },
+    {
+      "what": "compatibility lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    },
+    {
+      "what": "security lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    },
+    {
+      "what": "product-context lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    },
+    {
+      "what": "test-quality lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    }
+  ],
+  "residual_risk": "This change touches 2 files (0 generated) in db-migrations; the highest routed risk is 7/10. 2 file(s) were routed for deep review, 0 for light review and 0 to the regeneration check. Executed checks came from the sql sandbox adapter. 12 thing(s) were not checked, including performance of the migration on production-size data; locking behaviour under concurrent writes; values in columns the requirement does not name. By signing off, the signer accepts any defect that only those unchecked paths would have revealed. The change is blocked; signing off is not offered until the blocker is fixed.",
+  "routing": {
+    "migrations/002_add_discount_cents.down.sql": "deep",
+    "migrations/002_add_discount_cents.up.sql": "deep"
+  },
+  "counts": {
+    "source": 2,
+    "test": 0,
+    "docs": 0,
+    "generated": 0,
+    "template": 0,
+    "total": 2,
+    "not_generated": 2
+  },
+  "questions": [],
+  "interpretations": [],
+  "narrative": "",
+  "mock_llm": false
+}

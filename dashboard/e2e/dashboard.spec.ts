@@ -19,9 +19,10 @@ test("inbox lists sample and bench changes with verdict pills", async ({ page })
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
   const rows = page.getByTestId("inbox-row");
-  await expect(rows).toHaveCount(5);
+  await expect(rows).toHaveCount(6);
   await expect(page.getByRole("heading", { name: /Tieto sample changes/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: /^Bench/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: /^SQL migrations/ })).toBeVisible();
   await expect(page.getByText("ju26-issue-2297__A")).toHaveCount(0);
   const row2283 = rows.filter({ hasText: "ju26-issue-2283" });
   await expect(row2283.getByTestId("verdict-pill")).toHaveText("Needs sign-off");
@@ -67,6 +68,22 @@ test("change page shows receipts, collapsed hunches, not-checked list and log ex
   const toggle = page.getByTestId("log-toggle").filter({ hasText: "test-base-req.log" });
   await toggle.click();
   await expect(page.getByTestId("log-excerpt")).toContainText("IndexOutOfRangeException");
+});
+
+test("SQL adapter change page shows the schema diff and row counts behind the block", async ({ page }) => {
+  await page.goto("/change/sql-bad-down");
+  await expect(page.getByTestId("verdict-pill").first()).toHaveText("Blocked");
+  await expect(page.getByTestId("verdict-reason")).toContainText("F-sql-reversible");
+  const finding = page.getByTestId("finding");
+  await expect(finding).toHaveCount(1);
+  const reversible = finding.locator("#evidence-sql-reversible");
+  await expect(reversible).toContainText("Migration not reversible");
+  await expect(reversible).toContainText("+column orders.discount_cents");
+  const rows = page.locator("#evidence-sql-rows").getByTestId("evidence-row_counts");
+  await expect(rows.getByRole("columnheader")).toHaveText(["table", "base", "after up", "after down"]);
+  await expect(rows.getByRole("cell", { name: "5" })).toHaveCount(3);
+  await expect(page.getByTestId("not-checked-list")).toContainText("locking behaviour under concurrent writes");
+  await expect(page.getByTestId("not-checked-list")).not.toContainText("NativeAOT");
 });
 
 test("2297 routing map collapses 222 generated files into one block", async ({ page }) => {

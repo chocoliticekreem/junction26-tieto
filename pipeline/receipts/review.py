@@ -1,5 +1,7 @@
 """`receipts review`: one change end to end, every artifact written under runs/<change>/<ts>/."""
 
+from pathlib import Path
+
 from . import config, runstore, sandbox, stages
 from .intake import run_intake
 from .models import Evidence, Interpretation, NotChecked, TestRun
@@ -7,12 +9,13 @@ from .routers.combine import route_all
 from .verdict import VerdictInputs, compose
 
 
-def load_requirement(req_id: str) -> tuple[str, str, bool]:
+def load_requirement(req_id: str, directory: Path | None = None) -> tuple[str, str, bool]:
     """(title, text, missing). Title is the first markdown heading without a leading "<id>:"
     (the dashboard shows the id next to it), else the id."""
-    path = config.REQUIREMENTS / f"{req_id}.md"
+    path = (directory or config.REQUIREMENTS) / f"{req_id}.md"
     if not path.exists():
-        return req_id, f"(requirement text for {req_id} not found at requirements/{req_id}.md)", True
+        rel = path.relative_to(config.ROOT) if path.is_relative_to(config.ROOT) else path
+        return req_id, f"(requirement text for {req_id} not found at {rel})", True
     text = path.read_text().strip()
     title = next((ln.lstrip("#").strip() for ln in text.splitlines() if ln.startswith("#")), req_id)
     return title.removeprefix(f"{req_id}:").strip() or req_id, text, False

@@ -47,6 +47,41 @@ function Details({ ev, ctx }: { ev: Evidence; ctx: Ctx }) {
     );
   }
 
+  for (const key of ["row_counts", "value_checksums"]) {
+    const v = d[key];
+    if (!Array.isArray(v) || !v.length) continue;
+    used.add(key);
+    const records = v as Record<string, unknown>[];
+    const cols = Object.keys(records[0]);
+    blocks.push(
+      <div key={key}>
+        <div className="mb-1 text-[11px] text-muted-foreground">{key.replace("_", " ")}</div>
+        <Table className="text-xs" data-testid={`evidence-${key}`}>
+          <TableHeader>
+            <TableRow>
+              {cols.map((c) => (
+                <TableHead key={c} className="h-7">
+                  {c.replace("_", " ")}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {records.map((row, i) => (
+              <TableRow key={i}>
+                {cols.map((c) => (
+                  <TableCell key={c} className="py-1 font-mono break-all whitespace-normal">
+                    {String(row[c] ?? "—")}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>,
+    );
+  }
+
   for (const key of ["failing_tests", "killing_tests", "generated_files", "files"]) {
     const v = d[key];
     if (isStringArray(v) && v.length) {
@@ -73,7 +108,7 @@ function Details({ ev, ctx }: { ev: Evidence; ctx: Ctx }) {
     if (rows.length) blocks.push(<MutantTable key="mutants" mutants={rows} />);
   }
 
-  for (const key of ["diff", "byte_diff", "api_diff"]) {
+  for (const key of ["diff", "byte_diff", "api_diff", "schema_diff"]) {
     const v = d[key];
     if (typeof v === "string" && v.trim()) {
       used.add(key);

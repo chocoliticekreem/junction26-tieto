@@ -123,7 +123,9 @@ export type EvidenceKind =
   | "existing-tests"
   | "build"
   | "ledger-citation"
-  | "code-citation";
+  | "code-citation"
+  | "migration-up-down"
+  | "row-preservation";
 
 export interface Evidence {
   id: string;
