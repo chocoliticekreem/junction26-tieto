@@ -83,6 +83,14 @@ Tick them on the form only if they are genuinely used.
 | Best Use of Codex (49, OpenAI) | Meaningful use of Codex in building the project | Tick it in the form |
 | Best Use of Entire (51, MLH) | Use Entire's Sessions, Graph, Brain and Trails, and show token efficiency | Claim the code at mlh.link/junction-26 |
 
+### Added Sat 14 Nov: Verda (decided, build it once the key is in)
+**Verda Compute Track (56).** Prizes $10,000 / $2,500 / $2,500 in Verda credits. Judged 25% each on Ambition (what compute let you do), Fit (the right Verda service, with a clear reason), Working prototype (runs, process documented) and Path to scale.
+- **Why now:** the Anthropic key hit its spend limit (`BLOCKED.md` item 1). Verda's **Inference API** (open-weight models, hosted in Europe) becomes a model provider for the lenses and the bench re-run.
+- **Use:** add Verda as a provider behind the existing model interface, selected by env (e.g. `LLM_PROVIDER=verda`). Keep Anthropic as an option. Re-run the bench on the final pipeline with Verda, and report quality and cost per change next to the Anthropic numbers already recorded. The comparison is itself a finding for the Measurement criterion.
+- **Env:** `VERDA_API_KEY` (use the exact name and base URL from the Verda docs) in `.env.local`; add the name to `.env.example`. Until the key exists, log it in `BLOCKED.md` and keep `MOCK_LLM=1` working.
+- **To qualify:** write `docs/verda.md` (process, which product and why, results, cost, how it scales). Anson posts a link to it in Verda's Discord channel.
+- Credits: €200 per participant via the QR code on the table or verda.com/blog/junction-2026. Mentors: 3rd floor, Booth 6.
+
 ---
 
 ## Self-check: compare back to this before calling anything done
