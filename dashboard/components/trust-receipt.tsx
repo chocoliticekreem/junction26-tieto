@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { humanizeTitle } from "@/lib/humanize";
 import { impactStatus } from "@/lib/impact-summary";
 import type { Decision, RunBundle } from "@/lib/types";
+import { Slip, type SlipPose } from "./mascot";
 import { ResultIcon, resultTone, resultWord, verdictLabel } from "./pills";
 import { SignedRing, Stamp } from "./stamp";
 import { Term } from "./term";
@@ -44,6 +45,14 @@ function Line({ label, value, href, tone, note, testId, index, reduce }: { label
 function stampText(run: RunBundle, decision?: Decision): { kind: Parameters<typeof Stamp>[0]["kind"]; text: string } {
   if (decision) return { kind: "signed", text: decision.choice === "sign-off" ? `Signed off · ${decision.who}` : `Merged ${decision.choice} · ${decision.who}` };
   return { kind: run.receipt.verdict, text: verdictLabel[run.receipt.verdict] ?? run.receipt.verdict };
+}
+
+/* Slip holds the stamp until a human decides; he only stamps on a proven defect or a recorded decision. */
+function slipPose(kind: Parameters<typeof Stamp>[0]["kind"]): SlipPose {
+  if (kind === "signed") return "stamp-signed";
+  if (kind === "blocked") return "stamp-blocked";
+  if (kind === "decision-A-B") return "thinking";
+  return "idle";
 }
 
 /**
@@ -184,8 +193,9 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
         </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-between gap-2 text-[10px] text-muted-foreground">
-        <span>No receipt, no finding. A named human decides.</span>
+      <div className="mt-3 flex items-center gap-2 text-[10px] text-muted-foreground">
+        <Slip key={stamp.kind} pose={slipPose(stamp.kind)} size={46} className="-my-1 -ml-1.5" delay={stampDelay} decorative />
+        <span className="min-w-0 flex-1">No receipt, no finding. A named human decides.</span>
         {r.mock_llm && (
           <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-1.5 py-px" title="Lens output replayed from recorded fixtures (MOCK_LLM=1); sandbox receipts are real." data-testid="replayed-badge">
             <Repeat2 className="size-3" /> replayed
