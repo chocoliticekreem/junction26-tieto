@@ -76,6 +76,29 @@ test("change page shows receipts, collapsed hunches, not-checked list and log ex
   await expect(page.getByTestId("log-excerpt")).toContainText("IndexOutOfRangeException");
 });
 
+test("Proven block lists passing positive receipts and opens the evidence card on click", async ({ page }) => {
+  await page.goto("/change/ju26-issue-2283");
+  const lines = page.getByTestId("proven").getByTestId("proven-line");
+  await expect(lines).toHaveText(["Requirement tests fail on base, pass on head · 2/2", "Serialized bytes identical on base and head · 12/12 cases"]);
+  const reqCard = page.locator("#evidence-E-req");
+  await expect(reqCard).not.toBeVisible();
+  await lines.first().click();
+  await expect(reqCard).toBeVisible();
+  await expect(reqCard.getByTestId("evidence-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(reqCard.getByRole("cell", { name: "passed" })).toHaveCount(2);
+  await expect(page).toHaveURL(/#evidence-E-req$/);
+
+  await page.goto("/change/ju26-issue-2297");
+  await expect(page.getByTestId("proven-line")).toHaveText(["Generated files verified against head · 222/222 files"]);
+
+  await page.goto("/change/sql-bad-down");
+  await expect(page.getByTestId("proven-line")).toHaveText(["No rows lost across the migration · 1 table"]);
+
+  await page.goto(`/change/${encodeURIComponent("mock/2283/logic")}`);
+  await expect(page.getByTestId("verdict-pill").first()).toBeVisible();
+  await expect(page.getByTestId("proven")).toHaveCount(0);
+});
+
 test("SQL adapter change page shows the schema diff and row counts behind the block", async ({ page }) => {
   await page.goto("/change/sql-bad-down");
   await expect(page.getByTestId("verdict-pill").first()).toHaveText("Blocked");

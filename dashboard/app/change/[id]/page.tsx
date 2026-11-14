@@ -10,6 +10,8 @@ import { FindingCard, HunchList } from "@/components/finding-card";
 import { splitNote } from "@/components/metrics-table";
 import { MutantTable } from "@/components/mutant-table";
 import { ResultPill, RiskPill, TrustLevel, VerdictPill } from "@/components/pills";
+import { Proven } from "@/components/proven";
+import { provenLines } from "@/lib/proven";
 import { RoutingTree } from "@/components/routing-tree";
 import { EmptyState, PageTitle, Section, TightList } from "@/components/section";
 import { SignOffButton } from "@/components/sign-off-button";
@@ -100,6 +102,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
             <span>{(r.questions ?? []).length} questions</span>
           )}
         </div>
+        <Proven lines={provenLines(run.evidence)} />
         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground">
           <RiskPill risk={r.risk} />
           {r.areas.map((a) => (
