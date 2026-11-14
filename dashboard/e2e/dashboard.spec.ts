@@ -82,9 +82,12 @@ test("SQL adapter change page shows the schema diff and row counts behind the bl
   await expect(page.getByTestId("verdict-reason")).toContainText("F-sql-reversible");
   const finding = page.getByTestId("finding");
   await expect(finding).toHaveCount(1);
+  await finding.getByTestId("finding-toggle").click();
   const reversible = finding.locator("#evidence-sql-reversible");
   await expect(reversible).toContainText("Migration not reversible");
   await expect(reversible).toContainText("+column orders.discount_cents");
+  await page.getByTestId("receipts-toggle").click();
+  await page.locator("#evidence-sql-rows").getByTestId("evidence-toggle").click();
   const rows = page.locator("#evidence-sql-rows").getByTestId("evidence-row_counts");
   await expect(rows.getByRole("columnheader")).toHaveText(["table", "base", "after up", "after down"]);
   await expect(rows.getByRole("cell", { name: "5" })).toHaveCount(3);
