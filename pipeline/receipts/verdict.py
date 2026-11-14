@@ -237,6 +237,9 @@ def _residual(inp: VerdictInputs, verdict: str, risk: int, areas: list[str],
                  + "; ".join(n.what for n in not_checked[:3])
                  + ". By signing off, the signer accepts any defect that only those unchecked "
                    "paths would have revealed.")
+    if verdict == "decision-A-B":
+        parts.append("The AI did not choose between the readings; whoever merges A or B owns that "
+                     "product decision and the receipts of the branch they merge.")
     if verdict == "blocked":
         parts.append("The change is blocked; signing off is not offered until the blocker is fixed.")
     return " ".join(parts)

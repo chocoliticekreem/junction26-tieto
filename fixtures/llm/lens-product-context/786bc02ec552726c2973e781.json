@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Requirement says all generated code should be decorated, but the change only decorates formatters, resolvers and nested helper classes, and only on non-netstandard2.0/non-.NET Framework targets. Generated code compiled on netstandard2.0/net framework is not excluded, so the README documents a gap. The guard may be deliberate (derived criterion: attribute must exist or be conditionally emitted), but coverage skew remains on those targets. Also the README claims 'All generated formatters and resolvers' while GeneratedCode/other emitted types (e.g. partial nesting types) are not covered.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the templates: nesting partial types emitted by TransformUtilities.EmitNestingTypesAndNamespaces carry no attribute, and netstandard2.0/NETFRAMEWORK consumers get none; compare with the 'All generated code' acceptance criterion."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "TransformUtilities change from \"{\" to \"{\\r\\n\" for constrained nesting types is a behavioral/formatting change unrelated to the attribute; it alters generated output for nested generic types with constraints, a recently churned area, with no explanation in requirement.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshot tests and inspect snapshots for nested constrained generic types to confirm only newline changes and still compile; cite [L4] as recent churn."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditionally emit [ExcludeFromCodeCoverage] (guarded by #if for netstandard2.0/NETFRAMEWORK) on all generated formatters, resolvers and their helper classes, with no setting."
+      },
+      {
+        "label": "B",
+        "summary": "Same attribute emission but add an opt-out setting (e.g. a MessagePackGeneratorOptions/property) to disable it, and/or also decorate every generated type including nesting partial types, so that coverage exclusion applies broadly rather than only to formatter and resolver types."
+      }
+    ]
+  },
+  "input_tokens": 12899,
+  "output_tokens": 798,
+  "ms": 6946,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

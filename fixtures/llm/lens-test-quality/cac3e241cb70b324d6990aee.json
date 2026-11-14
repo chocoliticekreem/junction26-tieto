@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The MemberNeedsKey change (FirstOrDefault()?.GetSyntax().GetLocation()) and the wrapper both suppress diagnostics for metadata symbols. The test ClosedGenericStruct_FromMetadataReference_UnkeyedMember only asserts no diagnostics, so it cannot tell whether the crash was fixed by FirstOrDefault or by the wrapper dropping the diagnostic. Reverting the FirstOrDefault edit to [0] would likely still crash, but reverting only the wrapper would likely still pass. Individual mutations of each line are not independently pinned.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 delete-statement: item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation() -> item.DeclaringSyntaxReferences[0].GetSyntax().GetLocation(); run the Unkeyed test. Expected to be killed. The unkeyed property must be public and reach this branch, which needs verification."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The BothStringAndIntKeyAreNull path (GetPropertyIdentifierLocation) has no test. No test has a metadata generic struct with a [Key] attribute whose key is null, such as a derived/invalid key. The change's tests only cover valid keys and a missing key, so replacing GetPropertyIdentifierLocation with the old [0] indexing survives.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 delete-statement: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no added test reaches the null-key branch for a metadata type."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "ReportIfLocatedInCompilation has no negative test showing that diagnostics for in-compilation source locations are still reported. All new tests expect zero diagnostics, so a mutant that always drops (condition negated or guard removed so nothing is reported) would survive in these tests. This could suppress real MsgPack003/004 diagnostics for same-assembly types, which the requirement says must keep working.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(...)) -> if (!(...)); expected to survive in the new tests, which only assert no diagnostics. Existing analyzer tests may kill it, but the change's own tests do not."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test does not check for no AD0001 on the same-compilation paths. ClosedGenericStruct_FromMetadataReference defines the struct with fully-keyed members and never exercises the diagnostic paths where the crash occurred. The reporter did not identify which of the three indexes fires, so the first two tests may pass on base if the crash comes from the unkeyed path or the other paths. The record struct test is the one that mirrors the repro and its crash site is unverified.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:499",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run ClosedGenericStruct_FromMetadataReference and ClosedGenericRecordStruct_FromMetadataReference against the base-built TypeCollector; confirm they fail there. If either passes on base, it does not reproduce the bug."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "RunWithMetadataReferenceAsync uses TestBehaviors.SkipGeneratedSourcesCheck, so the generated output is not verified. It only asserts that the resolver hint name exists. A generated resolver that is missing the formatter or has wrong content would pass. It also runs the generator in a separate manual driver, so the analyzer and generator run are not the same compilation.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:620",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot test for the usage source and inspect whether the generated resolver references the closed generic struct. Currently skipped via SkipGeneratedSourcesCheck."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10101,
+  "output_tokens": 1776,
+  "ms": 12297,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

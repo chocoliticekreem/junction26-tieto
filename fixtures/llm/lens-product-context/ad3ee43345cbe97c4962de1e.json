@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The diff changes several TypeCollector paths (dup-key guard, `continue` on key-kind mismatch, moved suppression early return) but includes no AnalyzerReleases or doc updates. Not needed unless diagnostics change; however, README states MsgPack011 IS reported for suppressed types while 3.1.0 behavior is claimed as the baseline, so the doc claim of '3.1.0 matching' for MsgPack011 is unverified.",
+        "location": "README.md:1632",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare README claim that MsgPack011 is reported for suppressed types 'as in 3.1.0' against 3.1.0 TypeCollector behavior; the sentence only says 3.1.0 omitted MsgPack016/017, so the MsgPack011 behavior may differ from 3.1.0, contradicting the 'matches 3.1.0' acceptance criterion."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` on mixed key kinds changes behavior for non-suppressed types too (member is now dropped from the member set after MsgPack005), which alters generator output/analysis for types with mixed keys, contrary to 'behaviour for unset/false does not change'. Only the analyzer path is tested (no generator snapshot).",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshot tests and add a mixed-key [MessagePackObject] case with generation enabled; compare generated output at base vs head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate-key guard silently keeps the first member for non-suppressed types too, changing which members are generated when keys collide; previously it would throw (analyzer crash) so this is a behavior change for the default path, though only on already-erroneous code.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run DuplicateKeysAreReportedWithoutAnalyzerFailureForGeneratedTypes against base code and confirm whether it fails there, to establish whether default-path behavior changed."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Analyzer reports all validation diagnostics (MsgPack003/004/005/011/012/015) for suppressed types but not the AOT-only MsgPack016/017; implemented by moving the suppressSourceGeneration early return after the validation code in TypeCollector."
+      },
+      {
+        "label": "B",
+        "summary": "Restore exactly 3.1.0 behavior: analyzer validates suppressed types but only the diagnostics 3.1.0 emitted; if 3.1.0 did not report MsgPack011 for suppressed types, the change would need to skip that check, or alternatively all diagnostics including MsgPack016/017 would be reported for suppressed types."
+      }
+    ]
+  },
+  "input_tokens": 9639,
+  "output_tokens": 1071,
+  "ms": 8742,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

@@ -28,7 +28,7 @@ export default async function QuestionsPage() {
         ) : (
           <div className="space-y-3">
             {pending.map((q) => (
-              <div key={q.id} className="space-y-3 rounded-md border p-4" data-testid="pending-question">
+              <div key={q.id} className="space-y-3 rounded-md border p-4 [overflow-wrap:anywhere]" data-testid="pending-question">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                   <Link href={`/change/${encodeURIComponent(q.change_id)}`} className="font-mono hover:underline">
                     {q.change_id}

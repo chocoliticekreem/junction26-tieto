@@ -81,6 +81,7 @@ def default_test_dir_examples(read_file) -> list[dict]:
 def run_all_lenses(req_id: str, req_text: str, hunks: list[Hunk], routes: list[RouteResult],
                    ledger_entries: list, test_dir_examples: list, *, change_id: str = "",
                    areas: dict[str, str] | None = None, parallel: bool = True) -> LensOutput:
+    generated_files = len({h.file for h in hunks if h.kind == "generated"})
     hunks = [h for h in hunks if h.kind != "generated"]
     routes_by_id = {r.hunk_id: r for r in routes}
     areas = areas or {h.file: _default_area(h.file) for h in hunks}
@@ -88,7 +89,7 @@ def run_all_lenses(req_id: str, req_text: str, hunks: list[Hunk], routes: list[R
 
     def one(spec):
         return run_lens(spec, req_id, req_text, hunks, routes_by_id, areas, ledger_entries,
-                        test_dir_examples, change_id)
+                        test_dir_examples, change_id, generated_files)
 
     if parallel:
         with ThreadPoolExecutor(max_workers=len(LENSES)) as pool:

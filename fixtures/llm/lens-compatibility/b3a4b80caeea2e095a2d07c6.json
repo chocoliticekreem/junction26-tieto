@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The attribute is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, so generated code compiled for netstandard2.0 or .NET Framework is not decorated. The requirement says all generated code gets the attribute. Projects targeting netstandard2.0, which is common for MessagePack consumers, will see no change in coverage. The attribute exists in netstandard2.0 as of System.Runtime, and in .NET Framework 4.0 and later in mscorlib. The guard therefore looks unnecessary, and it also skips the .NET Framework targets.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a generated formatter in a project targeting netstandard2.0 and one targeting net472, then reflect on the formatter type for ExcludeFromCodeCoverageAttribute. It is absent in both builds. Alternatively, compile the generated source with the attribute unguarded against netstandard2.0 references to show it compiles."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute covers formatters, resolvers and FormatterCache, but not every generated type or member. Other emitted code, such as the nested partial wrappers from EmitNestingTypesAndNamespaces and any helper types in other templates, may be left undecorated. The requirement says all generated code. The hunks show no change to templates beyond these seven.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Regenerate the snapshot tests, then grep the verified outputs for `class ` or `struct ` declarations that are not preceded by ExcludeFromCodeCoverage."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The `{` change in the nesting-types emit with constraints now writes `{\\r\\n`, which changes generated output for nested generic types with constraints. It is unrelated to the attribute. Because the opening brace is now followed by a newline, verified snapshots for that case change. Users who check in or snapshot generator output will see this diff without opting in.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests with a nested generic type that has constraints, and compare the output at base and head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the ExcludeFromCodeCoverage attribute be emitted unconditionally on all target frameworks, or only on the frameworks allowed by the current `#if` guard?",
+        "options": [
+          "Emit unconditionally, since the attribute exists in netstandard2.0 and net4x",
+          "Keep the guard and exclude netstandard2.0 and .NETFRAMEWORK"
+        ],
+        "why_it_matters": "If the attribute is meant to be unconditional, the guard breaks the requirement for netstandard2.0 and .NET Framework consumers and the first finding stands. If excluding those frameworks is intended, the finding is only a documentation gap.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 9784,
+  "output_tokens": 1135,
+  "ms": 9207,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

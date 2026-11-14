@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Every opt-in emission is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, so a consumer project targeting netstandard2.0 or .NET Framework (net472, net48) gets no `[ExcludeFromCodeCoverage]` on any generated formatter or resolver. `System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute` has existed since .NET Framework 4.0 and is in netstandard2.0, and it has always allowed AttributeTargets.Class. Only AttributeTargets.Assembly was added later. The guard therefore drops the attribute on targets where it compiles fine. That breaks 'all generated code is decorated' for netstandard2.0 libraries, which are the most common MessagePack consumers.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:15",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageNetStandardReceipts.FormattersAreDecoratedWhenNetStandard20SymbolDefined. It first proves the attribute compiles on a class against netstandard2.0 reference assemblies. It then runs MessagePackGenerator with preprocessor symbol NETSTANDARD2_0 and asserts the generated formatter and resolver class declarations carry the attribute. It fails on head because the attribute sits in a disabled #if region."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "CompositeResolverTemplate.tt adds the attribute to the nested `FormatterCache<T>` class (second .tt hunk), but CompositeResolverTemplate.cs, the precompiled T4 output that is actually built, has only the outer-class change. The two are out of sync: the shipped composite resolver's FormatterCache is not decorated, and rerunning T4 would change the .cs.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:35",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Re-run the T4 transform for CompositeResolverTemplate.tt and diff against the committed CompositeResolverTemplate.cs. The FormatterCache<T> attribute lines will appear only in the regenerated output."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The composite resolver template emits the attribute unconditionally and ignores the new opt-out. Every other template checks Options.Generator.EmitExcludeFromCodeCoverage, so a user who opts out still gets the attribute on [CompositeResolver]-generated classes.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "CompositeResolverTemplate.tt lines 7-9 and 35-37 have no `<# if (Options.Generator.EmitExcludeFromCodeCoverage) #>` guard, unlike ResolverTemplate.tt, FormatterTemplate.tt, EnumTemplate.tt, UnionTemplate.tt and StringKeyFormatterTemplate.tt."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageNetStandardReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageNetStandardReceipts(ITestOutputHelper logger)\n{\n    private const string Source = \"\"\"\n        using MessagePack;\n\n        namespace TestNs\n        {\n            [GeneratedMessagePackResolver]\n            partial class MyResolver { }\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task FormattersAreDecoratedWhenNetStandard20SymbolDefined()\n    {\n        // 1. The attribute exists and is valid on a class when targeting netstandard2.0.\n        ImmutableArray<MetadataReference> nsRefs = await ReferenceAssemblies.NetStandard.NetStandard20.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var probeTree = CSharpSyntaxTree.ParseText(\"[System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage] internal sealed class Probe { }\");\n        var probe = CSharpCompilation.Create(\"Probe\", new[] { probeTree }, nsRefs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        var probeErrors = probe.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();\n        Assert.Empty(probeErrors);\n\n        // 2. Generate code for a consumer that defines NETSTANDARD2_0.\n        ImmutableArray<MetadataReference> refs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3, preprocessorSymbols: new[] { \"NETSTANDARD2_0\" });\n        var tree = CSharpSyntaxTree.ParseText(Source, parseOptions);\n        var compilation = CSharpCompilation.Create(\n            \"TestAssembly\",\n            new[] { tree },\n            refs.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> _);\n\n        var generatedTrees = driver.GetRunResult().GeneratedTrees;\n        var classes = generatedTrees\n            .SelectMany(t => t.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())\n            .Where(c => c.Identifier.ValueText.EndsWith(\"Formatter\", StringComparison.Ordinal) || c.Identifier.ValueText == \"MyResolver\")\n            .ToList();\n\n        foreach (var t in generatedTrees)\n        {\n            logger.WriteLine(t.ToString());\n        }\n\n        Assert.NotEmpty(classes);\n        var undecorated = classes\n            .Where(c => !c.AttributeLists.SelectMany(a => a.Attributes).Any(a => a.Name.ToString().Contains(\"ExcludeFromCodeCoverage\")))\n            .Select(c => c.Identifier.ValueText)\n            .ToList();\n        Assert.True(undecorated.Count == 0, \"Generated classes lacking [ExcludeFromCodeCoverage] under NETSTANDARD2_0: \" + string.Join(\", \", undecorated));\n    }\n}\n",
+        "test_names": [
+          "FormattersAreDecoratedWhenNetStandard20SymbolDefined"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 16143,
+  "output_tokens": 7942,
+  "ms": 68492,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

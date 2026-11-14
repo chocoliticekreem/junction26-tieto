@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "A source-declared property whose declaring syntax is not a PropertyDeclarationSyntax now silently loses the BothStringAndIntKeyAreNull diagnostic. The typical case is a record primary-constructor property such as `public partial record Cmd([property: Key((string)null)] string Scope);`. `GetPropertyIdentifierLocation` returns null because the syntax is a ParameterSyntax, so `Diagnostic.Create` gets `Location.None`. The new `ReportIfLocatedInCompilation` wrapper then drops it because `Location.IsInSource` is false. Base threw InvalidCastException (AD0001); head reports nothing at all. The symbol is in the compilation being analyzed and has a usable ParameterSyntax location, so the diagnostic should still be reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.RecordPrimaryCtorNullKeyDiagnosticTests.NullKeyOnRecordPrimaryConstructorPropertyIsStillReported. It runs MsgPack00xMessagePackAnalyzer on a source record with `[property: Key((string)null)]` and expects a MsgPack diagnostic naming 'Scope'. On head the analyzer emits none."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement names three unguarded `DeclaringSyntaxReferences[0]` sites (reporter's lines 735, 1009 and 1101). The diff only changes two of them: head 982 and 1074, which match the reporter's 1009 and 1101 at an offset of -27. There is no hunk near head ~708, the reporter's 735. If that site still indexes `[0]`, a closed generic struct from metadata that reaches it still throws IndexOutOfRangeException. The new `ReportIfLocatedInCompilation` filter cannot help there, because the indexing happens while the Diagnostic is being built, before the wrapper is invoked. So CS8785/AD0001 for the repro may remain.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read head TypeCollector.cs around lines 700-715 (the reporter's line 735) and check whether `DeclaringSyntaxReferences[0]` is still indexed without a guard. Then compile the issue's lib with record struct Item<T> and with plain struct Item<T>, reference each from app's Cmd, and run the generator and analyzer, asserting no CS8785 or AD0001."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/RecordPrimaryCtorNullKeyDiagnosticTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Linq;\nusing FluentAssertions;\nusing MessagePack.SourceGenerator.Analyzers;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class RecordPrimaryCtorNullKeyDiagnosticTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public RecordPrimaryCtorNullKeyDiagnosticTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task NullKeyOnRecordPrimaryConstructorPropertyIsStillReported()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace App\n            {\n                [MessagePackObject]\n                public partial record Cmd([property: Key((string)null)] string Scope);\n            }\n            \"\"\";\n\n        ImmutableArray<MetadataReference> frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = frameworkRefs.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        var compileErrors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();\n        foreach (var d in compileErrors)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        compileErrors.Should().BeEmpty();\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new MsgPack00xMessagePackAnalyzer());\n        ImmutableArray<Diagnostic> diagnostics = await compilation.WithAnalyzers(analyzers).GetAllDiagnosticsAsync();\n        foreach (var d in diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        diagnostics.Should().NotContain(d => d.Id == \"AD0001\");\n        diagnostics.Should().Contain(d => d.Id.StartsWith(\"MsgPack\") && d.GetMessage().Contains(\"Scope\"));\n    }\n}\n",
+        "test_names": [
+          "NullKeyOnRecordPrimaryConstructorPropertyIsStillReported"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8695,
+  "output_tokens": 9144,
+  "ms": 82481,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

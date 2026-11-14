@@ -22,8 +22,8 @@ export function FindingCard({ f, ctx }: { f: Finding; ctx: Ctx }) {
         <span className="font-mono text-[11px] text-muted-foreground">{f.lens}</span>
         <span className="font-mono text-[11px] text-muted-foreground">{f.id}</span>
       </div>
-      <p className="text-sm leading-6">{f.claim}</p>
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+      <p className="text-sm leading-6 [overflow-wrap:anywhere]">{f.claim}</p>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
         <span>
           at <Mono>{f.location}</Mono>
         </span>
@@ -66,8 +66,8 @@ export function HunchList({ hunches }: { hunches: Finding[] }) {
                 <span className="font-mono normal-case tracking-normal">{h.lens}</span>
                 <span className="font-mono normal-case tracking-normal">{h.id}</span>
               </div>
-              <p className="italic">{h.claim}</p>
-              <div className="mt-1 text-xs">
+              <p className="italic [overflow-wrap:anywhere]">{h.claim}</p>
+              <div className="mt-1 text-xs [overflow-wrap:anywhere]">
                 at <Mono>{h.location}</Mono> · planned receipt: {h.receipt_plan.kind} — {h.receipt_plan.detail}
               </div>
             </li>

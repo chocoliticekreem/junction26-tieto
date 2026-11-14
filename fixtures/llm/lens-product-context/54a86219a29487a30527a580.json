@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new feature deliberately generates a formatter for a type from a referenced assembly. Ledger L11 records that referenced-assembly types are intentionally not analysed or formatted by TypeCollector.CollectCore. The change bypasses that path, through GeneratedFormatterCollector and an explicit opt-in attribute, so L11 is not violated.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] types from a referenced assembly get no formatter from the compiling assembly via TypeCollector.CollectCore; the new opt-in collector is a separate path and leaves the metadata-only exit at TypeCollector.cs:367-370 untouched."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless mode ignores [DataContract], [MessagePackObject] and other MessagePack attributes that T may carry. The requirement says that if T carries MessagePack attributes, they must be honoured. CreateContractlessMembers never reads attributes on T, and a type with [Key], [IgnoreMember] or [MessagePackObject] still gets name-sorted string keys.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:166",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test where the type in the referenced assembly has [MessagePackObject] with [Key(0)]/[Key(1)] and an [IgnoreMember] member. Serialize it through a [GeneratedMessagePackFormatter] class and assert the bytes are an integer-key array and the ignored member is skipped. The current code emits a string-key map."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README tells users to write the attribute as written, while the new attribute lives in MessagePack.Annotations. The README example shows `[Key]` and `[IgnoreMember]` on a surrogate. The README also documents MsgPack019 to MsgPack022 as the diagnostics. Diagnostics MsgPack005, MsgPack004 (NoDeserializingConstructor) and MsgPack003 (MemberNeedsKey) are reused from existing descriptors, with misleading messages, and the doc pages for them are not updated. This is a minor doc inconsistency.",
+        "location": "README.md:1685",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "GeneratedFormatterCollector reuses MemberNeedsKey, DoNotMixStringAndIntKeys, KeysMustBeUnique and NoDeserializingConstructor, but the README says diagnostics are MsgPack019 to MsgPack022 only."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MsgPack019 to MsgPack022 are reported only from the generator via RegisterSourceOutput, not from the analyzer. The analyzer's SupportedDiagnostics lists the descriptors but the analyzer never reports them. This diverges from the convention that MsgPack0xx diagnostics come from the analyzer. IDE code fixes and disabling via analyzer configuration may behave differently.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:131",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare MsgPack00xMessagePackAnalyzer.Initialize, which has no registration for GeneratedMessagePackFormatter, with the generator's context.ReportDiagnostic call at MessagePackGenerator.cs:131."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Contractless by default with an optional SurrogateType. T's own MessagePack attributes are not read. Code: GeneratedFormatterCollector builds members by name-sorted string keys, or from the surrogate's [Key] attributes."
+      },
+      {
+        "label": "B",
+        "summary": "Contractless by default, but honour MessagePack attributes on T when present: use [MessagePackObject] and [Key] keys, [IgnoreMember], and [Union] if they exist. Skip the surrogate design. Code: GeneratedFormatterCollector checks T for MessagePackObject or DataContract and routes to the standard TypeCollector path, falling back to contractless only otherwise."
+      }
+    ]
+  },
+  "input_tokens": 28745,
+  "output_tokens": 1529,
+  "ms": 11854,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

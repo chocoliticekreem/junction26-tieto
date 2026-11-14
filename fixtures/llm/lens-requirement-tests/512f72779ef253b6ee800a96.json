@@ -1,0 +1,67 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `continue` on mixed key kinds and the `ContainsKey` guards apply to every `[MessagePackObject]` type, not only suppressed ones. For a non-suppressed type with mixed or duplicate keys, the offending member is now silently dropped from the collected members, so the generated formatter can change. The acceptance criteria say behaviour with `SuppressSourceGeneration` unset or false must not change. Such types already carry a MsgPack005 error, so the impact is limited.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the existing generator snapshot tests on head. Then add a non-suppressed `[MessagePackObject]` with `[Key(0)]` and `[Key(\"b\")]` members and with two `[Key(0)]` members, and diff the generated formatter source (or the AD0001/MsgPack005 diagnostics) between base and head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Moving the suppress return below the nested-formatter check means suppressed types now go through the private-setter / partial-type check, which reports MsgPack011 (an Error per L2). No formatter, and so no nested formatter, is ever generated for these types, so this may be a false-positive error. The README asserts this matches 3.1.0, but nothing recorded verifies that.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1410",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyze `[MessagePackObject(SuppressSourceGeneration = true)] public class C { [Key(0)] public int A { get; private set; } }` with the head analyzer and with the MessagePackAnalyzer 3.1.0 package. Compare whether MsgPack011 is reported."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "For a type marked `SuppressSourceGeneration = true`, should the analyzer report MsgPack011 (partial type required for a nested formatter) even though no formatter is generated for it?",
+        "options": [
+          "Yes, report MsgPack011 as 3.1.0 did",
+          "No, suppressed types get only runtime-contract rules (003/004/005/012/015)"
+        ],
+        "why_it_matters": "If yes, the moved return at TypeCollector.cs:1410 is correct and finding 2 is dropped. If no, the move introduces a false-positive Error for suppressed types with private setters, and the return must stay before the nested-formatter check.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests\n{\n    private static ImmutableArray<DiagnosticAnalyzer> GetAnalyzers()\n    {\n        return typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract\n                && typeof(DiagnosticAnalyzer).IsAssignableFrom(t)\n                && t.GetCustomAttributes(typeof(DiagnosticAnalyzerAttribute), false).Length > 0\n                && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n    }\n\n    private static async Task<ImmutableArray<Diagnostic>> GetAnalyzerDiagnosticsAsync(string source)\n    {\n        ImmutableArray<MetadataReference> frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            frameworkRefs.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        ImmutableArray<DiagnosticAnalyzer> analyzers = GetAnalyzers();\n        Assert.NotEmpty(analyzers);\n        CompilationWithAnalyzers withAnalyzers = compilation.WithAnalyzers(analyzers);\n        return await withAnalyzers.GetAnalyzerDiagnosticsAsync();\n    }\n\n    [Fact]\n    public async Task SuppressedType_MissingKey_ReportsMsgPack004()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                public int B { get; set; }\n            }\n            \"\"\";\n        ImmutableArray<Diagnostic> diagnostics = await GetAnalyzerDiagnosticsAsync(source);\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack004\");\n    }\n\n    [Fact]\n    public async Task SuppressedType_DuplicateIntKeys_ReportsMsgPack005WithoutCrash()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                [Key(0)]\n                public int B { get; set; }\n            }\n            \"\"\";\n        ImmutableArray<Diagnostic> diagnostics = await GetAnalyzerDiagnosticsAsync(source);\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack005\");\n    }\n\n    [Fact]\n    public async Task SuppressedType_MixedKeyKinds_ReportsMsgPack005WithoutCrash()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                [Key(\"b\")]\n                public int B { get; set; }\n            }\n            \"\"\";\n        ImmutableArray<Diagnostic> diagnostics = await GetAnalyzerDiagnosticsAsync(source);\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack005\");\n    }\n}\n",
+        "test_names": [
+          "SuppressedType_MissingKey_ReportsMsgPack004",
+          "SuppressedType_DuplicateIntKeys_ReportsMsgPack005WithoutCrash",
+          "SuppressedType_MixedKeyKinds_ReportsMsgPack005WithoutCrash"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "\"The analyzer still reports its diagnostics\" covers the runtime-contract rules plus the partial-type rule MsgPack011, but not the AOT-only MsgPack016/017. The change implements this by moving the `suppressSourceGeneration` early return to after the nested-formatter / private-setter check, just before `ObjectSerializationInfo.Create`, and by adding the key-collision guards."
+      },
+      {
+        "label": "B",
+        "summary": "Suppressed types are serialized only by the dynamic resolvers, so only the runtime-contract rules apply (MsgPack003/004/005/012/015); generator-only rules such as MsgPack011 are not reported. Code: keep the `continue` and `ContainsKey` guards, but leave the `if (suppressSourceGeneration is true) return null;` block where it was on base, before the nested-formatter loop. Update the README so it does not claim MsgPack011 is reported."
+      }
+    ]
+  },
+  "input_tokens": 9488,
+  "output_tokens": 10403,
+  "ms": 90080,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

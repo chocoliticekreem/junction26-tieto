@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The tests only check that the attribute string appears somewhere in each generated file. A mutant that drops the attribute from one of several types in a file (for example FormatterCache<T> or GetFormatterHelper in the resolver templates) survives, because the first test needs just one occurrence per file and the second test only compares attributeCount with guardedCount.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:77",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:55 delete-statement: remove the #if/[ExcludeFromCodeCoverage]/#endif before FormatterCache<T> -> attribute removed; expected to survive because the resolver file still contains the attribute on the partial class, and both tests are satisfied with count>0 and count==guardedCount."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test never compiles the generated output against a netstandard2.0 or .NET Framework target. The compilation uses default target framework references and no preprocessor symbols, so the #if guard is only checked as text. A wrong guard condition, such as negating it or using the wrong symbol names, would pass the string-matching tests. The requirement that generated code compiles on every supported TFM is therefore untested.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:111",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 negate-condition: '#if !NETSTANDARD2_0 && !NETFRAMEWORK' -> '#if NETSTANDARD2_0 || NETFRAMEWORK' in both the write string and the test constant; expected to survive because the test checks the guard text only and never compiles with defines."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test source only covers non-generic types. No generic type, nested type or type with constraints is generated, yet the diff changes TransformUtilities line 58, where '{' becomes '{\\r\\n' on the constraints path. Nothing exercises that branch, and the only added tests do not assert the output shape for nested types with constraints. The formatting change has no test.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: writer(anyConstraints ? \"{\\r\\n\" : ...) -> writer(anyConstraints ? \"{\" : ...); expected to survive because no added test generates a nested generic type with constraints and the tests do not check this brace."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The diff contains no verified snapshot updates, although the acceptance criteria require existing snapshots to be updated and the templates changed. The snapshot generator tests are not changed in the diff, so it is unclear whether they would fail or still match. Also, CompositeResolverTemplate is not covered by the new tests, since the test source has no CompositeResolver. Its attribute edits can be deleted without any test failing.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27 delete-statement: remove the #if/[ExcludeFromCodeCoverage]/#endif before 'partial class' -> attribute removed; expected to survive because the new tests never generate a composite resolver."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12028,
+  "output_tokens": 1354,
+  "ms": 10066,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

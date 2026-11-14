@@ -73,7 +73,7 @@ function Side({ interp, run, chosen }: { interp: Interpretation; run: RunBundle 
             <ul className="space-y-1 text-xs">
               {run.receipt.checked.map((c, i) => (
                 <li key={i} className="flex items-center gap-2">
-                  <ResultPill result={c.result} /> <span>{c.what}</span>
+                  <ResultPill result={c.result} /> <span className="min-w-0 [overflow-wrap:anywhere]">{c.what}</span>
                 </li>
               ))}
             </ul>
@@ -150,7 +150,22 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
         <p className="text-sm leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">{r.requirement_text}</p>
       </Section>
 
-      <MergeButtons changeId={changeId} human={human} decision={decision} interpretations={interps} />
+      <MergeButtons
+        changeId={changeId}
+        human={human}
+        decision={decision}
+        interpretations={interps}
+        blocked={Object.fromEntries(
+          (
+            [
+              ["A", runA],
+              ["B", runB],
+            ] as const
+          )
+            .filter(([, run]) => run?.receipt.verdict === "blocked")
+            .map(([label, run]) => [label, run!.receipt.verdict_reason]),
+        )}
+      />
 
       <div className="grid gap-4 lg:grid-cols-2">
         {interps.map((i) => (

@@ -81,7 +81,7 @@ function Group({ title, rows }: { title: string; rows: Row[] }) {
           <TableBody>
             {rows.map((r) => (
               <TableRow key={r.run.changeId} data-testid="inbox-row">
-                <TableCell className="py-2">
+                <TableCell className="py-2 whitespace-normal">
                   <Title r={r} />
                 </TableCell>
                 <TableCell className="py-2">

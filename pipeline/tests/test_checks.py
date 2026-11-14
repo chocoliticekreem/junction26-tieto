@@ -234,3 +234,28 @@ def test_compat_needed():
         [("src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs", "source")],
         categories=["correctness"]))
     assert checks.compat_needed(_ctx([("README.md", "docs")], categories=["compatibility"]))
+
+
+def test_a_passing_named_test_refutes_its_finding_only():
+    ev = [_ev("gentest-2", "fail-before-pass-after", "pass", lens="logic-edge",
+              test_names=["Inherited.MissingKey_IsStillReported"])]
+    fs = [_finding("named", "logic-edge", "test", detail="Run Inherited.MissingKey_IsStillReported"),
+          _finding("other", "logic-edge", "test", detail="some other test"),
+          _finding("cite", "logic-edge", "code-citation", detail="MissingKey_IsStillReported")]
+    assert checks.refuted_findings(fs, ev) == {"named": "gentest-2"}
+
+
+def test_mutation_finding_needs_a_survivor_near_its_line_with_its_operator():
+    killed = Mutant(id="m4", file="src/X.cs", line=1446, operator="negate-condition",
+                    original="a", mutated="b", status="killed")
+    far = Mutant(id="m6", file="src/X.cs", line=1448, operator="delete-statement",
+                 original="a", mutated="", status="survived")
+    near = Mutant(id="m3", file="src/X.cs", line=985, operator="delete-statement",
+                  original="a", mutated="", status="survived")
+    fs = [_finding("neg", "test-quality", "mutation", location="src/X.cs:1444",
+                   detail="X.cs:1444 negate-condition: expected to survive"),
+          _finding("del", "test-quality", "mutation", location="src/X.cs:985",
+                   detail="X.cs:985 delete-statement")]
+    out = {f.id: f for f in checks.verify_findings(fs, [], [killed, far, near])}
+    assert not out["neg"].verified  # the negate mutant there was killed
+    assert out["del"].verified and out["del"].severity == "medium"  # a test gap, not a defect

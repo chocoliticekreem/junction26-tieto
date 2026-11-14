@@ -198,13 +198,19 @@ def render_examples(examples: list) -> str:
 
 
 def build_user_prompt(req_id: str, req_text: str, hunks_md: str, ledger_md: str, areas: list[str],
-                      examples_md: str = "") -> str:
+                      examples_md: str = "", generated_files: int = 0) -> str:
     parts = [
         f"<requirement id=\"{req_id}\">\n{req_text.strip()}\n</requirement>",
         f"<touched_areas>{', '.join(areas)}</touched_areas>",
         f"<ledger>\n{ledger_md}\n</ledger>",
         f"<hunks>\n{hunks_md}\n</hunks>",
     ]
+    if generated_files:
+        # Without this a lens sees template changes but no snapshot updates and reports them missing.
+        parts.append(f"<generated_files>The change also updates {generated_files} generated files "
+                     "(source generator snapshot outputs). They are withheld from every lens and "
+                     "verified separately by rerunning the snapshot tests (regeneration "
+                     "check).</generated_files>")
     if examples_md:
         parts.append(f"<style_examples>\nExisting test files from the test project, for style and harness usage only:\n\n{examples_md}\n</style_examples>")
     return "\n\n".join(parts)
@@ -235,7 +241,7 @@ def parse_lens_output(lens: str, data: dict, areas: list[str], change_id: str) -
             raise LensOutputError(f"{lens}: question {i} needs 2-3 options, got {len(opts)}")
         area = q.get("area") if q.get("area") in areas else (areas[0] if areas else "other")
         questions.append(CandidateQuestion(
-            id=f"q-{lens}-{i}", change_id=change_id, area=area, lens=lens, text=q["text"],
+            id=f"q-{change_id}-{lens}-{i}" if change_id else f"q-{lens}-{i}", change_id=change_id, area=area, lens=lens, text=q["text"],
             options=opts, why_it_matters=q.get("why_it_matters", ""),
             verdict_depends_on_intent=bool(q.get("verdict_depends_on_intent", False)),
         ))
@@ -265,8 +271,8 @@ def parse_lens_output(lens: str, data: dict, areas: list[str], change_id: str) -
 
 
 def run_lens(spec: LensSpec, req_id: str, req_text: str, hunks: list[Hunk], routes: dict[str, RouteResult],
-             areas_by_file: dict[str, str], ledger_entries: list, examples: list, change_id: str
-             ) -> tuple[LensRun, ParsedLens | None]:
+             areas_by_file: dict[str, str], ledger_entries: list, examples: list, change_id: str,
+             generated_files: int = 0) -> tuple[LensRun, ParsedLens | None]:
     selected = spec.select(hunks, routes, areas_by_file)
     run = LensRun(lens=spec.name, model=spec.model, status="ok", hunk_ids=[h.id for h in selected])
     if not selected:
@@ -275,7 +281,7 @@ def run_lens(spec: LensSpec, req_id: str, req_text: str, hunks: list[Hunk], rout
     areas = sorted({areas_by_file.get(h.file, "other") for h in selected})
     user = build_user_prompt(
         req_id, req_text, render_hunks(selected, areas_by_file), render_ledger(ledger_entries), areas,
-        render_examples(examples) if spec.examples and examples else "",
+        render_examples(examples) if spec.examples and examples else "", generated_files,
     )
     try:
         res = llm.call_json(f"lens-{spec.name}", spec.model, spec.system, user, lens_schema(spec, areas),
