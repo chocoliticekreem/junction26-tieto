@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `type.DeclaringSyntaxReferences.IsEmpty` check rejects metadata-only types. That is the exact requirement scenario (T in a referenced assembly), and it would make the feature fail with MsgPack021. The execution tests may not exercise this path because ExternalTypes is a ProjectReference, which is still metadata-only for the consumer, so the tests pass only if the guard does not trigger. No Tests-project case covers a metadata type, and none covers a rejected source-less type.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:73",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:73 remove-guard: `|| type.DeclaringSyntaxReferences.IsEmpty` -> deleted; expected to survive because no test in GeneratedMessagePackFormatterTests uses a metadata-only type, and the execution tests pass either way if the guard is a no-op."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless member ordering and the IsPublicReadWrite filter are only weakly tested. No test covers public fields, get-only/private-setter exclusion beyond one `Doubled` property, or inherited members. Removing the OrderBy or the base-type walk in GetInstanceMembers would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:226",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:226 delete-statement: `current = current.BaseType` loop advance -> removed so base members are skipped; expected to survive because no external test type has a base class with members."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The honoring of MessagePack attributes on T (`[MessagePackObject]`/`[Key]`) is an acceptance criterion, but no test covers a T that carries attributes. Collect always uses contractless or surrogate members and ignores T's own attributes.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a [GeneratedMessagePackFormatter] for a type with [MessagePackObject]/[Key(5)] members and assert key 5 is emitted; expected to fail on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new diagnostics MsgPack019-022 are not added to AnalyzerReleases.Unshipped.md. Several diagnostic paths have no test: duplicate keys (KeysMustBeUnique), missing [Key] on a surrogate member, a class without a parameterless constructor, and the inaccessible type case. The diagnostic tests also hand-write the Members, so they do not prove that the generator emits no output for a rejected formatter.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:~178 negate-condition: `if (!claimedKeys.Add(key))` -> `if (claimedKeys.Add(key))`; expected to survive because there is no duplicate-key test."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate test only checks the array length (8) and a round trip. It never asserts that the values sit at keys 3 and 7. It would not notice if the keys were mapped incorrectly, e.g. the `CreateMember(target, intKey: intKey ...)` swapped for the position index, as long as the round trip stayed symmetric.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:166",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:166 swap: `CreateMember(target, intKey: intKey, ...)` -> `intKey: members.Count`; expected to survive only partly, since the header length would then change to 2 and the array-length assertion would catch it. Value placement at keys 3 and 7 is still unasserted."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25620,
+  "output_tokens": 1551,
+  "ms": 11400,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The timestamp writer mask was changed from 0xffffffff00000000 to 0x00000000ffffffff. This is unrelated to the requirement. The timestamp32 encoding applies when nanoseconds are 0 and seconds fit in 32 bits, which is when the upper 32 bits of data64 are 0. With the new mask, the 6-byte form is chosen only when the low 32 bits are 0. For ordinary values such as seconds=1 and nanoseconds=0, data64 is 1, so it now falls through to the 8-byte timestamp64 form. Values that do not fit in 32 bits can be wrongly encoded as timestamp32. This changes the serialized bytes of every DateTime/DateTimeOffset and can corrupt data.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize DateTime(2020,1,1,0,0,0,DateTimeKind.Utc) with MessagePackSerializer on the base build and the head build, then compare the bytes. Base emits 0xd6 0xff plus 4 bytes. Head emits 0xd7 0xff plus 8 bytes. Also serialize seconds=(1L<<32) with nanoseconds=0 to check for truncation."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new diagnostics MsgPack019-022 are not recorded in AnalyzerReleases.Unshipped.md. This triggers RS2000 and can break the build of the analyzer project itself. Separately, the diagnostics are reported only from the generator and are never reported by the analyzer, so the analyzer is only declaring them. The help-link docs for these IDs are also missing.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that AnalyzerReleases.Unshipped.md has entries for MsgPack019-022, and that doc/analyzers/MsgPack019.md through MsgPack022.md exist."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode serializes only read-write public members, sorted by name, and writes them with string keys. It also emits int keys as indexes. This wire format does not match ContractlessStandardResolver, so a user who later swaps the formatter in would see different bytes. The ledger accepts name-sorted read-write-only output (L25), so this is only a documentation concern.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "L25 accepts name-sorted, read-write-only output."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "If T carries [MessagePackObject]/[Key] attributes, the requirement says they must be honoured. The collector ignores them and always uses contractless mode or the surrogate. L24 says to follow the requirement, so this is a requirement gap.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:88",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator on a [GeneratedMessagePackFormatter] class for a type with [MessagePackObject] and [Key(0)] members, with no surrogate. Assert that the generated formatter writes an array using the declared keys."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 19346,
+  "output_tokens": 1253,
+  "ms": 10096,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

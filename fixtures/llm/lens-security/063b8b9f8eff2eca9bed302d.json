@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `case <= byte.MaxValue` (Str8) branch is removed from the string header writer, so strings of 32–255 bytes now fall into the `<= ushort.MaxValue` branch and are written with a Str16 header. The output is no longer the shortest-form encoding, which changes the wire format for those strings. The change does not touch SuppressSourceGeneration at all, so it does not meet the requirement. It is not a direct security hole, but any signature, hash or canonical-bytes comparison over serialized data will now differ from output produced before the change.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:914",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a 100-byte ASCII string with base-built and head-built MessagePack. Base writes the 0xD9 (Str8) header, head writes 0xDA (Str16). Also run the existing MessagePackWriter string-header tests, which should fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In the TypeCollector member loops, a duplicate IntKey or StringKey is now silently skipped via `ContainsKey` instead of throwing from `Dictionary.Add`. Whether the duplicate-key diagnostic (MsgPack006) is still reported for that case is not shown in the diff. If it is not, the generator emits a formatter that quietly drops a member. This is a data-integrity concern rather than a security hole, and the diff does not show it affecting a MessagePackSecurity setting.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a generator or analyzer test with two members sharing the same [Key(0)] and assert that MsgPack006 is reported and that no member is dropped silently from the generated formatter."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5876,
+  "output_tokens": 673,
+  "ms": 5933,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

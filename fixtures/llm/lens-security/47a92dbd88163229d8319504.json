@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Contractless mode silently drops public get-only properties and readonly fields, and the field check in IsPublicReadWrite is inverted: it requires field.IsReadOnly, so writable public fields are excluded and only readonly fields are selected. Generated deserialization code would then assign to readonly fields, which fails compilation, or members are silently missing. This is a correctness bug rather than a security issue, but selecting the wrong members changes what data crosses the wire (fields intended to be serialized are skipped, unintended ones included). Note that MessagePackSecurity (UntrustedData) handling is unaffected because the generated body uses the standard templates.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:271",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a snapshot or generator test: a referenced-assembly type with `public int F;` (writable field) and `public readonly int R;`, annotated formatter in the consuming assembly. Assert the generated formatter includes F, excludes R, and the output compiles."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generator pipeline passes reportDiagnostic: null to Collect and the diagnostics path is separate. In the diagnostics path, if ReferenceSymbols.TryCreate fails, no diagnostics are reported, so a misconfigured [GeneratedMessagePackFormatter] is silently ignored. This is a minor reliability issue with no direct protection being disabled.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:125",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the generatedFormatterDiagnostics SelectMany: when ReferenceSymbols.TryCreate returns false, it returns an empty array with no diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18354,
+  "output_tokens": 669,
+  "ms": 5247,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

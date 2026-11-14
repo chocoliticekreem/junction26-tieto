@@ -1,0 +1,254 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The enum formatter template uses the inverted condition `#if NETSTANDARD2_0 || NETFRAMEWORK`, while every other template uses `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. On every modern target (net6/net8 and others), generated enum formatters therefore get no ExcludeFromCodeCoverage attribute. That breaks the criterion that all generated code is decorated. It also contradicts the README sentence that all generated formatters carry the attribute.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageTargetCoverageTests.EnumFormatter_IsDecoratedWithExcludeFromCodeCoverage. With no preprocessor symbols defined, the generated MyEnum formatter class has no ExcludeFromCodeCoverage attribute list, so the test fails on head."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "The change leaves out the attribute for consumers that define NETSTANDARD2_0 or NETFRAMEWORK. On those targets no generated formatter or resolver is decorated, except the enum formatters through the inverted condition. System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute exists in .NET Framework 4.0+ and in .NET Standard 2.0, and it allows AttributeTargets.Class. The derived criterion only permits conditional emission where the attribute does not exist, so 'all generated code is decorated' is not met for netstandard2.0 and .NET Framework projects.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageTargetCoverageTests.ObjectFormatter_IsDecoratedWhenTargetingNetStandard20. It parses with preprocessor symbol NETSTANDARD2_0 and asserts the MyObject formatter carries the attribute; it fails on head. Optionally also compile the generated output against netstandard2.0 reference assemblies with the attribute forced on, to show it compiles."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "EnumTemplate.cs uses the inverted guard `#if NETSTANDARD2_0 || NETFRAMEWORK`, while every other template uses `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. As a result, generated enum formatters do NOT get [ExcludeFromCodeCoverage] on net6/net8 and other modern TFMs, or in any compilation without those symbols. They get it only on netstandard2.0/.NET Framework, which is the opposite of every other generated type. This misses the 'all generated code' acceptance criterion for enum formatters.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageEnumGuardTests.EnumFormatter_HasExcludeFromCodeCoverage_OnModernTfm. It runs MessagePackGenerator through CSharpGeneratorDriver on a public enum used by a [MessagePackObject] member, with no preprocessor symbols. It then asserts that the generated class implementing IMessagePackFormatter<...MyEnum> has the attribute in its active AttributeLists. Expected to fail on head."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-3",
+    "lens": "logic-edge",
+    "claim": "The guard `#if !NETSTANDARD2_0 && !NETFRAMEWORK` removes the attribute for consumers targeting netstandard2.0 or .NET Framework. Yet System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute exists there (.NET Framework 4.0+, netstandard2.0) and is valid on classes. The guard is wider than the compile-safety concern requires, so netstandard2.0/net472 libraries get undecorated formatters and resolvers, contrary to 'all generated code is decorated'.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageEnumGuardTests.ObjectFormatter_HasExcludeFromCodeCoverage_OnNetStandard20. It runs the generator with parse options defining NETSTANDARD2_0 and asserts that the generated IMessagePackFormatter<MyObject> class carries the attribute. Expected to fail on head."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "EnumTemplate has the conditional inverted: the attribute is emitted only when NETSTANDARD2_0 || NETFRAMEWORK, the opposite of every other template. On modern TFMs enum formatters stay undecorated, so the requirement (all generated code) is not met. On netstandard2.0/net framework the attribute is emitted, where the other templates deliberately skip it. The .cs and .tt both carry the inversion.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Run generator snapshot tests with an enum sample compiled for net8.0 and for netstandard2.0. Observe the attribute is absent on net8.0 and present on netstandard2.0. Or compile an enum-containing project targeting net472 and check for ExcludeFromCodeCoverage on the enum formatter."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "regeneration"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-3",
+    "lens": "compatibility",
+    "claim": "TransformUtilities changes the output for nesting types with constraints from \"{\" to \"{\\r\\n\", altering generated text for all nested generic-constrained types. Snapshots checked in by users or tests change beyond the requested attribute. It is harmless to compilation but is an unrelated generator output change.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Run the snapshot tests for nested generic types with constraints and diff the output. The only differences should be the attribute lines, but a newline after '{' also appears."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "regeneration"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "EnumTemplate emits the attribute under the inverted guard `#if NETSTANDARD2_0 || NETFRAMEWORK`, so it is emitted only where ExcludeFromCodeCoverage is unavailable and omitted everywhere else. Enum formatters are not excluded from coverage on modern targets, and netstandard2.0/.NET Framework consumers may fail to compile. This contradicts the requirement that all generated code be decorated and still compile, and the README.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run CodeCoverageExclusionTests.AllGeneratedTypesAreExcludedFromCodeCoverage and ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable. The enum formatter file's guard text is `#if NETSTANDARD2_0 || NETFRAMEWORK`, so the guarded-count assertion fails. Also check the enum formatter snapshot."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-2",
+    "lens": "product-context",
+    "claim": "The same inverted guard is in the generated EnumTemplate.cs, so the compiled generator output carries the same bug as the .tt template.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Rerun the snapshot tests and inspect the enum formatter snapshots. The attribute sits under `#if NETSTANDARD2_0 || NETFRAMEWORK` rather than `#if !...`."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "regeneration"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-4",
+    "lens": "product-context",
+    "claim": "The new test only checks that the attribute occurs and is wrapped in a guard. It does not check the guard polarity, so the inverted enum guard is not caught. The count check also passes for the inverted form only if its text matches, otherwise it fails. The test's `Guard` constant is the correct form, so it may fail on the enum.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:77",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "Flip the guard polarity in another template, e.g. FormatterTemplate. Check that the tests fail. Run the test suite after fixing the enum guard too."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "EnumTemplate emits the attribute under the inverted guard `#if NETSTANDARD2_0 || NETFRAMEWORK`, so enum formatters get ExcludeFromCodeCoverage only on targets where it is unavailable (compile error) and never on modern targets. The new tests miss this because they run the generator against a compilation without preprocessor symbols and with only a Contains check on the attribute text.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run AllGeneratedTypesAreExcludedFromCodeCoverage with an enum in the source. The enum formatter file contains the attribute text, so the test passes. Then add a test that compiles the generated output on a netstandard2.0 reference set, or defines NET8_0 and checks the attribute is active. That test fails for the enum formatter."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable counts guarded occurrences only for the exact string `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. With the inverted enum guard, guardedCount for the enum file is 0 while attributeCount is 1. The assertion should therefore fail for the enum formatter, and a hand-written test run would show it. If the enum file was not included, the test would pass wrongly. The test also checks text only, never that the attribute is actually applied or that the code compiles on each target.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:88",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:88 delete-statement: Assert.Equal(attributeCount, guardedCount) -> removed; expected to survive because no other assertion checks the guard. Also mutate the guard in StringKeyFormatterTemplate.cs from `!NETSTANDARD2_0 && !NETFRAMEWORK` to `!NETSTANDARD2_0 || !NETFRAMEWORK`; the test would fail on that string, but a semantic mutant that keeps the same text would not."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The TransformUtilities change `{` -> `{\\r\\n` for the constrained nesting-type brace has no dedicated test. The new tests have no nested generic type with constraints, so deleting or reverting that line would not fail them. Only snapshot diffs would notice, and only if such a case exists in the snapshots.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: writer(anyConstraints ? \"{\\r\\n\" : ...) -> writer(anyConstraints ? \"{\" : ...); expected to survive CodeCoverageExclusionTests because TestSource has no constrained nested generic types."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "The test source has no generic types, no nested types, and no composite resolver. CompositeResolverTemplate and the FormatterCache and GetFormatterHelper nested classes are not covered by the `Contains` check, which passes if any one attribute exists in a file. A removed attribute on the nested FormatterCache or GetFormatterHelper class would survive.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:68",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:~64 delete-statement: remove the attribute before `private static class ...GetFormatterHelper`; expected to survive because the test only asserts per-file Contains and a guarded count equal to the attribute count, both still true."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-3",
+    "lens": "requirement-tests",
+    "claim": "The README states that the attribute 'is only emitted for targets where it is available (not netstandard2.0 or .NET Framework)'. This is factually wrong: the attribute is available on both. The README also says 'All generated formatters and resolvers are decorated', which is false for enum formatters on modern targets.",
+    "location": "README.md:1640",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Cite the .NET API docs: ExcludeFromCodeCoverageAttribute 'Applies to' lists .NET Framework 4.0+ and .NET Standard 2.0. Cite EnumTemplate.tt:8, which shows the inverted #if."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "Only EnumTemplate.cs (the T4 output) is changed; the diff has no matching EnumTemplate.tt hunk, although every other template got both .tt and .cs edits. Regenerating the T4 templates will silently overwrite the enum change (the inverted guard included), so the enum attribute is not durable.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Compare src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt on head with base. If it is unchanged, rerunning the T4 transform drops the `#if NETSTANDARD2_0 || NETFRAMEWORK` / ExcludeFromCodeCoverage lines from EnumTemplate.cs."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-2",
+    "lens": "compatibility",
+    "claim": "The `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guard excludes netstandard2.0 and .NET Framework consumers entirely, so generated code there is still not excluded from coverage. ExcludeFromCodeCoverage exists in netstandard2.0 and net472 (System.Diagnostics.CodeAnalysis, mscorlib), so the guard is unnecessary and the requirement is unmet on those TFMs. Also, netstandard2.1 and netcoreapp2.x are not covered by the symbols checked.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Cite the docs for System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute: available in .NET Framework 4.0+, netstandard2.0. Then compile a generated formatter for net472 or netstandard2.0 with the attribute unguarded."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-3",
+    "lens": "product-context",
+    "claim": "The README says the attribute is emitted for all generated formatters and resolvers, but the enum formatter has it only on netstandard2.0/.NET Framework. The doc is inaccurate for enums. The README also does not cover other generated types, such as nested helper classes.",
+    "location": "README.md:1639",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Compare the README sentence with EnumTemplate.tt:8, whose guard is inverted."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  }
+]

@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new helper `GetPropertyIdentifierLocation` still indexes `DeclaringSyntaxReferences[0]` directly. Its XML doc says it returns null for metadata properties, but it does not. For a property declared in metadata the collection is empty, so the call throws `IndexOutOfRangeException`. The diagnostic's arguments are evaluated before `reportDiagnostic` (the new `ReportIfLocatedInCompilation` wrapper) runs, so the wrapper cannot prevent the throw. Concrete input: a closed generic struct `Item<int>` from a referenced assembly whose property has `[Key(null)]`, so both intKey and stringKey are null. The analyzer, whose `reportDiagnostic` is non-null, still crashes with AD0001 on that input. The generator only escapes because `?.Invoke` short-circuits argument evaluation when `reportDiagnostic` is null. This is the reporter's line-1009 path, left unfixed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.MetadataGenericStructNullKeyTests.AnalyzerDoesNotThrowOnMetadataPropertyWithNullKey. It compiles lib (`struct Item<T>` with `[Key(null)]`) to an image reference, then runs MsgPack00xMessagePackAnalyzer on an app type that uses `Item<int>`. It asserts there are no AD0001 diagnostics; on head this fails with IndexOutOfRangeException."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In the same helper, for a source property the hard cast `(PropertyDeclarationSyntax)` throws `InvalidCastException` for positional record properties. Their declaring syntax is a ParameterSyntax, e.g. `record R([property: Key(null)] string X)`. A helper documented as returning a nullable location should use a safe `as` cast, like the `GetIdentifierLocation` and `GetLocation` helpers next to it.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read TypeCollector.cs:1434: `((PropertyDeclarationSyntax)property.DeclaringSyntaxReferences[0].GetSyntax())`. A positional record parameter's DeclaringSyntaxReferences point at a ParameterSyntax."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The reporter's third unguarded `DeclaringSyntaxReferences[0]` site (base line 735) is not touched by any hunk; line numbers before line 982 are unchanged. The `ReportIfLocatedInCompilation` wrapper filters only after `Diagnostic.Create` arguments are evaluated, so an eager index there can still throw for metadata symbols.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:735",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Inspect TypeCollector.cs:735 on head for `DeclaringSyntaxReferences[0]`. If it is still present, reach it with a metadata closed generic struct that triggers that diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataGenericStructNullKeyTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.IO;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MetadataGenericStructNullKeyTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public MetadataGenericStructNullKeyTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task AnalyzerDoesNotThrowOnMetadataPropertyWithNullKey()\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> refs = new List<MetadataReference>(framework);\n        refs.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        string libSource = \"\"\"\n            using MessagePack;\n            namespace Lib\n            {\n                [MessagePackObject]\n                public struct Item<T>\n                {\n                    [Key(null)]\n                    public string Name { get; set; }\n                }\n            }\n            \"\"\";\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(libSource) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        using MemoryStream ms = new MemoryStream();\n        var emit = lib.Emit(ms);\n        foreach (var d in emit.Diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        Assert.True(emit.Success);\n        MetadataReference libRef = MetadataReference.CreateFromImage(ms.ToArray());\n\n        string appSource = \"\"\"\n            using MessagePack;\n            using Lib;\n            namespace App\n            {\n                [MessagePackObject]\n                public partial class Cmd\n                {\n                    [Key(0)]\n                    public Item<int> Member { get; set; }\n                }\n            }\n            \"\"\";\n        List<MetadataReference> appRefs = new List<MetadataReference>(refs) { libRef };\n        CSharpCompilation app = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(appSource) },\n            appRefs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer());\n        ImmutableArray<Diagnostic> diagnostics = await app.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n        foreach (var d in diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n    }\n}\n",
+        "test_names": [
+          "AnalyzerDoesNotThrowOnMetadataPropertyWithNullKey"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10183,
+  "output_tokens": 5828,
+  "ms": 50545,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

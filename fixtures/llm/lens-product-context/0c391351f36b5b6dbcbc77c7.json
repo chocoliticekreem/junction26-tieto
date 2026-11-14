@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new attribute is declared in MessagePack.Annotations without [Conditional(\"NEVERDEFINED\")]. Ledger L14 records that analyzer/generator-only attributes are deliberately marked that way so they are not emitted into user assemblies. This attribute is consumed only at compile time, so it either follows that convention or is a deliberate exception; the diff shows no explanation. The existing attributes in that file may be handled differently, which is worth checking.",
+        "location": "src/MessagePack.Annotations/Attributes.cs:143",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L14] Attributes consumed only by the analyzer or source generator are marked [Conditional(\"NEVERDEFINED\")] on purpose; compare with the other generator-only attributes in Attributes.cs."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generator emits a formatter for a type from a referenced assembly, which L11 and L16 say the compiling assembly deliberately does not do. This is not a defect: the new opt-in [GeneratedMessagePackFormatter] attribute is the explicit mechanism and REQ-2129 requires it, while TypeCollector's default metadata-only skip is untouched.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] types from referenced assemblies get no formatter by default; this change adds an explicit opt-in path and leaves TypeCollector.cs:367 alone."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode serializes only public read-write members, and a field qualifies only if `field.IsReadOnly` is true. That condition is inverted, so writable public fields are skipped and readonly fields are included. Readonly fields cannot be assigned during deserialization, so generated code for them would not compile or would fail. This contradicts the README and attribute docs, which say read-write members are serialized.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:267",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an external type with `public int F;` and generate a contractless formatter for it. The round trip should preserve F, but the field is currently omitted from the output."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The analyzer's SupportedDiagnostics lists MsgPack019-022, but the diagnostics are reported from the generator through RegisterSourceOutput, and the analyzer code never reports them. The docs and the code fixes pipeline may expect them to come from the analyzer. This is a minor inconsistency with the convention. MsgPack005/MsgPack003 reuse is also reported only by the generator.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:378",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read MsgPack00xMessagePackAnalyzer.Initialize: no registration for GeneratedMessagePackFormatterAttribute, while MessagePackGenerator.cs reports the diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Implement both contractless default and an optional SurrogateType. Members are matched by name and the formatter is generated into the user's partial class. Constructor parameters are unsupported, so only a parameterless constructor works."
+      },
+      {
+        "label": "B",
+        "summary": "Implement contractless mode only, with no SurrogateType property and no MsgPack022 diagnostic. Delete the surrogate code, docs and tests, keeping the maintainer's simplistic contractless-only scope."
+      }
+    ]
+  },
+  "input_tokens": 29493,
+  "output_tokens": 1337,
+  "ms": 10036,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

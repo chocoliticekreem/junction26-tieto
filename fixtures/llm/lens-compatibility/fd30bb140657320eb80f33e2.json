@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new attribute GeneratedMessagePackFormatterAttribute is not marked [Conditional(\"NEVERDEFINED\")] unlike other generator-only attributes, so it is emitted into user assemblies, adding public API surface to MessagePack.Annotations. Also a new public type with no PublicAPI.Unshipped entry may break the build when public API analyzers are enabled.",
+        "location": "src/MessagePack.Annotations/Attributes.cs:164",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare the attribute declaration with MessagePackObjectAttribute and the other generator-only attributes (see L14 on [Conditional(\"NEVERDEFINED\")]); check whether PublicAPI.Unshipped.txt for MessagePack.Annotations lists the new type and its SurrogateType property."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new error diagnostics MsgPack019-022 are added to the analyzer's SupportedDiagnostics, but the diff shows no entries in AnalyzerReleases.Unshipped.md. The release-tracking analyzer (RS2000) would fail the build, or the new IDs would go undocumented. Separately, the newly reported diagnostics (including reuse of MsgPack005/006-style errors) only affect classes that opt in via the new attribute, so users who do not use the attribute are not affected.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build MessagePack.SourceGenerator and check for RS2000 or RS2002 release-tracking errors. Verify that AnalyzerReleases.Unshipped.md contains MsgPack019-022."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless members are ordered by name (ordinal) and the existing formatter infrastructure orders properties differently; the new formatter's string-key wire format for a given type is not documented as a stable contract. Contractless mode through MessagePackSerializerOptions.ContractlessStandardResolver serializes members as a map with string keys, but the generated StringKey formatter relies on IntKey ordering, so bytes may differ from the dynamic contractless resolver. A user switching an existing contractless type to the generated formatter would see different member order or inclusion. Read-only properties and fields are skipped, while the contractless resolver also serializes public readonly fields and get-only properties.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with public properties Z, A and a readonly field with ContractlessStandardResolver (base) and the generated formatter (head). Compare the bytes for key order and for which members are present."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Surrogate mode with int keys: when keys have gaps or do not start at 0, the member list is built in surrogate declaration order rather than sorted by key, and nothing is done for gaps. The IntKey formatter template assumes members are ordered and contiguous (it writes nil for gaps), so the wire format may be wrong or the formatter may crash.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:198",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Use a surrogate with [Key(2)] declared before [Key(0)], and with a gap at [Key(1)]. Regenerate and compare the formatter output and the serialized array layout against the same type using [MessagePackObject]."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities filter excludes attributed classes by comparing AttributeClass.ToDisplayString() to a name string. For a partial class that fails validation (for example, not an implementation of the interface, or an unsupported data type), the class is neither registered as a custom formatter nor generated. Previously a hand-written formatter class that happened to carry the attribute, or whatever resolver registration applied, would still be picked up.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:37",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read GeneratorUtilities.cs:32-42. The new attribute is introduced by this change, so no existing user code carries it. This is an edge case only for newly annotated classes."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18534,
+  "output_tokens": 1599,
+  "ms": 12101,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

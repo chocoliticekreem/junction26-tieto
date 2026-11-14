@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The requirement/ledger L7 calls for an opt-out setting, but no setting exists; the attribute is emitted unconditionally and no test covers a setting. The tests only assert the attribute is present, so an opt-out would not be validated.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:68",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "Cite L7 (answer: 'Add an opt-out setting'); grep the diff for any option/property controlling emission - none found, and no test for opt-out."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The guard test would not catch a wrong guard such as removing the NETFRAMEWORK condition from one template: it compares against the same constant Guard string, which is tautological with the template text only for the exact string. However, the tests never compile the generated output under netstandard2.0/net framework, so a mistake in preprocessor symbols is not caught by compilation. The test passes as long as the strings match.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:93",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 swap-boolean: '#if !NETSTANDARD2_0 && !NETFRAMEWORK' -> '#if !NETSTANDARD2_0 || !NETFRAMEWORK' in generated string; expected to survive only if Guard constant also changed; but test compares exact string so it would kill. Real gap: no compile test with NETSTANDARD2_0 defined."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "AllGeneratedTypesAreExcludedFromCodeCoverage only checks that the file contains at least one attribute, not that every type in the file (e.g. nested FormatterCache and GetFormatterHelper classes in the resolver) is decorated. Deleting the attribute from FormatterCache<T> or GetFormatterHelper in ResolverTemplate would survive, since the resolver file still has the attribute on the outer class.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:55",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:55 delete-statement: remove the guarded [ExcludeFromCodeCoverage] before FormatterCache<T> (and before GetFormatterHelper at :67); expected to survive because tests only check text.Contains(attribute) and count equals guarded count, both still satisfied."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same weakness applies to CompositeResolverTemplate: no test generates a composite resolver (no CompositeResolver usage in TestSource), so those template changes are untested by the new tests.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "CompositeResolverTemplate.cs:27 delete-statement: remove the attribute from the Write string; expected to survive because TestSource has no [CompositeResolver] and the new tests do not exercise it (only snapshot regeneration may)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change (brace output '{' -> '{\\r\\n' when constraints exist) is a behavioral change unrelated to the attribute, and the new tests include no generic-constrained nesting type case, so it is untested beyond snapshots.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TransformUtilities.cs:58 negate-condition: hasConstraints ? \"{\\r\\n\" : \" {\\r\\n\" -> !hasConstraints ? ...; expected to survive in the new tests because TestSource has no nested generic constrained types; only snapshot regeneration could kill it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Tests do not compile the generated output or assert no compile diagnostics; the generator diagnostics output is discarded (out _, out _), so a syntax error from the added #if lines would go unnoticed by these tests.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:122",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "RunGeneratorAsync discards the output compilation and diagnostics via 'out _, out _'; no assertion on compilation errors."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12572,
+  "output_tokens": 1687,
+  "ms": 12118,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

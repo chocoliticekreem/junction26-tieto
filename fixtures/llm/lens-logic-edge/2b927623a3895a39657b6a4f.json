@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The cast check for IMessagePackSerializationCallbackReceiver never matches an explicit interface implementation. Roslyn names an explicit implementation with its interface prefix, for example \"MessagePack.IMessagePackSerializationCallbackReceiver.OnBeforeSerialize\", so `m.Name == \"OnBeforeSerialize\"` is never true. The check also only looks at `type.GetMembers()`, so explicit implementations on a base class are missed. As a result needsCast is always false. For a type that implements the callbacks explicitly, the template emits `value.OnBeforeSerialize()`, and the generated formatter fails to compile with CS1061.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:82",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterCallbackReceiverTests.ExplicitCallbackReceiverImplementationCompiles. It declares a class that implements IMessagePackSerializationCallbackReceiver explicitly, plus a [GeneratedMessagePackFormatter] partial formatter for it. Expect it to fail on head with an unexpected CS1061 in the generated formatter source."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MessagePack attributes on T are ignored. Without a surrogate, CreateContractlessMembers always serializes every public read-write member under its name as a string key, even when T carries [MessagePackObject] with [Key(int)] and [IgnoreMember]. A T annotated with [MessagePackObject] and [Key(0)]/[Key(1)] therefore gets a map-format formatter instead of an array-format one, and [IgnoreMember] members are still serialized. The requirement says attributes on T must be honoured, and L19 says to follow the requirement.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:88",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build a referenced assembly containing `[MessagePackObject] public class T { [Key(0)] public int A {get;set;} [IgnoreMember] public int B {get;set;} }`. Then run the generator on a compilation with `[GeneratedMessagePackFormatter] partial class F : IMessagePackFormatter<T> {}`. Assert the generated F source contains `WriteArrayHeader` and does not reference `B`. On head it uses WriteMapHeader and serializes B."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "IsPartial checks only the formatter's own declaration, but the formatter body is emitted inside EmitNestingTypesAndNamespaces using the user formatter's real containing types (Formatter = new QualifiedNamedTypeName(formatter)). A formatter nested in a non-partial class, such as `class Outer { [GeneratedMessagePackFormatter] partial class F : IMessagePackFormatter<X> {} }`, gets no MsgPack019. The generated code redeclares `partial class Outer`, which produces CS0260 (missing partial modifier) instead of a clear diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:46",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run VerifyCS with SkipGeneratedSourcesCheck on source with a non-partial `class Outer` containing `[GeneratedMessagePackFormatter] public partial class F : IMessagePackFormatter<MyObject> {}` and a [GeneratedMessagePackResolver]. Expect CS0260 from the generated file and no MsgPack019."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate is read with `.Value.Value as INamedTypeSymbol`. A SurrogateType that is not a named type, for example `typeof(Surrogate[])`, or an erroneous type therefore becomes null, and the formatter silently falls back to contractless mode with no diagnostic. The user's intended key contract is dropped without any error.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:34",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Declare `[GeneratedMessagePackFormatter(SurrogateType = typeof(S[]))] partial class F : IMessagePackFormatter<MyObject> {}` where S has [Key(0)] members. Assert that a diagnostic is reported. On head, no diagnostic is reported and a string-keyed contractless formatter is generated."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterCallbackReceiverTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterCallbackReceiverTests\n{\n    [Fact]\n    public async Task ExplicitCallbackReceiverImplementationCompiles()\n    {\n        string testSource = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace TestNs\n            {\n                public class MyObject : IMessagePackSerializationCallbackReceiver\n                {\n                    public int Value { get; set; }\n\n                    void IMessagePackSerializationCallbackReceiver.OnBeforeSerialize()\n                    {\n                    }\n\n                    void IMessagePackSerializationCallbackReceiver.OnAfterDeserialize()\n                    {\n                    }\n                }\n\n                [GeneratedMessagePackFormatter]\n                public partial class MyObjectFormatter : IMessagePackFormatter<MyObject>\n                {\n                }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver\n                {\n                }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test()\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(testSource);\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "ExplicitCallbackReceiverImplementationCompiles"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 21656,
+  "output_tokens": 11833,
+  "ms": 109345,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

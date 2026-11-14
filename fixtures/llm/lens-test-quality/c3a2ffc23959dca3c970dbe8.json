@@ -1,0 +1,83 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Contractless member ordering/filtering is not tested negatively for fields, structs with non-public members, or private members. The only exclusion tested is the read-only property `Doubled`. Mutating IsPublicReadWrite's field branch or the set accessor accessibility check would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:233",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:233 swap-boolean: field.DeclaredAccessibility == Accessibility.Public && !field.IsReadOnly && !field.IsConst -> drop the !field.IsReadOnly term; expected to survive because no external test type has any public field or readonly field, and no private/protected member is present."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement says that when T carries MessagePack attributes (e.g. [MessagePackObject]/[Key]/[DataContract]) they are honoured. The collector ignores them, and no test covers a T with attributes, so nothing would notice this acceptance criterion is unmet.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:77",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an external type with [MessagePackObject] and [Key(5)] members, declare a [GeneratedMessagePackFormatter] for it, and assert the serialized bytes use the attribute keys. It is expected to fail since CreateContractlessMembers is always used when there is no surrogate."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests do not cover MsgPack021 for the other rejection branches (generic type, inaccessible type, interface) or the class-without-parameterless-constructor path. Mutating the guard conditions (IsGenericType or the accessibility check) survives, because only an abstract type is tested.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:61",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:61 remove-guard: delete `!compilation.IsSymbolAccessibleWithin(type, formatter)` -> removed; expected to survive because FormattedTypeMustNotBeAbstract is the only MsgPack021 test and the NoDeserializingConstructor branch has no test."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate negative cases are untested. There is no test for a type mismatch between a surrogate and a target member, duplicate keys, a surrogate member missing [Key] (MemberNeedsKey), or a read-only target. SurrogateMemberNotFound is only tested for a missing name. Removing the type-equality check or the claimedKeys uniqueness check survives.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:171",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:171 remove-guard: drop `|| !SymbolEqualityComparer.Default.Equals(GetMemberType(target), GetMemberType(surrogateMember))`; expected to survive because the only SurrogateMemberNotFound test uses a missing name."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate string-key mode is not tested end-to-end. The execution test uses only int keys, and the string-key surrogate path (intKey: members.Count) is never executed at run time. A string-key template with IsUserDeclaredFormatter is only exercised via the contractless tests, which check the bytes but not the surrogate mapping.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:186",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:186 swap-boolean: stringKey: (string)key -> stringKey: target.Name; expected to survive because no test uses a surrogate with [Key(\"...\")] differing from the member name."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities exclusion of attributed formatters from hand-written formatter registration is not directly tested. The registration test asserts only the resolved type and would likely still pass if both registrations existed or the filter were removed (duplicate-registration conflicts are not asserted).",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38 remove-guard: delete `!symbol.GetAttributes().Any(...GeneratedMessagePackFormatter...)`; expected to survive if the duplicate registration is deduplicated, or it would show a compile error that no snapshot test captures."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The analyzer diagnostic tests do not cover the success path in the generator snapshot (no generated-output snapshot test for the partial formatter), and the test for mixed keys expects MsgPack005 while the new diagnostics are reported through the generator. The MsgPack00xMessagePackAnalyzer descriptors are untested except via the generator.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs:176",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests and check for a snapshot of the generated partial class; none is added in the diff."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25433,
+  "output_tokens": 2127,
+  "ms": 14709,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

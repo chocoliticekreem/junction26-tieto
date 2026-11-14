@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The Str8 case in the string-header writer is removed, and no test in the diff exercises it. Strings of 32 to 255 bytes will now be written with Str16 instead of Str8. That is a non-canonical, larger encoding and a wire-format change unrelated to the requirement. The new tests only use short strings such as \"seven\" (fixstr).",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:914",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a 40-byte ASCII string with base-built and head-built MessagePack. Compare the bytes: base starts with 0xd9 0x28 (Str8), head starts with 0xda 0x00 0x28 (Str16)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `continue` after DoNotMixStringAndIntKeys is added in the property loop. No test would fail if it were deleted. MixedKeyKindsAreReportedWithoutAnalyzerFailure only checks that MsgPack005 is reported, and the verifier would likely still pass if the member were not skipped. The new ContainsKey guards cover duplicates, so the `continue` is not needed for the test to pass.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:1008 delete-statement: `continue;` -> removed; expected to survive because the mixed-key test only asserts the diagnostic and the ContainsKey guard prevents any exception."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The field-loop `continue` and the ContainsKey guards in the second (field) loop are not covered. Every analyzer test uses properties except AllowPrivateRequiredIsReported, which uses a single field. No test has duplicate or mixed keys on fields, so mutating or removing these lines would not be noticed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:1163 remove-guard: `if (!intMembers.ContainsKey(member.IntKey))` -> unconditional Add; expected to survive because all duplicate-key tests declare properties, not fields."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The analyzer tests do not show that they fail on base. The diff contains no change to the code that made the analyzer skip SuppressSourceGeneration types, so the tests for MsgPack003/004/015 may pass on base. In that case they do not reproduce the bug.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:19",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests.MemberWithoutKeyIsReported and MemberTypeMustBeMessagePackObjectIsReported against base. If they pass there, they do not reproduce the issue."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test SuppressedTypeRoundTripsThroughDynamicResolver does not check the wire bytes. It also passes on base, because suppression and the dynamic resolver already worked there. It does not cover the analyzer bug.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:27",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the execution test on base. It is expected to pass, so it does not demonstrate the fix."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9144,
+  "output_tokens": 1320,
+  "ms": 10159,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

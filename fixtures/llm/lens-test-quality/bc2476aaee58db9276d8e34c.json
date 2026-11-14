@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "MessagePackSecurity copy constructor no longer copies HashCollisionResistant, so derived/cloned options silently lose the collision-resistant setting. No test in the diff exercises this. This is an out-of-scope security regression and nothing in the change would fail on it.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:62",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack/MessagePackSecurity.cs:62 delete-statement: this.HashCollisionResistant = copyFrom.HashCollisionResistant; (already deleted by change) -> expected to survive because no test in the diff constructs MessagePackSecurity via the copy constructor and asserts HashCollisionResistant is preserved; the new tests only cover source generator output. A test that does WithMaximumObjectGraphDepth on UntrustedData and asserts HashCollisionResistant would fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change from \"{\" to \"{\\r\\n\" when constraints are present is not covered by the new tests. The test source has no nested generic types with constraints, so reverting it would not fail the new tests.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: writer(anyConstraints ? \"{\\r\\n\" : ...) -> writer(anyConstraints ? \"{\" : ...); expected to survive because CodeCoverageExclusionTests.TestSource has no nesting generic type with constraints, and the only check for this would be the snapshot tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests only check text and never compile the generated output with a netstandard2.0/NETFRAMEWORK define. They also only check that the guard string exists, not that the guard is correct. If the guard were inverted or the symbol misspelled, the string checks would still pass or the netstandard compile would not be exercised. The tests also use a single set of types: no generic, nested or constrained formatter and no CompositeResolver template, even though CompositeResolverTemplate was changed.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:73",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7 remove-guard: delete the attribute on the CompositeResolver partial class; expected to survive because TestSource uses only GeneratedMessagePackResolver, not a CompositeResolver, so only snapshot tests would notice."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test's assertion generated.Count >= 5 and per-file Contains check pass if any single type in a file has the attribute. A file with several types (resolver file: resolver class, FormatterCache, GetFormatterHelper) passes even if one of them loses its attribute, since the guarded count is compared only to the attribute count, not to the type count.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:77",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48 delete-statement: remove the attribute from GetFormatterHelper; expected to survive because the resolver file still contains other ExcludeFromCodeCoverage occurrences and the tests count only attribute presence per file."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12823,
+  "output_tokens": 1315,
+  "ms": 10053,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

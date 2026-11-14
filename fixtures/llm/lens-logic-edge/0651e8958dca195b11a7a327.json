@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Duplicate integer keys are now silently accepted. For a type with `[Key(0)] public int KeptMember` and `[Key(0)] public int DroppedCandidate`, the new `ContainsKey` guard throws away the second member. The generator then emits a formatter that never serializes it, and no analyzer or generator diagnostic is reported. Base threw (the generator crashed, so the problem was visible); the dynamic resolver rejects duplicate keys at run time. On head, data is silently lost even when `SuppressSourceGeneration` is unset, which breaks the requirement that behaviour without the flag does not change. The derived-key `continue` added above already handles the case the requirement is about, so this guard only hides real duplicates.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1029",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateIntKeySilentlyDroppedTests.DuplicateIntKey_IsReportedOrBothMembersAreSerialized. On head no MsgPack diagnostic is reported and the generated formatter does not mention DroppedCandidate, so the test fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same silent drop happens on the second (string-key / map) member path and on the int-key path in the second member loop. Two members with the same string key, e.g. `[Key(\"a\")]` on both, keep only the first member and report no diagnostic, so the generated formatter loses the other member's data.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1045",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read TypeCollector.cs:1045 and 1191: `if (!stringMembers.ContainsKey(member.StringKey))` drops later members with no reportDiagnostic call. The int-key twin is at 1175. A variant of the generated test using `[Key(\"a\")]` on two properties would show it, unless MsgPack018 already covers explicit duplicate string keys."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateIntKeySilentlyDroppedTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing MessagePack.SourceGenerator;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateIntKeySilentlyDroppedTests\n{\n    [Fact]\n    public async Task DuplicateIntKey_IsReportedOrBothMembersAreSerialized()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            namespace DupNs\n            {\n                [MessagePackObject]\n                public class DupKeys\n                {\n                    [Key(0)]\n                    public int KeptMember { get; set; }\n\n                    [Key(0)]\n                    public int DroppedCandidate { get; set; }\n                }\n\n                [GeneratedMessagePackResolver]\n                partial class DupResolver\n                {\n                }\n            }\n            \"\"\";\n\n        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3);\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var refs = new List<MetadataReference>(frameworkRefs);\n        refs.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        var compilation = CSharpCompilation.Create(\n            \"DupKeyAsm\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new[] { new MessagePackGenerator().AsSourceGenerator() }, parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out var generatorDiagnostics);\n        var runResult = driver.GetRunResult();\n        string generated = string.Join(\"\\n\", runResult.GeneratedTrees.Select(t => t.ToString()));\n\n        var analyzers = typeof(MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract\n                && typeof(DiagnosticAnalyzer).IsAssignableFrom(t)\n                && t.GetCustomAttributes(typeof(DiagnosticAnalyzerAttribute), false).Length > 0\n                && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n\n        var allDiagnostics = new List<Diagnostic>(generatorDiagnostics);\n        foreach (var d in runResult.Diagnostics)\n        {\n            allDiagnostics.Add(d);\n        }\n\n        if (analyzers.Length > 0)\n        {\n            var analyzerDiagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n            allDiagnostics.AddRange(analyzerDiagnostics);\n        }\n\n        bool duplicateReported = allDiagnostics.Any(d => d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal) && d.Severity >= DiagnosticSeverity.Warning);\n        bool bothMembersInFormatter = generated.Contains(\"KeptMember\") && generated.Contains(\"DroppedCandidate\");\n\n        (duplicateReported || bothMembersInFormatter).Should().BeTrue(\n            \"two members sharing [Key(0)] must either be reported as a diagnostic or both be handled by the generated formatter; silently dropping one loses data. Diagnostics: \"\n            + string.Join(\"; \", allDiagnostics.Select(d => d.Id + \" \" + d.GetMessage())));\n    }\n}\n",
+        "test_names": [
+          "DuplicateIntKey_IsReportedOrBothMembersAreSerialized"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 9168,
+  "output_tokens": 10274,
+  "ms": 91870,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

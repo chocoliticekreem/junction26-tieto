@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "MaximumObjectGraphDepth for UntrustedData was changed from 500 to 5000, which is unrelated to the crash fix in REQ-2283 and weakens a security limit. The ledger records a stack depth limit of 500 even for trusted data as deliberate hardening, and [L12] only says to follow the requirement, which does not mention this change.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L9] records a stack depth limit of 500 as secure-by-default hardening. [L12] says no preference and to follow the requirement, and REQ-2283 never asks for a depth change. Run the existing MessagePackSecurity depth tests, or deserialize 600-deep nested data with UntrustedData to show it is no longer rejected."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new README section and MsgPack004.md section state that diagnostics for types from referenced assemblies are reported by the defining assembly. This matches the deliberate behaviour in [L8] that metadata types are not analysed by the consumer, so it is consistent and not a defect.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] Types from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly; the defining assembly owns validation."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "ReportIfLocatedInCompilation drops every diagnostic whose location is not in a syntax tree of the current compilation. This also suppresses diagnostics with Location.None, for example MemberNeedsKey when the symbol has no syntax. That is consistent with [L8], where no diagnostics are expected for metadata types, so it is not a defect.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1441",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] No MsgPack003/004/005 diagnostic appears for metadata-only types; a missing diagnostic for them is not a defect."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Only stop the crash. Guard the DeclaringSyntaxReferences accesses, drop diagnostics that have no location in the compilation, and still generate the resolver. The metadata closed generic struct gets no new formatter in the consuming assembly, and the defining assembly's formatter is relied on."
+      },
+      {
+        "label": "B",
+        "summary": "Also make the consuming assembly's generated resolver include a formatter for the closed generic type from the referenced assembly (e.g. Item<int>), so trimmed and NativeAOT apps work without relying on the defining assembly's resolver. This needs TypeCollector to build and emit the ObjectSerializationInfo for metadata closed generics instead of skipping them."
+      }
+    ]
+  },
+  "input_tokens": 12086,
+  "output_tokens": 1032,
+  "ms": 8139,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

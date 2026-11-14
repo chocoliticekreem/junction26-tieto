@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "MaximumObjectGraphDepth for UntrustedData is raised from 500 to 5000, an unrelated security-sensitive change. None of the diff's tests exercises or pins this value, so no test fails if it is reverted or mutated.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack/MessagePackSecurity.cs:38 off-by-one: MaximumObjectGraphDepth = 5000 -> 500 (or 5001); expected to survive because none of the added tests in GenericsFormatterTests.cs touches MessagePackSecurity."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ReportIfLocatedInCompilation guard in the constructor wrapper has no test that detects its removal. The added tests only use members that are fine or have no diagnostics reported against metadata. Removing the filter would still pass, because the GetPropertyIdentifierLocation and FirstOrDefault fixes already prevent the crash. Nothing asserts that diagnostics are dropped, and nothing asserts that real in-source diagnostics are still reported, such as a negative case for the IsInSource and ContainsSyntaxTree condition.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:239 remove-guard: replace the wrapper with reportAnalyzerDiagnostic directly; expected to survive because the ClosedGeneric*_FromMetadataReference tests only fail on a crash, and the other two fixes remove the crash."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The unkeyed-member test cannot tell which of the changed lines (BothStringAndIntKeyAreNull, MemberNeedsKey, or the filter) covers it. Reverting the FirstOrDefault change on the MemberNeedsKey line is only caught if the path actually runs. The BothStringAndIntKeyAreNull path has no test at all: it needs a Key attribute whose value is null, and none of the tests produces one. GetPropertyIdentifierLocation is therefore effectively unverified.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:985 delete-statement: revert GetPropertyIdentifierLocation(item) to ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no test has a metadata member with a null int and string key."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test's second generator run asserts only that the resolver hint name exists and that there are no warnings. It never checks that a formatter for the closed generic (Item<int>) is generated, or that it is absent. Per the ledger, whether one should be generated is intentionally undecided, so the output content is unpinned. The first run skips the generated-sources check (SkipGeneratedSourcesCheck), so no snapshot protects the output.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:630",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests with the generated-sources check enabled for the metadata-reference scenario and compare the resolver content between base-with-fix and head."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 11062,
+  "output_tokens": 1278,
+  "ms": 9103,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

@@ -109,6 +109,12 @@ def load_bench_runs(manifest: list[dict], runs_root: Path) -> dict[tuple[str, st
     return out
 
 
+def incomplete(run: Run) -> list[str]:
+    """Lenses that could not run (API error, limit reached). Such a run is not the pipeline's
+    answer and is left out of every table rather than counted as a miss."""
+    return [x["lens"] for x in (run.lenses or {}).get("lenses", []) if x.get("status") == "unavailable"]
+
+
 def load_sample_runs(runs_root: Path) -> list[Run]:
     out = []
     for branch in config.SAMPLE_BRANCHES:
@@ -150,6 +156,20 @@ def hits_plant(finding: dict, case: dict) -> bool:
     return any(a - LINE_TOLERANCE <= line <= b + LINE_TOLERANCE for a, b in ranges[path])
 
 
+BASELINE_LINE_TOLERANCE = 3
+
+
+def same_as_clean(f: dict, g: dict) -> bool:
+    """f (on a variant) repeats g (on the clean run of the same issue): same lens and file, and the
+    same mutant text for mutation survivors, else lines within BASELINE_LINE_TOLERANCE."""
+    if f.get("lens") != g.get("lens") or _finding_key(f)[:2] != _finding_key(g)[:2]:
+        return False
+    if _is_mutation(f) or _is_mutation(g):
+        return _finding_key(f) == _finding_key(g)
+    lf, lg = parse_location(f.get("location", ""))[1], parse_location(g.get("location", ""))[1]
+    return lf is None or lg is None or abs(lf - lg) <= BASELINE_LINE_TOLERANCE
+
+
 def is_planted(case: dict) -> bool:
     return case["variant"] not in NON_PLANTED
 
@@ -179,10 +199,18 @@ def _evidence(run: Run, eid: str) -> dict | None:
 
 
 def build_tests_red(run: Run) -> bool:
-    """Head build failed, or an existing test failed on head that passed on base (the verdict's rule)."""
-    if "head does not build" in run.receipt.get("verdict_reason", ""):
+    """Head build failed, or a test fails on head that did not fail on base (passing there, or added
+    by the change): the verdict's rule, read from evidence because the verdict reason names only
+    the first blocker."""
+    build = _evidence(run, "build-head")
+    if build is not None and build.get("result") == "fail":
         return True
-    return "pass on base but fail on head" in run.receipt.get("verdict_reason", "")
+    head = _evidence(run, "existing-tests-head")
+    if head is None:
+        return False
+    base = _evidence(run, "existing-tests-base") or {}
+    base_failed = set(base.get("details", {}).get("failed_tests", []))
+    return bool(set(head.get("details", {}).get("failed_tests", [])) - base_failed)
 
 
 @dataclass
@@ -196,49 +224,46 @@ class CaseResult:
     baseline: list[dict] = field(default_factory=list)
     bait_false_alarms: list[dict] = field(default_factory=list)
     off_target: list[dict] = field(default_factory=list)  # planted case, elsewhere, not baseline
+    hunch_at_plant: bool = False  # missed, but an unverified hunch points at the plant
 
 
 def classify(run: Run, clean: Run | None) -> CaseResult:
     case = run.case or {}
     res = CaseResult(run=run, planted=is_planted(case))
-    base_keys = {_finding_key(f) for f in clean.verified} if clean else set()
-    base_files = {_finding_key(f)[:2] for f in clean.verified} if clean else set()
+    clean_findings = clean.verified if clean else []
     if case.get("variant") == "clean":
         res.baseline = list(run.verified)
         return res
 
-    def is_baseline(f: dict) -> bool:
-        # Away from the plant, same lens+file as clean = about the agent's change. At the plant,
-        # only an identical finding (same mutant text) is baseline.
-        if _finding_key(f) in base_keys:
-            return True
-        if case.get("category") == "tests" and _is_mutation(f):
-            return False  # a deleted test shows up as a new survivor anywhere in the file
-        return _finding_key(f)[:2] in base_files and not hits_plant(f, case)
+    def at_plant(f: dict) -> bool:
+        # A deleted test (missing-test plant) shows up as a new survivor anywhere in the code.
+        return hits_plant(f, case) or (case.get("category") == "tests" and _is_mutation(f))
 
     for f in run.verified:
-        if is_baseline(f):
+        if any(same_as_clean(f, g) for g in clean_findings):
             res.baseline.append(f)
-        elif res.planted and (hits_plant(f, case)
-                              or (case.get("category") == "tests" and _is_mutation(f))):
-            res.matching.append(f)
-        elif res.planted:
-            res.off_target.append(f)
+        elif at_plant(f):
+            (res.matching if res.planted else res.false_alarms).append(f)
         else:
-            res.false_alarms.append(f)
+            res.off_target.append(f)
     if case.get("variant") == "bait":
-        files = set(case.get("files", []))
-        res.bait_false_alarms = [f for f in run.verified
-                                 if parse_location(f.get("location", ""))[0] in files
-                                 and not is_baseline(f)]
+        res.bait_false_alarms = list(res.false_alarms)
     if not res.planted:
         return res
     for f in res.matching:
         res.rows.add(f.get("lens", ""))
         res.rows |= finding_checks(f, run)
-    if build_tests_red(run):
+    red = build_tests_red(run) and not (clean is not None and build_tests_red(clean))
+    if red:
         res.rows.add(BUILD_TESTS)
-    res.caught = run.verdict == "blocked" or bool(res.matching)
+    blocked = run.verdict == "blocked"
+    if blocked and clean is not None and clean.verdict == "blocked":
+        # The agent's own change is already blocked, so "blocked" alone says nothing about the
+        # plant: something beyond the baseline must block it.
+        blocked = red or any(f.get("severity") in ("high", "critical")
+                             for f in res.matching + res.off_target)
+    res.caught = blocked or bool(res.matching)
+    res.hunch_at_plant = not res.caught and any(hits_plant(h, case) for h in run.hunches)
     if res.caught and not res.rows:
         res.rows.add(VERDICT_ONLY)
     return res
@@ -310,15 +335,21 @@ def table_t1(results: list[CaseResult], mode: str) -> dict:
                  "is blocked or a verified finding sits in a planted file (within "
                  f"±{LINE_TOLERANCE} lines of the manifest range when lines are given); the catch is "
                  "credited to that finding's lens and to the check that verified it (mutation, "
-                 "byte-diff, fail-before-pass-after). An existing test that passed on base and fails "
-                 f"on head, or a head build failure, is credited to '{BUILD_TESTS}'. In scope = the "
+                 "byte-diff, fail-before-pass-after). When the clean run of the same issue is "
+                 "itself blocked (the agent's change has a verified high finding), a blocked "
+                 "verdict counts only if a non-baseline high finding or a new build/test failure "
+                 "blocks the variant. A test failing on head (passing on base or added by the "
+                 f"change) or a head build failure, not also on clean, is credited to "
+                 f"'{BUILD_TESTS}'. In scope = the "
                  "manifest's expected_lens for the plant (every planted case for build/tests). For "
                  "missing-test plants (the plant is a deleted test) a new surviving mutant anywhere "
-                 "counts as the catch. Baseline finding = same lens+file as a verified finding on the "
-                 "clean run of the same issue, outside the planted lines; at the planted lines only "
-                 "an identical finding (mutation survivors: same mutant text) is baseline. Baseline "
-                 "findings are never catches or false alarms (reported in T2). False alarm = a "
-                 "non-baseline verified finding on a control or bait case. Test-quality "
+                 "counts as the catch. Baseline finding = the clean run of the same issue has the "
+                 "same lens+file finding within 3 lines (mutation survivors: the same mutant text); "
+                 "baseline findings are real findings about the agent's change, never catches or "
+                 "false alarms. False alarm = a non-baseline verified finding AT the planted lines "
+                 "of a control or bait case. Findings elsewhere on a variant are about code identical "
+                 "to clean that the single clean sample did not produce (LLM reviewers vary between "
+                 "runs): reported as off_target in T2, neither catch nor false alarm. Test-quality "
                  "(mutation) findings are medium severity: they point at the line but do not block. "
                  "Precision = matching findings / (matching findings + false alarms)."),
     }
@@ -352,17 +383,24 @@ def table_t2(by_mode: dict[str, list[CaseResult]], variants: list[str]) -> dict:
                          _caught_by(rs) if planted else "",
                          _verdicts(rs), sum(len(r.false_alarms) for r in rs),
                          sum(len(r.baseline) for r in rs),
-                         sum(len(r.off_target) for r in rs)])
+                         sum(len(r.off_target) for r in rs),
+                         sum(r.hunch_at_plant for r in rs) if planted else None])
     return {
         "columns": ["variant", "category", "mode", "cases", "caught", "caught_by", "verdicts",
-                    "false_alarms", "baseline_findings", "off_target_findings"],
+                    "false_alarms", "baseline_findings", "off_target_findings",
+                    "missed_but_hunch_at_plant"],
         "rows": rows,
         "note": ("Per plant variant, cold and warm. caught_by counts cases per credited lens/check "
-                 "(a case can credit several). baseline_findings = verified findings whose lens+file "
-                 "also appear on the clean run: real findings about the agent's original change, "
-                 "not false alarms. off_target_findings = verified findings on a planted case "
-                 "outside the planted location that are not baseline (neither a catch nor counted "
-                 "as a false alarm). " + ORACLE_NOTE),
+                 "(a case can credit several). baseline_findings = verified findings the clean run "
+                 "also produced (same lens+file within 3 lines, or same mutant): real findings about "
+                 "the agent's original change. off_target_findings = new verified findings outside "
+                 "the planted lines, on code identical to clean (reviewer run-to-run variance; "
+                 "neither a catch nor a false alarm). missed_but_hunch_at_plant = missed cases where an unverified "
+                 "hunch (no receipt, shown collapsed) points at the planted location: not counted "
+                 "as caught. Bench cases run with --no-ab: when a lens finds two readings "
+                 "the verdict is decision-A-B and the readings are recorded, but branches A and B "
+                 "are not built or reviewed (that only matters for the four sample changes). "
+                 + ORACLE_NOTE),
     }
 
 
@@ -410,9 +448,7 @@ def table_t5(by_mode: dict[str, list[CaseResult]], ledger: list[dict]) -> dict:
 
                 repeats = sum(any(a == q.get("area") and same_question(t, q.get("text", ""))
                                   for a, t in prior) for q in qs)
-            citations = sum(f.get("receipt_plan", {}).get("kind") == "ledger-citation"
-                            for f in r.run.findings_all)
-            citations += len((r.run.lenses or {}).get("citations", []))
+            citations = len(ledger_citations(r.run))
             rows.append([r.run.seq, r.run.change_id, mode, len(qs), len(r.bait_false_alarms),
                          citations, repeats])
     return {
@@ -423,9 +459,23 @@ def table_t5(by_mode: dict[str, list[CaseResult]], ledger: list[dict]) -> dict:
                  "context/ledger.cold-backup.jsonl and restored after). After each cold case the "
                  "oracle answers its questions into the ledger; warm re-runs every case with that "
                  "ledger. repeat_questions = warm questions whose area and wording match an "
-                 "answered one (should be 0). bait_false_alarms = non-baseline verified findings on "
-                 "the bait case's planted file. " + ORACLE_NOTE),
+                 "answered one (should be 0). bait_false_alarms = non-baseline verified findings at "
+                 "the bait's planted lines. ledger_citations = lens findings withdrawn as deliberate "
+                 "per a ledger entry. " + ORACLE_NOTE),
     }
+
+
+def ledger_citations(run: Run) -> list[dict]:
+    """Lens findings the lens itself withdrew as deliberate per a ledger entry (stages.py turns
+    them into ledger-citation evidence)."""
+    return [e for e in run.evidence if e.get("kind") == "ledger-citation"]
+
+
+def lens_spend(run: Run) -> tuple[float, float]:
+    """(recorded lens cost, real spend this run): replayed fixtures cost nothing now."""
+    lenses = (run.lenses or {}).get("lenses", [])
+    recorded = sum(x.get("cost_usd", 0.0) for x in lenses)
+    return recorded, sum(x.get("cost_usd", 0.0) for x in lenses if not x.get("from_fixture"))
 
 
 def table_t6(runs: list[Run]) -> dict:
@@ -438,9 +488,8 @@ def table_t6(runs: list[Run]) -> dict:
             shown += len(vs)
             executed += sum(any(i in ev_ok for i in f.get("evidence_ids", [])) for f in vs)
             withheld += sum(lens == "all" or h.get("lens") == lens for h in run.hunches)
-            cites += sum((lens == "all" or f.get("lens") == lens)
-                         and f.get("receipt_plan", {}).get("kind") == "ledger-citation"
-                         for f in run.findings_all)
+            cites += sum(lens == "all" or e.get("details", {}).get("lens") == lens
+                         for e in ledger_citations(run))
         rows.append([lens, shown, executed, withheld, cites])
     return {
         "columns": ["lens", "findings_shown", "with_executed_receipt", "hunches_withheld",
@@ -629,6 +678,7 @@ def headline(by_mode: dict[str, list[CaseResult]], samples: list[Run], t3: dict)
             "planted": len(planted),
             "caught": sum(r.caught for r in planted),
             "recall": _ratio(sum(r.caught for r in planted), len(planted)),
+            "missed_but_hunch_at_plant": sum(r.hunch_at_plant for r in planted),
             "control_bait_cases": len(neutral),
             "false_alarm_cases": sum(bool(r.false_alarms) for r in neutral),
             "false_alarm_rate": _ratio(sum(bool(r.false_alarms) for r in neutral), len(neutral)),
@@ -637,8 +687,9 @@ def headline(by_mode: dict[str, list[CaseResult]], samples: list[Run], t3: dict)
             "questions_per_change": _ratio(sum(len(r.run.questions) for r in rs), len(rs)),
             "escapes": sum(r.planted and r.run.verdict == "auto-ready" for r in rs),
             "off_target_findings": sum(len(r.off_target) for r in rs),
-            "lens_cost_usd": round(sum((r.run.lenses or {}).get("total_cost_usd", 0.0)
-                                       for r in rs), 4),
+            "lens_cost_usd": round(sum(lens_spend(r.run)[0] for r in rs), 4),
+            "lens_spend_usd_this_run": round(sum(lens_spend(r.run)[1] for r in rs), 4),
+            "ledger_citations": sum(len(ledger_citations(r.run)) for r in rs),
             "router_cost_usd": round(sum((r.run.routing or {}).get("cost_usd", 0.0)
                                          for r in rs), 6),
         }
@@ -663,13 +714,15 @@ def run_metrics() -> int:
     if not runs:
         print(f"metrics: no bench runs with bench.json under {config.RUNS}; run `receipts bench run`")
         return 1
+    dropped = {f"{cid} ({mode})": incomplete(r) for (cid, mode), r in runs.items() if incomplete(r)}
+    runs = {k: r for k, r in runs.items() if not incomplete(r)}
     by_mode = {m: classify_all(runs, m) for m in ("cold", "warm")
                if any(k[1] == m for k in runs)}
     primary = primary_mode(runs)
     variants = list(dict.fromkeys(c["variant"] for c in manifest))
     from .questions import load_ledger
 
-    ledger = load_ledger()
+    ledger = load_ledger() + load_ledger(config.CONTEXT / "ledger.bench-oracle.jsonl")
     latest_bench = [r for r in (runs.get((c["id"], "warm")) or runs.get((c["id"], "cold"))
                                 for c in manifest) if r is not None]
     t3 = table_t3(by_mode[primary])
@@ -681,12 +734,18 @@ def run_metrics() -> int:
         "T5.json": table_t5(by_mode, ledger),
         "T6.json": table_t6([*samples, *latest_bench]),
     }
+    if dropped:
+        excluded = ("Excluded (a lens could not run, e.g. API usage limit reached; not counted as "
+                    "misses): " + "; ".join(f"{k}: {', '.join(v)}" for k, v in sorted(dropped.items())))
+        for name in ("T1.json", "T2.json", "T3.json", "T5.json"):
+            tables[name]["note"] += " " + excluded
     for name, table in tables.items():
         write_json(name, table)
     levels, history = trust_history(by_mode[primary])
     write_json("trust.json", levels)
     write_json("trust-history.json", history)
     summary = headline(by_mode, samples, t3)
+    summary["excluded_incomplete_runs"] = dropped
     write_json("summary.json", summary)
     for mode in by_mode:
         s = summary[mode]

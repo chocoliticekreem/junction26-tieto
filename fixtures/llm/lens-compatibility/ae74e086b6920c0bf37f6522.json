@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "New analyzer diagnostics MsgPack019-022 are added to SupportedDiagnostics, but the diff shows no AnalyzerReleases.Unshipped.md entries or doc/analyzers pages. Their help links would 404 and the release-tracking analyzer (RS2000) would likely fail the build. Also, the analyzer never reports them: they are only reported from a generator via RegisterSourceOutput, with no analyzer registration visible.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:381",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that AnalyzerReleases.Unshipped.md contains MsgPack019-022 and that doc/analyzers/MsgPack019.md..022.md exist; build the SourceGenerator project and look for RS2000 errors."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless output is name-sorted and read-write-only, so its wire format differs from ContractlessStandardResolver, which uses declaration order and includes get-only members. A user switching an existing contractless formatter to the generated one gets a different map key order and drops get-only members. The ledger (L20) accepts this, so it is not a defect. The generator has no way for the sorted order to match a dynamic-resolver peer.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:176",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with props B, A and a get-only C via ContractlessStandardResolver and via the generated formatter; compare bytes."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Requirement: if T carries [MessagePackObject]/[Key], they should be honoured. The collector ignores them and always uses contractless mode (or the surrogate). Types with int keys get string-keyed output, which is incompatible with bytes written by their normal formatter.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:88",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a formatter for a type annotated [MessagePackObject] with [Key(0)]/[Key(1)] in a referenced assembly; assert that the output is an int-keyed array like MessagePackSerializer's output."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated formatter for a user-declared formatter may collide with the existing resolver registration. The generated resolver registers ObjectSerializationInfo formatters, so the formatter is now also registered in the generated resolver. Users with a hand-written formatter for the same T could see changed formatter selection. The generator also emits 'partial class' with no accessibility. The nested-type/namespace and accessibility mismatch with the user declaration (e.g. 'public partial class') is permitted, but a file-scoped or generic formatter class path via EmitTypeConstraints is untested.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests with a [GeneratedMessagePackFormatter] class declared as public/internal and nested in a type; confirm compilation and resolver output."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 19043,
+  "output_tokens": 1199,
+  "ms": 9268,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

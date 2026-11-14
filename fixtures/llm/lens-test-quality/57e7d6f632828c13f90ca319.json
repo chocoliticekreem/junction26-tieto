@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The only tests assert that the attribute text is present and guarded. No test compiles the generated output for netstandard2.0 or .NET Framework, and none checks that the `#if` symbols are defined in a real consumer. A wrong guard that still matches the string, such as an inverted condition, would pass every check. Compilation of generated code is an acceptance criterion that no test covers.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:97",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 swap-boolean: '#if !NETSTANDARD2_0 && !NETFRAMEWORK' -> '#if NETSTANDARD2_0 && NETFRAMEWORK' applied consistently in the template and in the test's Guard constant; expected to survive because the test only matches a hard-coded string and never compiles with those symbols defined."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `TransformUtilities.cs` change from `\"{\"` to `\"{\\r\\n\"` for nested types with constraints has no dedicated test. The new test source has no nested generic type with constraints. Reverting that line would only show up through the generated snapshots, and only if some snapshot covers that case.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: writer(anyConstraints ? \"{\\r\\n\" : \" {\\r\\n\") -> writer(anyConstraints ? \"{\" : \" {\\r\\n\"); expected to survive CodeCoverageExclusionTests because no test source has a constrained generic nesting type."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`AllGeneratedTypesAreExcludedFromCodeCoverage` only checks that each generated file contains at least one attribute. Files that emit several types (the resolver with FormatterCache, plus the GetFormatterHelper class) would pass even if one nested type lost its attribute. `GetFormatterHelper` and `FormatterCache` are not individually verified. The third test's `attributeCount > 0` and equality of attribute and guarded counts also cannot detect a missing attribute on a particular type.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:77",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48 remove-guard: delete the attribute lines on the GetFormatterHelper class; expected to survive because the resolver file still contains other ExcludeFromCodeCoverage occurrences and the tests never count attributes per type."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12747,
+  "output_tokens": 1072,
+  "ms": 7880,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

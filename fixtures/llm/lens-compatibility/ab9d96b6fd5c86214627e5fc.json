@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The early return for suppressSourceGeneration is placed before the `contractAttr is null` handling and before any diagnostics (MsgPack003/004/005/007/008/009/012 etc.), so for SuppressSourceGeneration=true types the analyzer now reports none of them. This is the opposite of the requirement, which asks the analyzer to still report diagnostics for such types as it did in 3.1.0. Users who got errors for these types in 3.1.0 would stop getting them. The requirement says only 'analyzer does not work'; the ledger L14 excludes only MsgPack011/016/017.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:713",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: [MessagePackObject(SuppressSourceGeneration = true)] class with a public member lacking [Key] or [IgnoreMember]. Expect MsgPack004 as in 3.1.0. With head it will not be reported, so the test fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate keys are now silently dropped: `ContainsKey` guards skip the second member so Dictionary.Add no longer throws. Whether the duplicate-key diagnostic (MsgPack006) is still reported for the dropped member is not shown. If it is, generated output for a duplicate-key type changes without any diagnostic being added, which is a behavior change for users with such types. The first member wins arbitrarily by symbol order.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1029",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run generator snapshot tests with a [MessagePackObject] type having two members with [Key(0)] and compare base and head outputs, and diagnostics, to confirm MsgPack006 still fires and the output stays compiling."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys changes generated output for types mixing int and string keys: the mismatching member is now omitted from the formatter, where before it was still added to intMembers/stringMembers. Users with such already-erroring code get different generated code and possibly different cascading diagnostics.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate for a type with one [Key(0)] member and one [Key(\"a\")] member at base and head, and diff the generated formatter and diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5768,
+  "output_tokens": 938,
+  "ms": 7650,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetPropertyIdentifierLocation still indexes DeclaringSyntaxReferences[0] unguarded, and its doc comment claims it returns null for metadata. For a metadata property this still throws IndexOutOfRangeException when the BothStringAndIntKeyAreNull path runs. The fix for the first crash site is therefore not applied. The helper also casts to PropertyDeclarationSyntax, which fails for record-positional properties.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a metadata-referenced closed generic struct with a property whose [Key] has neither int nor string key (e.g. a derived KeyAttribute with null values) and run RunWithMetadataReferenceAsync; expect IndexOutOfRangeException from GetPropertyIdentifierLocation. Mutation: replace [0] with FirstOrDefault()?. and see whether any test notices."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test reaches the BothStringAndIntKeyAreNull branch (line 985) with a metadata symbol. The three tests only cover keyed and unkeyed public members. Replacing GetPropertyIdentifierLocation(item) with null or deleting the statement would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 delete-statement: this.reportDiagnostic?.Invoke(...BothStringAndIntKeyAreNull...) -> removed; expected to survive because no test has a metadata type with a null-key attribute."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ReportIfLocatedInCompilation filter has no negative test. Nothing checks that a diagnostic located in the same compilation is still reported. If the condition were negated, or the guard removed, tests on metadata-only types might still pass, because all existing tests expect zero diagnostics. Dropping every diagnostic (condition false) would also pass every new test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445 negate-condition: diagnostic.Location.IsInSource && ContainsSyntaxTree -> false (never report); expected to survive because the new tests only assert no diagnostics, and existing analyzer tests may not cover every rule."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper on reportDiagnostic in the constructor could swallow legitimate in-source diagnostics. Only the metadata cases are tested, and all expect zero diagnostics. Removing the wrapper, reverting to the raw reportAnalyzerDiagnostic, would be caught only if a test hit a no-location diagnostic path, and none does.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239 delete-statement: wrapper lambda -> reportAnalyzerDiagnostic directly; expected to survive because the tests do not exercise a diagnostic with a null location from a metadata type."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Line 1077 FirstOrDefault()?.GetSyntax().GetLocation() for the MemberNeedsKey diagnostic is covered only if the public unkeyed member is actually processed for the metadata type. A test exists, but it asserts only no diagnostics and generation. Reverting to [0] would be caught only if that path runs; the claim is unverified because L8 says metadata non-generic types return early.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 delete-statement: FirstOrDefault()?.GetSyntax().GetLocation() -> item.DeclaringSyntaxReferences[0].GetSyntax().GetLocation(); run ClosedGenericStruct_FromMetadataReference_UnkeyedMember and check whether it fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test helper passes SkipGeneratedSourcesCheck and checks only for the resolver hint name. It never checks that the resolver contains a formatter for the closed generic type, so it cannot detect a formatter silently omitted. The requirement only asks for a resolver to exist, so this is acceptable.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:620",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "RunWithMetadataReferenceAsync asserts only Assert.Contains(expectedResolverHintName, hintNames) and no generated content."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10710,
+  "output_tokens": 1898,
+  "ms": 12849,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `derivedKeyAttribute is not null && suppressSourceGeneration is true` -> continue guard (added in two places) has no test. No test uses a KeyAttribute-derived attribute with SuppressSourceGeneration = true, so removing the guard would go unnoticed. The MsgPack016 behavior it preserves is therefore unverified.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921 remove-guard: `if (derivedKeyAttribute is not null && suppressSourceGeneration is true) { continue; }` -> deleted; expected to survive because no test declares a KeyAttribute-derived attribute on a type with SuppressSourceGeneration = true"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `continue` added after the DoNotMixStringAndIntKeys diagnostic is only covered by the suppressed-type mixed-key test. That test asserts a MsgPack005 diagnostic at Member2 only. It does not check that the analyzer completes without throwing or that no extra diagnostic appears for Member2. Deleting the `continue` may be caught only by an unrelated crash or by an extra diagnostic the harness reports. The generated-type case has no mixed-key test at all, and no generator snapshot test checks the output for such a type.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014 delete-statement: `continue;` after DoNotMixStringAndIntKeys -> removed; expected to survive for the second, non-suppressed (generated) code path because only the suppressed mixed-key test exercises it and it asserts only the MsgPack005 location"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test for the 'no formatter generated for suppressed type' requirement is weak. NoFormatterIsGeneratedForSuppressedType and the dynamic round-trip would likely also pass on base, because suppression already skipped generation there. These tests do not reproduce the reported bug (analyzer diagnostics missing). Nothing in the execution tests exercises a changed source line.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:20",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressedSourceGenerationTests against base-built TypeCollector; expect both tests to pass, showing they do not reproduce the bug"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed only asserts the absence of diagnostics, and its input type is not partial. The test would also pass if the analyzer were wholly broken for suppressed types, as the bug describes. The positive tests (MsgPack004, MsgPack003, MsgPack015) cover real reporting, but no test pins that MsgPack011, MsgPack016 or MsgPack017 are suppressed independently of those. The absence assertion is therefore weak.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:166",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Mutate the analyzer so suppressed types skip all analysis (return early); expected to survive in SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed because it expects zero diagnostics, though the other positive tests in the file should still kill it"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9295,
+  "output_tokens": 1376,
+  "ms": 10108,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

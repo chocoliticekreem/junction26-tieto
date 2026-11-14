@@ -1,0 +1,61 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `MessagePackSecurity` copy constructor no longer copies `HashCollisionResistant`. `Clone()` and every `With*` method build on that constructor. So `MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(100)` silently returns an instance with `HashCollisionResistant == false`. Hashtable and dictionary formatters then use a non-collision-resistant comparer on untrusted input. This is a hash-flooding DoS regression and is unrelated to REQ-2297.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:63",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.MessagePackSecurityCloneTests.WithMaximumObjectGraphDepth_PreservesHashCollisionResistant. It asserts that `UntrustedData.WithMaximumObjectGraphDepth(100).HashCollisionResistant` is true; this fails on head and passes on base."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated half of a user resolver now unconditionally carries `[ExcludeFromCodeCoverage]`. That attribute has `AllowMultiple = false`. A user who already puts `[ExcludeFromCodeCoverage]` on their `[GeneratedMessagePackResolver] partial class` gets CS0579 (duplicate attribute), and code that compiled on base breaks. The same applies to the composite resolver template.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageDuplicateTests.UserAttributeOnResolver_NoDuplicateAttributeError. It drives `MessagePackGenerator` over a resolver the user already marked `[ExcludeFromCodeCoverage]` and asserts no CS0579 in the output compilation."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The emitted attribute is guarded by `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. `System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute` exists in netstandard2.0 and .NET Framework 4.0+, and is valid on classes there. So consumers targeting those frameworks get no attribute, contrary to 'All generated code is decorated'. The guard is unnecessary for compilation.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator with `CSharpParseOptions.WithPreprocessorSymbols(\"NETSTANDARD2_0\")` against netstandard2.0 reference assemblies. Then use the semantic model to check whether the generated formatter type has `ExcludeFromCodeCoverageAttribute`. On head it does not, although the attribute resolves in that compilation."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MessagePackSecurityCloneTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nnamespace Receipts.GeneratedTests;\n\npublic class MessagePackSecurityCloneTests\n{\n    [Fact]\n    public void WithMaximumObjectGraphDepth_PreservesHashCollisionResistant()\n    {\n        Assert.True(MessagePack.MessagePackSecurity.UntrustedData.HashCollisionResistant);\n        MessagePack.MessagePackSecurity modified = MessagePack.MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(100);\n        Assert.Equal(100, modified.MaximumObjectGraphDepth);\n        Assert.True(modified.HashCollisionResistant);\n    }\n}\n",
+        "test_names": [
+          "WithMaximumObjectGraphDepth_PreservesHashCollisionResistant"
+        ],
+        "expects": "fail-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageDuplicateTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageDuplicateTests\n{\n    [Fact]\n    public async Task UserAttributeOnResolver_NoDuplicateAttributeError()\n    {\n        string source = \"\"\"\n            using System.Diagnostics.CodeAnalysis;\n            using MessagePack;\n\n            namespace N\n            {\n                [GeneratedMessagePackResolver]\n                [ExcludeFromCodeCoverage]\n                partial class MyResolver { }\n\n                [MessagePackObject]\n                public class MyObject\n                {\n                    [Key(0)]\n                    public int Value { get; set; }\n                }\n            }\n            \"\"\";\n\n        CSharpParseOptions parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = new List<MetadataReference>(framework);\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> generatorDiagnostics);\n\n        Assert.True(output.SyntaxTrees.Count() > 1, \"generator produced no sources\");\n        List<Diagnostic> duplicates = output.GetDiagnostics().Where(d => d.Id == \"CS0579\").ToList();\n        Assert.True(duplicates.Count == 0, string.Join(Environment.NewLine, duplicates.Select(d => d.ToString())));\n    }\n}\n",
+        "test_names": [
+          "UserAttributeOnResolver_NoDuplicateAttributeError"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 12737,
+  "output_tokens": 6144,
+  "ms": 50963,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

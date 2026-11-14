@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Security-relevant behavior change has no test. When no hash-resistant comparer exists, GetEqualityComparer now returns EqualityComparer<T>.Default instead of throwing TypeAccessException. No test in the diff covers this, and the change appears unrelated to the requirement. The existing test that expects TypeAccessException would fail, and the diff does not update it.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing MessagePackSecurity tests, e.g. one that deserializes an untrusted dictionary keyed by a non-whitelisted type and asserts TypeAccessException. Expect a failure on head. Mutation: MessagePackSecurity.cs:215 delete-statement; the change's own tests will not notice."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless test asserts only that read-write members are serialized and that the read-only Doubled is skipped. No test covers public fields, a private or protected setter, or static or indexer members. Mutations to IsPublicReadWrite (a field's readonly/const check, the property's setter-accessibility check) and to GetInstanceMembers (static, indexer or base-class filtering) would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:262",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:262 negate-condition: !field.IsReadOnly -> field.IsReadOnly; expected to survive because every external test type uses only auto-properties and has no public fields."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless keys are sorted by name with OrderBy(Name), and the int key is assigned from the loop index. Tests check only a map header and JSON content, so removing the OrderBy or changing the ordering would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:158",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:158 delete-statement: remove .OrderBy(m => m.Name, StringComparer.Ordinal); expected to survive because assertions use Contains on JSON and do not check key order."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement says that if T carries MessagePack attributes they are honoured. The change has no test for a type with [MessagePackObject] or [DataContract], and the collector never reads attributes on T, so this acceptance criterion is untested. Every external type in the tests is attribute-free.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:1",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a type with [MessagePackObject] and [Key(1)] formatted via [GeneratedMessagePackFormatter]. Assert that it uses array keys; the test is expected to fail on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Diagnostic coverage is incomplete. No test covers the contractless no-parameterless-constructor case, an inaccessible T, a generic T, duplicate surrogate keys (MsgPack006), or a surrogate member without a key (MsgPack003). Mutants that remove these guards would survive. The mixed-key test expects MsgPack005 but not any MsgPack022.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs:1",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:~70 remove-guard: delete the isClass && !InstanceConstructors.Any(...) check; expected to survive because no test uses a class with no parameterless constructor."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The Tests project has no snapshot or generation test for the emitted output. Template changes (partial class vs internal sealed class, in both the int-key and string-key templates) are covered only through ExecutionTests. The generated IsUserDeclaredFormatter output and the GeneratorUtilities hand-written formatter exclusion are not checked directly. Removing the exclusion could produce a double registration that a type-only IsType check would not notice.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: delete the !symbol.GetAttributes().Any(...) clause; expected to survive or fail only by a compile duplicate."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 26187,
+  "output_tokens": 1687,
+  "ms": 12961,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

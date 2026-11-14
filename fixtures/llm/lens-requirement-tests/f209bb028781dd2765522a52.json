@@ -1,0 +1,46 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new report filter lets location-less diagnostics through. `ReportIfLocatedInCompilation` reports whenever `!diagnostic.Location.IsInSource`, and `Location.None` is not in source. The two patched sites now build a null location (Location.None) for metadata members (`GetPropertyIdentifierLocation(item)` and `DeclaringSyntaxReferences.FirstOrDefault()?...`). So a MemberNeedsKey (MsgPack004, an Error per L2) or BothStringAndIntKeyAreNull diagnostic about a member of the referenced `Item<T>` is reported in `app` with no location instead of being dropped. If the crashing path in the repro is one of these, the AD0001 crash becomes a build error in `app`, so 'a clean build' is still not met. This also contradicts the method's own remark, the new README/MsgPack004.md text ('reported by the project that defines that type') and L8.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ClosedGenericStructFromReferencedAssemblyTests.Analyzer_DoesNotThrow_AndReportsNoWarningsOrErrors (both InlineData rows) on head. It fails if any warning or error diagnostic, e.g. MsgPack004 at Location.None, is reported for the metadata Item<int>. Mutation cross-check: changing the condition to `diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(...)` should make it pass."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement names three unguarded `DeclaringSyntaxReferences[0]` sites (reporter lines 735, 1009, 1101). The diff only changes the two in the member loop (new lines ~985 and ~1077). No hunk touches the earlier site in `GetObjectInfo` (~line 735 in 3.1.8). If that index is still unguarded and is reached for a metadata closed generic struct, both the generator (CS8785) and the analyzer (AD0001) still throw IndexOutOfRangeException. The criterion 'diagnostics that need a source location do not crash when the symbol has no declaring syntax' would then be unmet.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ClosedGenericStructFromReferencedAssemblyTests.Generator_DoesNotThrow_AndEmitsResolver and Analyzer_DoesNotThrow_AndReportsNoWarningsOrErrors on head (record struct and struct rows). Also grep head TypeCollector.cs for `DeclaringSyntaxReferences[0]` to confirm no unguarded index remains."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ClosedGenericStructFromReferencedAssemblyTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack.SourceGenerator;\nusing MessagePack.SourceGenerator.Analyzers;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ClosedGenericStructFromReferencedAssemblyTests\n{\n    private const string RecordStructLib = \"\"\"\n        using MessagePack;\n        namespace Lib;\n\n        [MessagePackObject]\n        public partial record struct Item<T>([property: Key(0)] string Key);\n        \"\"\";\n\n    private const string StructLib = \"\"\"\n        using MessagePack;\n        namespace Lib;\n\n        [MessagePackObject]\n        public partial struct Item<T>\n        {\n            [Key(0)]\n            public string Value { get; set; }\n        }\n        \"\"\";\n\n    private const string AppSource = \"\"\"\n        using MessagePack; using Lib;\n        namespace App;\n\n        [MessagePackObject]\n        public sealed partial record Cmd([property: Key(0)] string Scope)\n        {\n            [Key(1)] public Item<int> Member { get; init; }\n        }\n\n        [GeneratedMessagePackResolver]\n        internal partial class AppResolver\n        {\n        }\n        \"\"\";\n\n    private static readonly CSharpParseOptions ParseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n\n    [Theory]\n    [InlineData(true)]\n    [InlineData(false)]\n    public async Task Generator_DoesNotThrow_AndEmitsResolver(bool recordStruct)\n    {\n        CSharpCompilation app = await CreateAppCompilationAsync(recordStruct ? RecordStructLib : StructLib);\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new ISourceGenerator[] { new MessagePackGenerator().AsSourceGenerator() }, parseOptions: ParseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(app, out Compilation _, out ImmutableArray<Diagnostic> diagnostics);\n        GeneratorDriverRunResult run = driver.GetRunResult();\n\n        Assert.All(run.Results, r => Assert.Null(r.Exception));\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"CS8785\");\n        Assert.Contains(run.Results.SelectMany(r => r.GeneratedSources), s => s.HintName.EndsWith(\"AppResolver.g.cs\", StringComparison.Ordinal));\n    }\n\n    [Theory]\n    [InlineData(true)]\n    [InlineData(false)]\n    public async Task Analyzer_DoesNotThrow_AndReportsNoWarningsOrErrors(bool recordStruct)\n    {\n        CSharpCompilation app = await CreateAppCompilationAsync(recordStruct ? RecordStructLib : StructLib);\n\n        CompilationWithAnalyzers withAnalyzers = app.WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(new MsgPack00xMessagePackAnalyzer()));\n        ImmutableArray<Diagnostic> diagnostics = await withAnalyzers.GetAnalyzerDiagnosticsAsync();\n\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Empty(diagnostics.Where(d => d.Severity >= DiagnosticSeverity.Warning).Select(d => d.ToString()));\n    }\n\n    private static async Task<CSharpCompilation> CreateAppCompilationAsync(string libSource)\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = Enumerable.Concat<MetadataReference>(framework, ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(libSource, ParseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using MemoryStream stream = new MemoryStream();\n        var emitResult = lib.Emit(stream);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics.Select(d => d.ToString())));\n\n        references.Add(MetadataReference.CreateFromImage(stream.ToArray()));\n\n        return CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(AppSource, ParseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n    }\n}\n",
+        "test_names": [
+          "Generator_DoesNotThrow_AndEmitsResolver",
+          "Analyzer_DoesNotThrow_AndReportsNoWarningsOrErrors"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 11351,
+  "output_tokens": 13348,
+  "ms": 114358,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

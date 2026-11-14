@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The attribute is emitted under `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, but the symbols are defined by the target framework, so a project targeting netstandard2.0 or net4x gets no exclusion. A multi-targeting project compiled for netstandard2.1, net6.0 and later does get it. The requirement says all generated code must be decorated, and the guard also skips netstandard2.0, which still has ExcludeFromCodeCoverage in some SDK setups. Coverage for those targets is silently unchanged. Ledger L7 records no preference on this, so it follows the requirement; the unconditional-versus-conditional scope remains a gap.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate output for a compilation with NETSTANDARD2_0 defined (a netstandard2.0 test project) and confirm the generated formatters carry no ExcludeFromCodeCoverage. Then check which target frameworks define System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute, to see if the guard is too broad. On netstandard2.0 the attribute type exists only from the System.Diagnostics.CodeAnalysis package in some SDKs, so the guard may be too narrow."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The generated files now contain `#if` / `#endif` preprocessor lines that start at column 0 inside nested namespace or type emission. In the formatter, enum, union and string-key templates the `#if` lines sit directly after emitted nesting content, so any template that emits no preceding newline could place `#if` mid-line and break compilation. In FormatterTemplate.cs the `this.Write(\"#if ...` follows `this.Write(\"\\r\\n\")`, so it is fine there. In StringKeyFormatterTemplate.cs and UnionTemplate.cs the previous write is the nesting-emitter output with no explicit newline, so the `#if` could be glued onto the end of the previous line, such as an opening `{` of a nested type or namespace. Preprocessor directives must be the first token on their line.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.cs:37",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests and compile the generated output for a nested-type string-key formatter and a union inside a nested class. Confirm the `#if` begins on its own line and the output compiles. The changed lines were previously `\\tinternal sealed class`, so the prior output needed no newline guarantee."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Only the formatter, resolver and helper types receive the attribute. Other generated types, such as the generated `GeneratedAssemblyAttribute` application or any other emitted members and helper classes, are not covered. The requirement says all generated code is to be decorated.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:45",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "List all `class`/`struct` emissions across the Transforms templates and compare against the decorated set. Check for undecorated emitted types, for example in the resolver's GetFormatterHelper, or any other template not touched here."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9958,
+  "output_tokens": 1213,
+  "ms": 9441,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

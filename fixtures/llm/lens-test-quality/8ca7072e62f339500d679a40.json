@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The wrapper ReportIfLocatedInCompilation drops every diagnostic whose location is not in the compilation, including diagnostics with Location.None. No test checks that diagnostics for source-declared types are still reported. If the guard were broken (e.g. negated or removed) only the crash-path tests would notice. The negated version would suppress all analyzer diagnostics, but the visible tests in this diff only assert absence of diagnostics, so they would pass.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1447",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1447 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (!(...)); expected to survive because all three new tests assert zero diagnostics, so suppressing every diagnostic still passes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new tests only exercise the unkeyed-member path for a struct whose Key is a string property. No test covers the BothStringAndIntKeyAreNull path (GetPropertyIdentifierLocation) for a metadata type, so mutating or reverting that line is not detected. Also, the unkeyed-member test's MemberNeedsKey path is reachable only when diagnostics are not filtered, and the test passes whether the FirstOrDefault change is present or not if the wrapper drops the diagnostic anyway.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 delete-statement: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no test has a metadata generic struct with a property whose Key attribute has null int and string keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The third crash site fixed at line 1101 (MemberNeedsKey, FirstOrDefault()) is hit only if the member lacks a key and is public. The 'UnkeyedMember' test covers it, but reverting to [0] while keeping the wrapper is never tested for AOTDerivedKeyAttribute (derivedKeyAttribute.GetSyntax) for a metadata type. That branch is unguarded and untested.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1076",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "TypeCollector.cs:1076 derivedKeyAttribute.GetSyntax(this.cancellationToken) on a metadata attribute would still throw; no test uses a derived KeyAttribute on a type from a referenced assembly."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The resolver-generation assertion checks only that the hint name exists. It does not verify the resolver content registers the closed generic formatter, nor that the closed generic type is handled correctly. The requirement asks for a generated resolver, so this is acceptable, but a resolver that omits the member silently would pass. The test duplicates the generator run with different compilation settings (Net80 vs test framework), so the second run may not match the verifier's behavior.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:621",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Assert.Contains(expectedResolverHintName, hintNames) only checks the hint name; reading the helper shows no assertion on generated text."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The first and third tests use LanguageVersion CSharp7_3 and a class MyObject, not the record/init shapes from the repro. The record struct test is the only one covering the reporter shape. The init-accessor path (MsgPack017 near the BothStringAndIntKeyAreNull site) is not exercised for metadata types.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:499",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Tests 1 and 3 define Content/Key as get/set; only test 2 uses init, and no test has a metadata generic struct with an init property with initializer."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10714,
+  "output_tokens": 1644,
+  "ms": 11980,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

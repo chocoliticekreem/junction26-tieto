@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The diff has no hand-written test hunks. The only verification is the 222 regenerated snapshots. Snapshot tests only prove the emitted text matches the committed text. They never compile the output under netstandard2.0/.NETFRAMEWORK versus modern TFMs, so the `#if` guard is not exercised.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 negate-condition: `#if !NETSTANDARD2_0 && !NETFRAMEWORK` -> `#if NETSTANDARD2_0 || NETFRAMEWORK`; expected to survive unless the snapshots are regenerated, because no test compiles the generated code under different TFMs and asserts the attribute is present or absent."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `.tt` templates and the hand-edited `.cs` outputs are changed separately. No test checks that they agree, so they can drift (e.g. missed attribute on one type). Snapshot tests only cover the `.cs` output and only the types the snapshot inputs happen to exercise. The CompositeResolver template and nested FormatterCache/GetFormatterHelper classes may have no snapshot coverage.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27 delete-statement: remove the `#if ... ExcludeFromCodeCoverage ... #endif` text from the Write string; expected to survive if no CompositeResolver snapshot test exists."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change from `{` to `{\r\n` for constrained nesting types changes generated whitespace. It is needed so the `#if` directive lands on its own line after the brace. No dedicated test covers a nested generic type with constraints. A revert would only break snapshots if such an input exists.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: `anyConstraints ? \"{\\r\\n\" : ...` -> `anyConstraints ? \"{\" : ...`; expected to survive unless a snapshot has a nested type with generic constraints followed by a formatter, and without the newline `{#if` would break compilation."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10055,
+  "output_tokens": 1001,
+  "ms": 7895,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

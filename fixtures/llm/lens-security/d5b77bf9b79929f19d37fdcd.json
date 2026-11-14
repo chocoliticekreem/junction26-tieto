@@ -1,0 +1,23 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Dropping the `case <= byte.MaxValue` branch in the unsigned-integer writer means values 128..255 now fall through to TryWriteUInt16 and are encoded as uint16 (0xcd + 2 bytes) instead of uint8 (0xcc + 1 byte). This changes the wire format and is not canonical or compact. Output grows, and byte-for-byte compatibility with prior versions and with other implementations is lost. Deserialization still works, but any code that compares serialized bytes or hashes them (signatures, caches, tests with exact byte expectations) breaks. The change is unrelated to the generator/analyzer crash in REQ-2283. There is no direct deserialization-safety hole, but it is an unrelated runtime behavior change that affects canonical encoding, which matters if the bytes are signed or hashed.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize uint values 128, 200 and 255 using base-built and head-built MessagePackPrimitives.TryWriteUInt (or MessagePackWriter.Write(uint/ulong)) and compare bytes. Base gives CC 80/C8/FF; head gives CD 00 80/CD 00 C8/CD 00 FF. Also run the existing MessagePackWriter/primitives tests that assert exact bytes."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7157,
+  "output_tokens": 516,
+  "ms": 6534,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

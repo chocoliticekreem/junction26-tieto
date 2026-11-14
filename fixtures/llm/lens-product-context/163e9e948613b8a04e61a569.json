@@ -1,0 +1,65 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early return in CollectGeneric skips every generic type whose OriginalDefinition has no syntax, which silently drops the generic type's formatter from the consuming assembly. The ledger [L8] records that metadata-only types deliberately get no formatter or diagnostics from the compiling assembly, so this fits the product's recorded behaviour. Note that L8 describes the non-generic path, and this change extends the same policy to generics.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] Types from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly; a missing diagnostic or formatter for such a type is not a defect."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "ReportIfLocatedInCompilation drops every diagnostic that has no in-compilation source location, and it wraps the reporter for all diagnostics, not just the metadata-symbol paths. A diagnostic that previously reported with Location.None, or one attached to a location in another tree, is now silently suppressed. This could hide real MsgPack00x reports (see L9 and L10 on false-positive and regression risk). The change's tests only cover the unkeyed-member case from metadata and do not show that diagnostics for source types still fire.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Run the existing analyzer tests (MsgPack003/004/005 etc.) against the change. Then mutate the guard in ReportIfLocatedInCompilation to always return false, or check Location.None cases. Verify that existing tests fail for diagnostics with no source location, such as those created with a null location."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README section and the MsgPack004.md section state that diagnostics about members of referenced-assembly types are reported by the defining assembly. The README says generic value types and record structs 'can be used', but the change never generates a formatter for the closed generic in the consumer. The doc therefore does not say who produces the formatter, and it may mislead a NativeAOT user about the formatter being present. The README addition is also placed under the custom-formatters section, not the analyzer section.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the README addition against the early return at TypeCollector.cs:640. It documents diagnostics only and is silent on formatter generation for the closed generic."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "For a closed generic struct from a referenced assembly (e.g. Item<int>), should the consuming assembly's generated resolver include a formatter for the closed type (so that trimmed and NativeAOT apps work), or is relying on the defining assembly's own generic formatter and resolver acceptable?",
+        "options": [
+          "Consumer generates a formatter for the closed generic (the requirement's NativeAOT motivation)",
+          "Skip it and rely on the defining assembly's resolver (current behaviour of the change)"
+        ],
+        "why_it_matters": "If the consumer must generate a formatter, the early return at line 640 is a requirement miss, because NativeAOT apps will still fail at runtime. If skipping is intended, the change fits L8 and is correct.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Fix the crash by skipping closed generics with no syntax in CollectGeneric (early return) and by making the diagnostic paths null-safe and filtered. No formatter is generated in the consuming assembly for the metadata-only generic."
+      },
+      {
+        "label": "B",
+        "summary": "Fix the crash by making GetObjectInfo tolerate metadata symbols (null-safe locations) and keep collecting the closed generic's ObjectInfo. The consumer's resolver then includes a generated formatter for Item<int>, which means removing the early return at line 640."
+      }
+    ]
+  },
+  "input_tokens": 11321,
+  "output_tokens": 1401,
+  "ms": 11085,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

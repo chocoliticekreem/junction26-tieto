@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The case for values 128..255 was removed from the unsigned integer writer, so those values are written as UInt16 (0xcd + 2 bytes) instead of UInt8 (0xcc + 1 byte). This changes serialized bytes for existing users, makes the output larger and non-canonical, and has nothing to do with the generator crash. Round-trip still works, but byte-exact comparisons, hashes, and fixtures break.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize uint 200 and ushort 255 with base-built and head-built MessagePack (MessagePackPrimitives.TryWriteUInt via MessagePackWriter.Write(uint)). Base gives CC C8 / CC FF; head gives CD 00 C8 / CD 00 FF. Compare the bytes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper that filters diagnostics by compilation drops every diagnostic whose location is not in a syntax tree of the current compilation. Diagnostics that were previously reported with Location.None now vanish. One case is MemberNeedsKey (MsgPack004) when there is no declaring syntax. Another is diagnostics created with a null location. Diagnostics reported in source but through paths that previously worked may also be affected, although the same-assembly cases stay the same. Users could notice that some MsgPack00x warnings or errors are no longer reported. For metadata types this matches ledger L12, but the filter is applied globally.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1442",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the analyzer tests for MsgPack003/004/005/017 and similar with the head build. Add a case where a diagnostic is created with a null or None location and check that it is still reported, as it was at base."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7172,
+  "output_tokens": 701,
+  "ms": 8191,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The test asserts only that the attribute string appears somewhere in each generated file, not that it decorates the emitted type. Deleting the attribute from one of several emitted types in a file (for example FormatterCache<T> or GetFormatterHelper in the resolver) would not fail it, because the resolver file still contains other occurrences.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:82",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:64 delete-statement: remove the guarded [ExcludeFromCodeCoverage] before GetFormatterHelper -> no attribute; expected to survive because AllGeneratedTypesAreExcludedFromCodeCoverage uses text.Contains per file and the guard test only requires attributeCount > 0 with every occurrence guarded. Only the snapshot tests would catch it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change from \"{\" to \"{\\r\\n\" for nesting types with constraints is a behavior change with no dedicated test. The new tests use only non-nested, non-generic types, so negating or reverting the line would not fail them. Only snapshots could catch it, and only if a snapshot covers a nested generic type with constraints.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: writer(anyConstraints ? \"{\\r\\n\" : \" {\\r\\n\") -> writer(anyConstraints ? \"{\" : \" {\\r\\n\"); expected to survive in CodeCoverageExclusionTests because none of its types are nested generics with constraints."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The guard test only accepts \"#if\\n\\t[attr]\\n#endif\\n\" or the unindented form. It never compiles the generated output with NETSTANDARD2_0 or NETFRAMEWORK defined, and never compiles against a target framework where the attribute is absent. The guard symbols are therefore unverified as actually preventing a compile error. A wrong symbol such as a typo would still pass as long as the Guard constant in the test is the same typo.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:98",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "All Transforms/*.cs and *.tt guards: #if !NETSTANDARD2_0 && !NETFRAMEWORK -> #if !NETSTANDARD2_1 && !NETFRAMEWORK; expected to survive in the guard test only if the Guard constant is updated alongside. Compilation under a netstandard2.0 reference set would catch it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test TypesThatSuppressSourceGenerationGetNoGeneratedFormatter does not exercise the change. Suppression behavior is unrelated to the attribute and would pass on base, so it does not reproduce the bug.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:88",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run TypesThatSuppressSourceGenerationGetNoGeneratedFormatter against the base-built generator; it is expected to pass, showing it does not detect the missing attribute."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test checks only the minimum count (generated.Count >= 5) and never asserts that specific formatter kinds were produced, such as the enum, union, or string-key formatter. If one template stopped emitting, or one kind were skipped, the loop would still pass. A template whose attribute is removed is caught only if its file is among those generated, so a missing generated file hides the gap.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:77",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/UnionTemplate.cs:30 delete-statement: remove the guarded attribute from the union formatter; expected to be caught only if the union formatter is generated. Hence assert specific file names. The count assertion >= 5 would survive a missing kind."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12717,
+  "output_tokens": 1625,
+  "ms": 11816,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

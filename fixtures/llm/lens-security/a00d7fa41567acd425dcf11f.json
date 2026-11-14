@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The timestamp writer mask was inverted from 0xffffffff00000000 to 0x00000000ffffffff. The timestamp32 branch is now chosen when the low 32 bits of data64 are zero, not when the high 32 bits are zero. Timestamps with zero nanoseconds and nonzero seconds (e.g. data64 = seconds) have non-zero low bits, so they fall through to timestamp64. Timestamps whose low 32 bits happen to be zero are written as timestamp32 with the data truncated, which corrupts the value. Data written is wrong and round-trips lose information.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Serialize DateTime/DateTimeOffset values such as 1970-01-01T00:00:01Z, 2020-01-01Z, and one with nonzero nanoseconds, via MessagePackPrimitives.TryWriteTimestamp. Deserialize and assert equality. Also byte-diff base vs head to show format changes (0xd6 vs 0xd7) and value truncation."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Generated formatters in surrogate or contractless mode skip the analyzers' protections. Diagnostics are produced through a separate collector pass with the real `Collect` call passing reportDiagnostic: null. Rejected formatters (non-partial, no parameterless ctor) silently produce nothing in the model path; this is mitigated by the diagnostic pass. The model path drops errors with no failure, so security-relevant analyzer rules (e.g. MsgPack003/004 equivalents) are not applied to the referenced type. This is a minor concern only; the diagnostics pass exists.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:70",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read MessagePackGenerator.cs: the model pass calls Collect with reportDiagnostic: null while the diagnostic pass calls it again with diagnostics.Add. Verify both give consistent results via a generator snapshot test with an invalid formatter."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18456,
+  "output_tokens": 783,
+  "ms": 6770,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

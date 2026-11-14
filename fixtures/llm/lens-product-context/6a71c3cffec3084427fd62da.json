@@ -1,0 +1,45 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "New user-facing README section states exactly which diagnostics fire for suppressed types, but the diff includes no analyzer docs or release notes. The change makes MsgPack00x diagnostics fire again for SuppressSourceGeneration types, and doc/analyzers pages (e.g. MsgPack011, 016, 017) are not updated to say they are skipped for suppressed types.",
+        "location": "README.md:1620",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare README.md claims about MsgPack011/016/017 with doc/analyzers/MsgPack011.md, MsgPack016.md and MsgPack017.md, which are not touched by this diff."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README says MsgPack003 is reported for suppressed types, but the only test covers a same-assembly non-annotated member type. Per [L8], referenced-assembly types are deliberately skipped by TypeCollector (no MsgPack003/004/005), so the README claim is slightly broader than the behavior; this is deliberate and not a defect.",
+        "location": "README.md:1627",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] TypeCollector.CollectCore returns early for metadata-only types, so no diagnostic is expected for referenced-assembly types."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The analyzer fix touches TypeCollector in an area with a history of regressions ([L9],[L10]). The `continue` after DoNotMixStringAndIntKeys changes which members reach the generator for generated types too. For [MessagePackObject] types with mixed keys, members are now skipped where previously they were added. This could alter generated output or downstream diagnostics when SuppressSourceGeneration is unset, contradicting the acceptance criterion that behavior is unchanged.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests with mixed int/string keys on a non-suppressed type, base vs head, and compare the generated output and diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 9157,
+  "output_tokens": 802,
+  "ms": 6366,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

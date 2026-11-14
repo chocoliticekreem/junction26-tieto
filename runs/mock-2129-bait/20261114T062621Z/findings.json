@@ -1,0 +1,304 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The requirement says that if T carries MessagePack attributes they are honoured; the change never reads them. When no SurrogateType is given, CreateContractlessMembers runs unconditionally. It ignores [MessagePackObject], [Key], [IgnoreMember], [DataContract], [DataMember] and [IgnoreDataMember] on T and serializes every public read-write member under its CLR name. As a result, a member marked [IgnoreMember] (e.g. a secret) is still serialized. Custom string keys and int keys on T are also replaced by member names, so the wire format differs from what the dynamic resolver produces for the same type. The README and attribute docs describe this always-contractless behaviour, which contradicts the requirement.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:91",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run GeneratedFormatterHonoursTypeAttributesTests. The formatted type ProjectA.Keyed comes from a referenced assembly and is [MessagePackObject] with [IgnoreMember] Secret and [Key(\"custom_name\")] Name. IgnoredMemberOfAttributedTypeIsNotSerialized fails on head because the generated source contains 'Secret'. StringKeyOfAttributedTypeIsHonoured fails on head because 'custom_name' is absent."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The requirement says MessagePack attributes on T must be honoured, but they are ignored. When SurrogateType is null, Collect always calls CreateContractlessMembers(type). It never checks [MessagePackObject], [Key], [IgnoreMember], [DataContract] or [DataMember] on T. Example: T is [MessagePackObject] with [Key(0)] int Value and [IgnoreMember] int Ignored. The generated formatter still writes a string-keyed map that includes 'Ignored', so the wire format differs from what T's own attributes declare.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:88",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.GeneratedFormatterHonoursAttributesTests. The formatted type comes from a referenced assembly and has [MessagePackObject], [Key(0)] and [IgnoreMember]. Assert the generated MyObjectFormatter source does not mention 'Ignored' and does not use WriteMapHeader. Both assertions fail on head. (generated tests: IgnoreMemberOnFormattedTypeIsHonoured, IntKeysOnFormattedTypeAreHonoured)"
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-3",
+    "lens": "logic-edge",
+    "claim": "GetInstanceMembers keeps only the first (most derived) symbol of each name and then filters with IsPublicReadWrite. If a derived class overrides only the getter (public override int X => ...), Roslyn exposes no SetMethod on the override, so X is filtered out. The base read-write X is skipped by the name check. The same happens when a derived non-public member hides a public base member. The property is then silently left out of the contractless contract.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:243",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Drive CSharpGeneratorDriver on: class Base { public virtual int X { get; set; } } class Derived : Base { public override int X { get => 1; } }, with [GeneratedMessagePackFormatter] partial class F : IMessagePackFormatter<Derived>. Assert the generated F source references 'X'; on head it does not."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-4",
+    "lens": "logic-edge",
+    "claim": "The ForAttributeWithMetadataName predicate accepts only ClassDeclarationSyntax. A 'partial record F : IMessagePackFormatter<T>' marked with the attribute therefore produces no implementation and no MsgPack019/020 diagnostic. The user sees only CS0535 (missing interface members).",
+    "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:31",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "VerifyCS test with [GeneratedMessagePackFormatter] partial record F : IMessagePackFormatter<MyObj> { } using LanguageVersion.Latest. Observe CS0535 errors and no MsgPack diagnostic."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-2",
+    "lens": "compatibility",
+    "claim": "The generator hook-up in GeneratorUtilities excludes [GeneratedMessagePackFormatter] classes from the hand-written formatter registration only by matching the attribute's display name. The user-declared formatter is still registered as an ObjectSerializationInfo in the resolver. Existing users who already have a hand-written formatter with this attribute name cannot be affected, but the new `partial class` emission means the generated class declaration omits the user's accessibility, modifiers and type constraints. For an `internal sealed partial` or `public sealed` user formatter this would produce CS0262 or CS0263 conflicts, and for a formatter with its own base class the generated declaration will conflict. The generated declaration also repeats the interface list, which is allowed, but a mismatch in the sealed or static modifiers is a compile error in the user's project.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Add a snapshot test with `[GeneratedMessagePackFormatter] public sealed partial class F : IMessagePackFormatter<ProjectA.T>;`, and check that the generated output compiles without CS0262/CS0263 or other modifier-conflict errors."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-3",
+    "lens": "compatibility",
+    "claim": "The contractless mode differs from the real ContractlessStandardResolver. It serializes only public read-write members, skips get-only properties and readonly fields, sorts the members ordinally, and uses no constructor. It also flags the keys as string keys with the intKey index set to the sorted position. Wire bytes from this formatter would differ from `MessagePackSerializer` with ContractlessStandardResolver for the same type, for example by dropping get-only members. Users who migrate from the contractless resolver to the generated formatter would notice the difference. The ledger says to follow the requirement here, and the requirement only says 'public members', so this is an unresolved gap.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:163",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Use a class `T { public int A {get;set;} public int B {get;} public readonly int C; }`. Serialize an instance with ContractlessStandardResolver and with the generated formatter, then compare the bytes: the get-only B and readonly C will be missing."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "compatibility-4",
+    "lens": "compatibility",
+    "claim": "A user's type T that does carry [MessagePackObject]/[Key] attributes is not honoured. The collector ignores T's own attributes and always uses contractless member names, so integer keys, [IgnoreMember] and custom formatters on T are dropped. The requirement says attributes on T must be honoured.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:84",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Define `[MessagePackObject] class T { [Key(0)] public int A {get;set;} [IgnoreMember] public int B {get;set;} }` and a generated formatter for it. Serialize an instance with the dynamic resolver and with the generated formatter. The bytes differ: map with string keys versus array."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-3",
+    "lens": "product-context",
+    "claim": "The requirement says that if T carries MessagePack attributes, they are honoured. The collector ignores [MessagePackObject], [Key], and [DataContract] on T and always uses contractless mode or the surrogate. The README and attribute docs do not say that T's own attributes are ignored.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:92",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Define a type in the test assembly with [MessagePackObject] and [Key(0)] on two members, add [GeneratedMessagePackFormatter] for it, and assert the bytes are an array with integer keys. The current code emits a string-key map."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "Requirement says that if T carries MessagePack attributes they are honoured, but the collector ignores T's own [Key]/[MessagePackObject]/[DataContract] attributes entirely. No test covers a T with attributes, so deleting or adding that behaviour changes nothing in the suite.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:101",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add an ExecutionTests case with a T carrying [MessagePackObject]/[Key(n)] on its members and a formatter marked [GeneratedMessagePackFormatter] with no surrogate. Assert that the output uses integer keys. Expected to fail because CreateContractlessMembers always emits string keys."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The partial-class guard (IsPartial), the MsgPack019 path, and the NoDeserializingConstructor path for a class with no accessible parameterless constructor have no coverage that would catch their removal. The diagnostic tests cover MsgPack019 only for a non-partial class. The no-default-constructor branch has no test at all, so deleting it survives.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:68",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "GeneratedFormatterCollector.cs:68 remove-guard: delete the `isClass && !...Parameters.Length == 0` check and its `return null`; expected to survive because no test declares a T without a parameterless constructor."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "No test covers the IsPublicReadWrite filter on fields (public fields, readonly fields, const fields) or on non-public setters. ExternalPerson has a get-only property only, and the fixtures have no fields. Mutating the field branch (for example dropping `!field.IsReadOnly`) survives.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:277",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "GeneratedFormatterCollector.cs:277 negate-condition: `!field.IsReadOnly` -> `field.IsReadOnly`; expected to survive because no fixture type has a public field."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "The surrogate duplicate-key (KeysMustBeUnique) branch, the missing-[Key] branch (MemberNeedsKey), and the all-string-key surrogate path are untested. SurrogateControlsKeysAndMembership uses only int keys, and the Tests project covers only the mixed-key diagnostic. Deleting the claimedKeys check or breaking the string-key member construction `intKey: members.Count` survives.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:171",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "GeneratedFormatterCollector.cs:171 remove-guard: delete the `if (!claimedKeys.Add(key))` block; expected to survive because no test has duplicate surrogate keys."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-5",
+    "lens": "test-quality",
+    "claim": "The base-type member walk in GetInstanceMembers has no test. Neither the contractless nor the surrogate fixtures use inheritance, so removing the BaseType traversal or the `seen` de-duplication survives. The IsInitOnly and IsRequired members are likewise untested.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:243",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "GeneratedFormatterCollector.cs:243 delete-statement: replace `current = current.BaseType` with `current = null`; expected to survive because no fixture has a base class with members."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-6",
+    "lens": "test-quality",
+    "claim": "The GeneratorUtilities filter that excludes [GeneratedMessagePackFormatter] classes from the hand-written formatter registration has no direct test. GeneratedFormattersAreRegisteredInGeneratedResolver checks only the resolved formatter type. A double-registration would likely cause a duplicate-case compile error, but nothing asserts it. There are no generator snapshot tests for the new output, so the template change for user-declared formatters (`partial class`) is verified only by compilation.",
+    "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "GeneratorUtilities.cs:38 remove-guard: delete the `!symbol.GetAttributes().Any(...)` clause; run ExecutionTests and see whether anything fails."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-7",
+    "lens": "test-quality",
+    "claim": "The surrogate test checks only the array header length (8) and that Internal deserializes to 0. It never checks that Id lands at index 3 or Name at index 7, so swapping the key mapping or ignoring the IntKey would survive.",
+    "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:62",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "GeneratedFormatterCollector.cs:182 swap: `CreateMember(target, intKey: intKey, ...)` -> `intKey: members.Count`; a round-trip plus array-length assertion still passes if MaxKey stays 7, so it is likely to survive unless slot positions are asserted."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "GeneratorUtilities now drops [GeneratedMessagePackFormatter] classes from the known-formatter set, so T is no longer a known formatted type for TypeCollector. Suppose T is declared in the same compilation without [MessagePackObject] and used as a member of another [MessagePackObject] type. That member then hits the MsgPack003 path and its resolver registration, although a formatter for T exists. Metadata T is only spared because of the L11 early return.",
+    "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Read GeneratorUtilities.cs:35-38 together with how KnownFormatters feeds TypeCollector.CollectCore's custom-formatter check. Confirm with a VerifyCS test: same-assembly plain class T, a [GeneratedMessagePackFormatter] formatter for T, and a [MessagePackObject] Holder with [Key(0)] public T X. Expect no diagnostics; head is expected to report MsgPack003."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "The new MsgPack019-022 diagnostics are added to SupportedDiagnostics, but the analyzer never reports them; only the generator does, through a separate pipeline. The new descriptors also lack entries in AnalyzerReleases.Unshipped.md and doc/analyzers pages, so help links are dead and RS2000-series release-tracking warnings may fire. If a repo build runs with warnings as errors, that could break builds.",
+    "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:378",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Check AnalyzerReleases.Unshipped.md for MsgPack019-022 and doc/analyzers for pages. Build the analyzer project and look for RS2000/RS2002 warnings."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-4",
+    "lens": "product-context",
+    "claim": "The formatter is declared as a partial class with an internal-accessibility fallback, and the generated class is emitted as `partial class` with no accessibility modifier. The new analyzers MsgPack019 to MsgPack022 are added to the release notes. The analyzer descriptors are registered, but the Roslyn analyzer path does not appear to run the collector, so the MsgPack019 to MsgPack022 diagnostics exist only via the generator's RegisterSourceOutput.",
+    "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:115",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "MsgPack00xMessagePackAnalyzer registers descriptors for MsgPack019 to MsgPack022, but only the generator reports them via ReportDiagnostic. Check whether code-fix and analyzer-only scenarios receive them."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m1",
+    "lens": "test-quality",
+    "claim": "the change's tests do not detect swap-boolean at src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:324",
+    "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:324",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "isEnabledByDefault: true, -> isEnabledByDefault: false,"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m7",
+    "lens": "test-quality",
+    "claim": "the change's tests do not detect negate-condition at src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:168",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:168",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "&& IsUserDeclaredFormatter == other.IsUserDeclaredFormatter -> && IsUserDeclaredFormatter != other.IsUserDeclaredFormatter"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m13",
+    "lens": "test-quality",
+    "claim": "the change's tests do not detect delete-statement at src/MessagePack.SourceGenerator/MessagePackGenerator.cs:74",
+    "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:74",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "modelPerType.Add(generatedModel); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

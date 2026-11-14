@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `case <= byte.MaxValue` (Str8) branch was removed from the string-header writer. Any string whose UTF-8 length is 32..255 bytes now gets a 3-byte Str16 header (0xDA, len16) instead of a 2-byte Str8 header (0xD9, len8). This changes the wire bytes of nearly every medium-length string, adds one byte to each, and is unrelated to the analyzer requirement. Any writer path that sizes or reserves the header for this range as 2 bytes would also be off by one.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:916",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a 40-character ASCII string (and call MessagePackWriter.WriteStringHeader(40)) with base-built and head-built MessagePack. Base emits D9 28 ..., head emits DA 00 28 .... Receipts.GeneratedTests.Str8HeaderAndDuplicateKeyTests.StringHeaderFor40BytesUsesStr8 asserts the base bytes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `ContainsKey` guards swallow duplicate [Key] values. Example: two members both marked [Key(0)] (or both [Key(\"a\")]). Base called Dictionary.Add, which threw, so the bug was at least visible. Head reports no diagnostic, keeps the first member and silently drops the second. The generated formatter then never serializes or deserializes that member, which is silent data loss when source generation is not suppressed. This changes behaviour for the SuppressSourceGeneration-unset case, which the requirement says must not change. Duplicates should get a diagnostic, not be silently skipped.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.Str8HeaderAndDuplicateKeyTests.DuplicateIntKeyIsNotSilentlyDropped. It drives MessagePackGenerator over a type with [Key(0)] FirstValue and [Key(0)] SecondValue and asserts that the generator neither emits a formatter that references FirstValue but omits SecondValue nor stays silent. It fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same silent drop applies to the second (field/property-path) member loop: duplicate int or string keys are skipped via ContainsKey with no diagnostic, so the generated formatter loses a member.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Variant of DuplicateIntKeyIsNotSilentlyDropped that uses public fields instead of properties with duplicate [Key(\"a\")] string keys. Assert the generated formatter contains both member names or that a diagnostic is reported."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/Str8HeaderAndDuplicateKeyTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Buffers;\nusing MessagePack;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class Str8HeaderAndDuplicateKeyTests\n{\n    [Fact]\n    public void StringHeaderFor40BytesUsesStr8()\n    {\n        var buffer = new ArrayBufferWriter<byte>();\n        var writer = new MessagePackWriter(buffer);\n        writer.WriteStringHeader(40);\n        writer.Flush();\n        byte[] bytes = buffer.WrittenSpan.ToArray();\n        Assert.Equal(2, bytes.Length);\n        Assert.Equal((byte)0xD9, bytes[0]);\n        Assert.Equal((byte)40, bytes[1]);\n    }\n\n    [Fact]\n    public async Task DuplicateIntKeyIsNotSilentlyDropped()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace Sample\n            {\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n\n                [MessagePackObject]\n                public class MyObject\n                {\n                    [Key(0)]\n                    public int FirstValue { get; set; }\n\n                    [Key(0)]\n                    public int SecondValue { get; set; }\n                }\n            }\n            \"\"\";\n\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var refs = new List<MetadataReference>(frameworkRefs);\n        refs.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsDupKey\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out var diagnostics);\n        var result = driver.GetRunResult();\n\n        string generated = string.Join(\"\\n\", result.GeneratedTrees.Select(t => t.ToString()));\n        bool anyReported = diagnostics.Any(d => d.Severity >= DiagnosticSeverity.Warning)\n            || result.Diagnostics.Any(d => d.Severity >= DiagnosticSeverity.Warning);\n        bool silentlyDropped = generated.Contains(\"FirstValue\") && !generated.Contains(\"SecondValue\");\n\n        Assert.False(silentlyDropped && !anyReported, \"Generated formatter silently dropped SecondValue (duplicate Key(0)) without any diagnostic.\");\n    }\n}\n",
+        "test_names": [
+          "StringHeaderFor40BytesUsesStr8",
+          "DuplicateIntKeyIsNotSilentlyDropped"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8835,
+  "output_tokens": 6023,
+  "ms": 53232,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

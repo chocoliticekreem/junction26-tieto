@@ -1,0 +1,47 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The requirement says MessagePack attributes on T must be honoured when present. The change never reads attributes on T. With no surrogate it always uses contractless mode over every public read-write member. So `[MessagePackObject]`, `[Key]`, `[IgnoreMember]` (and `[DataContract]`/`[DataMember]`) on a referenced T are ignored. For example, an `[IgnoreMember]` member is still serialized, and int keys become string keys. Ledger L19 says to follow the requirement here.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:89",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterHonoursAttributesTests.IgnoreMemberOnReferencedMessagePackObjectIsHonoured. T comes from a referenced assembly, carries [MessagePackObject] and has `[IgnoreMember] public string Secret`. The generated sources must not mention 'Secret'; on head they do because CreateContractlessMembers includes it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The formatter body is only emitted through the main source output, which is gated on `Options.IsGeneratingSource`. If that flag requires a `[GeneratedMessagePackResolver]` class in the project, a project that only declares `[GeneratedMessagePackFormatter] partial class X : IMessagePackFormatter<T>;` gets no generated body. The user then sees CS0535 (interface not implemented) and no MessagePack diagnostic, even though the requirement says the class needs no body.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:135",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Run the CSharpGeneratorDriver on a compilation with only the bodyless formatter declaration (no [GeneratedMessagePackResolver]) against a referenced ProjectA type. Check whether output.GetDiagnostics() contains CS0535. Unverified: depends on how AnalyzerOptions.IsGeneratingSource is computed."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "Must [GeneratedMessagePackFormatter] produce the formatter body even when the project declares no [GeneratedMessagePackResolver] class?",
+        "options": [
+          "Yes, the formatter must be generated standalone",
+          "No, a [GeneratedMessagePackResolver] in the project is a documented prerequisite"
+        ],
+        "why_it_matters": "If yes, gating the formatter output on IsGeneratingSource is a requirement gap: bodyless declarations fail with CS0535. If no, the current gating is fine, but the README and the attribute docs should state the prerequisite.",
+        "area": "source-generator",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "generated_tests": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 26007,
+  "output_tokens": 7555,
+  "ms": 69678,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -1,0 +1,371 @@
+{
+  "change_id": "mock-2283-security",
+  "requirement_id": "REQ-2283",
+  "requirement_title": "Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly",
+  "requirement_text": "# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]` type has a member whose type is a closed generic value type defined in a referenced assembly.\n\nBecause the generator then \"will not contribute to the output\", the compiling assembly silently ends up with no generated resolver at all. It is only a warning, so a normal build looks fine, but trimmed and NativeAOT apps fail at runtime.\n\nRepro: two projects. `lib`:\n\n```csharp\nusing MessagePack;\nnamespace Lib;\n\n[MessagePackObject]\npublic partial record struct Item<T>([property: Key(0)] string Key);\n```\n\n`app`, with a `ProjectReference` to `lib`:\n\n```csharp\nusing MessagePack; using Lib;\nnamespace App;\n\n[MessagePackObject]\npublic sealed partial record Cmd([property: Key(0)] string Scope)\n{\n    [Key(1)] public Item<int> Member { get; init; }\n}\n```\n\nThen `dotnet build` on `app`.\n\nExpected: a clean build, with a generated resolver in `app`.\n\nActual:\n\n```\nCSC : warning CS8785: Generator 'MessagePackGenerator' failed to generate source. It will not\ncontribute to the output and compilation errors may occur as a result. Exception was of type\n'IndexOutOfRangeException' with message 'Index was outside the bounds of the array.'.\nCSC : warning AD0001: Analyzer 'MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer'\nthrew an exception of type 'System.IndexOutOfRangeException' with message 'Index was outside the\nbounds of the array.'.\n```\n\n`app.dll` contains no `GeneratedMessagePackResolver`. Version used: MessagePack 3.1.8.\n\nWhat triggers it (`Item` declared in `lib`, `Cmd` in `app`):\n\n| `Item` declared as | result |\n|---|---|\n| `record struct Item<T>` | crash |\n| `struct Item<T>` | crash |\n| `struct Item` | ok |\n| `record struct Item` | ok |\n| `class Item<T>` | ok |\n| `record class Item<T>` | ok |\n\nIt needs all three of: generic, value type, from a referenced assembly. Moving the identical `Item<T>` declaration into `app` makes the crash disappear.\n\nReporter's analysis: `CollectGeneric` line 661 is the closed-generic branch that calls `GetObjectInfo` directly, so `GetObjectInfo` runs against a type that has no syntax. Several diagnostic paths inside it index `DeclaringSyntaxReferences[0]` directly (lines 735, 1009, 1101) instead of using `FirstOrDefault()` like the neighbouring `GetIdentifierLocation` / `GetLocation` / `GetParameterListLocation` helpers. That collection is empty for a metadata symbol. The reporter did not narrow down which of the three fires.\n\nWorkaround: `[MessagePackFormatter(typeof(ItemFormatter<>))]` on the generic value type short-circuits `CollectCore` before `GetObjectInfo` is reached.\n\n## Acceptance criteria\n\n- Building `app` from the repro produces no CS8785 warning. (derived)\n- Building `app` from the repro produces no AD0001 warning from `MsgPack00xMessagePackAnalyzer`. (derived)\n- `app.dll` contains a `GeneratedMessagePackResolver` (a generated resolver exists). (derived)\n- The generator and analyzer do not throw on a closed generic struct or record struct declared in a referenced assembly.\n- Closed generic classes, non-generic structs and types declared in the same assembly keep working as before (the \"ok\" rows in the table). (derived)\n- Diagnostics that need a source location do not crash when the offending symbol has no declaring syntax (metadata symbol). (derived)\n\n## Notes from discussion\n\nNo comments on the issue. The reporter points at `DeclaringSyntaxReferences[0]` being indexed unguarded at TypeCollector.cs lines 735, 1009 and 1101, and notes the neighbouring helpers use `FirstOrDefault()`. Possibly related: #2092 (CS8785 from the v3 generator, different inner exception, no repro).",
+  "run_ts": "20261114T060607Z",
+  "head_sha": "d2ccb9b5df61004e349546b177c556072800ec3a",
+  "verdict": "needs-sign-off",
+  "verdict_reason": "max routed risk 8 >= 5; not every receipt is green (gentest-2, mutation); 6 unverified high-severity hunch(es); risky area touched: security; area trust below 3: security=1",
+  "risk": 8,
+  "areas": [
+    "security",
+    "tests",
+    "type-collector"
+  ],
+  "area_trust": {
+    "security": 1,
+    "tests": 3,
+    "type-collector": 3
+  },
+  "checked": [
+    {
+      "what": "Build base (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-base",
+      "result": "pass"
+    },
+    {
+      "what": "Build head (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on head: 170/170 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on base: 167/167 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-base",
+      "result": "pass"
+    },
+    {
+      "what": "product-context: deliberate per ledger, not a defect: Unrelated change: MessagePackSecurity.UntrustedData MaximumObjectGraphDepth is raised from 500 to 5000, a tenfold weakening of the stack-depth DoS protection. It has nothing to do with the generator/analyzer crash in REQ-2283. The ledger records a deliberate depth limit of 500 even for trusted data.",
+      "by": "ledger-citation",
+      "evidence_id": "ledger-product-context-1",
+      "result": "pass"
+    },
+    {
+      "what": "product-context: deliberate per ledger, not a defect: The new ReportIfLocatedInCompilation filter drops every diagnostic whose location is not in a syntax tree of the compilation, so it also silences diagnostics with no location (Location.None). For a metadata type, MemberNeedsKey now gets a null location and is silently dropped. This is consistent with the documented behavior that diagnostics for referenced-assembly types are not reported by the consumer.",
+      "by": "ledger-citation",
+      "evidence_id": "ledger-product-context-2",
+      "result": "pass"
+    },
+    {
+      "what": "Receipts/MetadataGenericStructRequirementTests.cs: requirement test fails on base (3/3), passes on head (3/3); refutes 1 lens claim(s): requirement-tests-1",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-1",
+      "result": "pass"
+    },
+    {
+      "what": "Receipts/UntrustedDataDepthLimitReceipts.cs: edge-case test: no test matched on head",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-2",
+      "result": "error"
+    },
+    {
+      "what": "Mutation: 2 killed, 4 survived, 0 compile errors, 0 timeouts (6 mutants on TypeCollector.cs)",
+      "by": "mutation",
+      "evidence_id": "mutation",
+      "result": "partial"
+    },
+    {
+      "what": "Compatibility bytes: 0/124 cases differ, 0 base payloads fail to read on head, public API +0/-0",
+      "by": "byte-diff",
+      "evidence_id": "compat-bytes",
+      "result": "pass"
+    },
+    {
+      "what": "routed 9 hunks across 5 files",
+      "by": "rule+jev (auto)",
+      "evidence_id": "",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "test-quality-2",
+      "lens": "test-quality",
+      "claim": "The new ReportIfLocatedInCompilation wrapper in the constructor has no negative test. Nothing asserts that diagnostics for in-compilation types still get reported, or that metadata-located ones are dropped. The new tests only use VerifyCS with no expected diagnostics. If the guard were removed or negated to suppress everything, the tests would still pass, since they only assert that no diagnostics exist.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239 negate-condition: `diagnostic.Location.IsInSource && ContainsSyntaxTree` -> `false` (drop all analyzer diagnostics); expected to survive because every new test expects zero diagnostics, and the existing MsgPack00x analyzer tests may be the only thing that would catch it."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-3",
+      "lens": "test-quality",
+      "claim": "The GetPropertyIdentifierLocation change (BothStringAndIntKeyAreNull) is not exercised. Neither new metadata test has a property with a null key that reaches this line. The `ClosedGenericRecordStruct` test uses a keyed property. The null-location behaviour is not tested.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "TypeCollector.cs:985 delete-statement: revert to `item.DeclaringSyntaxReferences[0]` indexing; expected to survive if the tests do not reach the BothStringAndIntKeyAreNull path with a metadata symbol."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m6",
+      "lens": "test-quality",
+      "claim": "the change's tests do not detect delete-statement at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1448",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1448",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "report(diagnostic); -> (statement deleted)"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "hunches": [
+    {
+      "id": "logic-edge-1",
+      "lens": "logic-edge",
+      "claim": "The change raises `MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth` from 500 to 5000. This has nothing to do with REQ-2283, and it weakens the protection for untrusted input. A payload nested between 501 and 5000 levels (for example 1000 nested 1-element arrays, `0x91`…`0xC0`) used to be rejected with `MessagePackSerializationException`. It is now accepted. Recursion up to 5000 deep in the formatters gives attackers more room to exhaust the stack (an unrecoverable `StackOverflowException`, i.e. denial of service). The ledger records a 500 depth limit as a deliberate secure-by-default decision.",
+      "location": "src/MessagePack/MessagePackSecurity.cs:38",
+      "severity": "critical",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run Receipts.GeneratedTests.UntrustedDataDepthLimitReceipts.UntrustedData_RejectsGraphNestedDeeperThan500. It deserializes 1000 nested arrays as `object` with `UntrustedData`. It passes on base (an exception is thrown) and fails on head (no exception). Also cite ledger L9 (stack depth limit of 500)."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-2",
+      "lens": "logic-edge",
+      "claim": "A source-declared positional record property such as `record R([property: Key((string)null)] string Name)` loses its BothStringAndIntKeyAreNull diagnostic. Its DeclaringSyntaxReference is a `ParameterSyntax`, not a `PropertyDeclarationSyntax`, so `GetPropertyIdentifierLocation` returns null and the diagnostic gets `Location.None`. The new `ReportIfLocatedInCompilation` filter then drops it because `!IsInSource`. Before, the hard cast threw (AD0001), so the error was at least visible. Now a source type with an invalid key gets no error at all, even though it should be reported at the parameter location.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1436",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run MsgPack00xMessagePackAnalyzer through `compilation.WithAnalyzers` on a C# 9 source with `[MessagePackObject] public record R([property: Key((string)null)] string Name);` (plus an IsExternalInit shim if needed). Assert that the BothStringAndIntKeyAreNull descriptor is reported. On head it is silently absent."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-3",
+      "lens": "logic-edge",
+      "claim": "`ReportIfLocatedInCompilation` filters every analyzer diagnostic whose location is not in a source tree of the compilation. That also drops diagnostics about SOURCE `[MessagePackObject]` types whose offending member is inherited from a metadata base class. Example: `[MessagePackObject] class Derived : Lib.Base`, where `Base` has a public property without `[Key]`. MemberNeedsKey (MsgPack004) is then located on the metadata member, gets a null location and is discarded. The formatter for `Derived` is still generated, so the inherited member silently goes unserialized. Ledger L8 only exempts types that themselves come from metadata, not source types that inherit metadata members. A better fix is to fall back to the derived type's identifier location instead of dropping the diagnostic.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Compile a library with `public class Base { public int X { get; set; } }` to a MetadataReference. Then run the analyzers on `[MessagePackObject] public class Derived : Base { [Key(0)] public int Y { get; set; } }` referencing it. Assert that a MsgPack004 diagnostic is reported, located on Derived. On head, no diagnostic is reported."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": true
+    },
+    {
+      "id": "compatibility-1",
+      "lens": "compatibility",
+      "claim": "UntrustedData.MaximumObjectGraphDepth is raised tenfold from 500 to 5000 in a change that has nothing to do with the generator/analyzer crash. Users who deserialize untrusted data get a weaker default limit with no opt-in, so deeply nested payloads that were rejected are now accepted. Deep recursion can approach stack overflow, and a stack overflow is an unrecoverable process crash (DoS). Ledger L9 records a deliberate stack depth limit of 500 even for trusted data.",
+      "location": "src/MessagePack/MessagePackSecurity.cs:38",
+      "severity": "critical",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Deserialize a payload nested 600 levels (e.g. arrays of one element each) as object with MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData). Base throws InsufficientExecutionStackException/MessagePackSerializationException; head succeeds. Also try ~5000 depth on a small-stack thread to demonstrate stack overflow risk."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-2",
+      "lens": "compatibility",
+      "claim": "The reportDiagnostic wrapper silently drops every analyzer diagnostic whose location is not in a syntax tree of the current compilation. This is broader than the metadata-crash fix. Diagnostics created with a null location (Location.None), such as the MemberNeedsKey diagnostic that now uses FirstOrDefault()?.GetLocation(), are dropped, as is anything else without a source location. Users who relied on a MsgPack00x error/warning from a case that now yields no location will stop seeing it. Warnings-as-errors users could see their build go from failing to passing.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Analyzer test: a [MessagePackObject] type whose member lacks [Key] and has a location-less or other-tree symbol (e.g. partial/other-compilation base type member). Compare diagnostics reported on base vs head; MsgPack004 expected on base should still appear on head."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-3",
+      "lens": "compatibility",
+      "claim": "Closed generic metadata types still reach GetObjectInfo, and other DeclaringSyntaxReferences[0] sites are not shown as fixed; only two are changed (the reporter listed lines 735, 1009 and 1101). If line 735 is still unguarded, the crash may persist for the repro. The hunks don't show any fix for it.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:735",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run generator and analyzer tests with a two-compilation repro (Item<T> record struct in a referenced assembly, Cmd in app). Assert no CS8785/AD0001 and that GeneratedMessagePackResolver is generated."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "security-1",
+      "lens": "security",
+      "claim": "MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth is raised tenfold from 500 to 5000. This weakens the recursion/depth limit that protects against stack overflow when deserializing untrusted data, and nothing in REQ-2283 (a compile-time generator/analyzer crash) calls for it. Deeply nested payloads could now overflow the stack on threads with small stacks, and the change contradicts the recorded stack depth limit of 500.",
+      "location": "src/MessagePack/MessagePackSecurity.cs:38",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Deserialize a payload nested 600-5000 levels deep (e.g. nested single-element arrays) with MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData). On base this throws InsufficientExecutionStackException; on head it succeeds, or overflows the stack on a small-stack thread. Also assert MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth == 500."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "security-2",
+      "lens": "security",
+      "claim": "The new ReportIfLocatedInCompilation wrapper wraps every reportDiagnostic callback and silently drops any diagnostic whose location is not in source or is not in the compilation. A diagnostic with a null or None location, for example one created via Diagnostic.Create with a null Location, is now suppressed instead of surfacing. This could hide analyzer diagnostics that warn about insecure or unsupported configurations, such as MsgPack003/004/005 and others that are Errors. The suppression is broader than the three crash sites.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run the existing analyzer test suite (MsgPack003-018 verifiers) on head. Add cases where the diagnostic location is Location.None or a different syntax tree (for example a partial type or a type declared in another tree), and check that the expected diagnostics are still reported."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-1",
+      "lens": "test-quality",
+      "claim": "MaximumObjectGraphDepth for UntrustedData is changed from 500 to 5000. This is unrelated to the requirement and weakens a security limit (ledger L9 records a stack depth limit of 500). No test in the diff covers it.",
+      "location": "src/MessagePack/MessagePackSecurity.cs:38",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Add a test that deserializes a 501-deep nested structure with MessagePackSecurity.UntrustedData and expects MessagePackSerializationException/InsufficientExecutionStackException. It passes on base and fails on head. Alternatively, run a mutation on line 38 (5000 -> 500) and see whether any test in the diff fails."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-4",
+      "lens": "test-quality",
+      "claim": "The MemberNeedsKey change from `[0]` to `FirstOrDefault()?` is covered only by the unkeyed-member test, whose MyGenericStruct is defined in a referenced assembly. A mutant that reverts to `[0]` might be killed there, but the ReportIfLocatedInCompilation filter drops the diagnostic anyway. The null-location guard on its own is therefore redundant and untested.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "TypeCollector.cs:1077 remove-guard: `FirstOrDefault()?.GetSyntax().GetLocation()` -> `[0].GetSyntax().GetLocation()`; check whether ClosedGenericStruct_FromMetadataReference_UnkeyedMember fails."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-5",
+      "lens": "test-quality",
+      "claim": "The tests set TestBehaviors.SkipGeneratedSourcesCheck, so the generated output is not verified in the analyzer run. The generator check in the helper only asserts that a hint name exists, not that the resolver contains a formatter for the closed generic. The MyGenericStruct<int> formatter case could be wrong or missing without any test noticing.",
+      "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:600",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "Mutate the generator so the resolver is emitted without a formatter for the closed generic struct; the tests still pass because only the hint name is checked."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "requirement-tests-2",
+      "lens": "requirement-tests",
+      "claim": "The reporter names three unguarded `DeclaringSyntaxReferences[0]` indexings in TypeCollector (lines 735, 1009, 1101). The diff guards only the 1009 and 1101 sites. No hunk touches line 735. The new `ReportIfLocatedInCompilation` wrapper filters diagnostics only after they are constructed. If the location expression at 735 still indexes `[0]`, the `IndexOutOfRangeException` is thrown while building the `Diagnostic.Create` arguments, before the wrapper runs. That would leave the 'do not throw on metadata symbols' acceptance criterion unmet for that path.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:735",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "Read TypeCollector.cs:735 on head and check whether it still uses `DeclaringSyntaxReferences[0]`. If it does, build a referenced-assembly closed generic struct that reaches that diagnostic path; it should produce AD0001/CS8785 on head. Partially covered by `Receipts.GeneratedTests.MetadataGenericStructRequirementTests`."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "requirement-tests-3",
+      "lens": "requirement-tests",
+      "claim": "`ReportIfLocatedInCompilation` drops every diagnostic whose location is not in source, including `Location.None`. A diagnostic about a type in the compilation being analyzed is now silently dropped whenever its location helper returns null. Examples: the `GetLocation`/`GetParameterListLocation`/`GetIdentifierLocation` helpers, the new `GetPropertyIdentifierLocation` when the syntax is not a `PropertyDeclarationSyntax` (such as a positional record parameter), or `FirstOrDefault()` returning null. Before, those diagnostics were reported without a location. This may break the 'keep working as before' criterion for same-assembly types.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "Find any in-compilation diagnostic path in TypeCollector where the location argument can be null for a source symbol. For example, `BothStringAndIntKeyAreNull` on a property whose declaring syntax is not a `PropertyDeclarationSyntax`. Confirm the diagnostic is emitted on base and missing on head."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-3",
+      "lens": "product-context",
+      "claim": "The README and MsgPack004.md additions document new behavior. The README section is placed under the custom-formatter mixing section, not the generic-type or analyzer docs, and says closed generic value types from other assemblies work. This matches the requirement, but the placement is questionable.",
+      "location": "README.md:1639",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "Check that the README subsection 'Generic types from referenced assemblies' sits logically under the Analyzer/formatter section. It was inserted just before MagicOnion."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "refused": [],
+  "not_checked": [
+    {
+      "what": "tests/MessagePack.Tests and other runtime test suites",
+      "why": "not built or run in the sandbox; only the source generator test project is in scope"
+    },
+    {
+      "what": "NativeAOT, Unity and non-net8.0 target frameworks",
+      "why": "the sandbox builds and tests net8.0 only"
+    }
+  ],
+  "residual_risk": "This change touches 5 files (0 generated) in security, tests, type-collector; the highest routed risk is 8/10. 2 file(s) were routed for deep review, 3 for light review and 0 to the regeneration check. The existing source generator tests ran on head: 170 of 170 passed, 0 failed. 14 unverified hunch(es) remain without an executed receipt. It touches risky areas (security), so a human must sign off. 2 thing(s) were not checked, including tests/MessagePack.Tests and other runtime test suites; NativeAOT, Unity and non-net8.0 target frameworks. By signing off, the signer accepts any defect that only those unchecked paths would have revealed.",
+  "routing": {
+    "README.md": "light",
+    "doc/analyzers/MsgPack004.md": "light",
+    "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs": "deep",
+    "src/MessagePack/MessagePackSecurity.cs": "deep",
+    "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs": "light"
+  },
+  "counts": {
+    "source": 2,
+    "test": 1,
+    "docs": 2,
+    "generated": 0,
+    "template": 0,
+    "total": 5,
+    "not_generated": 5
+  },
+  "questions": [
+    "q-mock-2283-security-test-quality-1"
+  ],
+  "interpretations": [],
+  "narrative": "",
+  "mock_llm": false
+}

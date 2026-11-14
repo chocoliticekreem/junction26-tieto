@@ -1,0 +1,47 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "On a `SuppressSourceGeneration = true` type, a member with a KeyAttribute-derived key now hits `continue` before any further per-member processing. That apparently also skips member-type validation (MsgPack003), the AllowPrivate check (MsgPack015) and the accessibility check (MsgPack012) for that member. The README added in this same change says the analyzer still checks these for suppressed types. Ledger L12 exempts only the generation-only rules MsgPack011, 016 and 017. So an unserializable member type behind a derived key would go unreported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:922",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read TypeCollector.cs:918-926 and 1081-1089. The `continue` runs before the member-type collection and formatter-attribute handling further down the loop. Confirm with a test: a suppressed type with `[MyKey(0)] public NonSerializable X { get; set; }` (where MyKey derives from KeyAttribute and NonSerializable has no [MessagePackObject]) is expected to report MsgPack003, and on head it reports nothing."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys runs whether or not SuppressSourceGeneration is set. For ordinary, non-suppressed types, a member whose key kind does not match the others is now dropped from the rest of the analysis, so diagnostics that used to follow for it may disappear. The acceptance criteria say behaviour with SuppressSourceGeneration unset must not change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare base and head on a non-suppressed type with `[Key(0)] public int A` and `[Key(\"b\")] public object B` (or B of an unserializable type). Check whether diagnostics on B other than the mixed-key one are still reported on head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests\n{\n    private static async Task RunAsync(string source)\n    {\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(source);\n        await test.RunAsync();\n    }\n\n    [Fact]\n    public async Task SuppressedType_DerivedKeys_NoSpuriousDiagnosticsOrCrash()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            public class MyKeyAttribute : KeyAttribute\n            {\n                public MyKeyAttribute(int x) : base(x) { }\n            }\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [MyKey(0)]\n                public int A { get; set; }\n\n                [MyKey(1)]\n                public int B { get; set; }\n            }\n            \"\"\";\n        await RunAsync(source);\n    }\n\n    [Fact]\n    public async Task SuppressedType_DerivedAndRegularKeys_NoSpuriousDiagnosticsOrCrash()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            public class MyKeyAttribute : KeyAttribute\n            {\n                public MyKeyAttribute(int x) : base(x) { }\n            }\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                [MyKey(1)]\n                public int B { get; set; }\n            }\n            \"\"\";\n        await RunAsync(source);\n    }\n\n    [Fact]\n    public async Task SuppressedType_WithDerivedKey_StillReportsMissingKey()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            public class MyKeyAttribute : KeyAttribute\n            {\n                public MyKeyAttribute(int x) : base(x) { }\n            }\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [MyKey(0)]\n                public int A { get; set; }\n\n                public int {|MsgPack004:B|} { get; set; }\n            }\n            \"\"\";\n        await RunAsync(source);\n    }\n}\n",
+        "test_names": [
+          "SuppressedType_DerivedKeys_NoSpuriousDiagnosticsOrCrash",
+          "SuppressedType_DerivedAndRegularKeys_NoSpuriousDiagnosticsOrCrash",
+          "SuppressedType_WithDerivedKey_StillReportsMissingKey"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 10343,
+  "output_tokens": 4484,
+  "ms": 40408,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

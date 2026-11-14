@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Contractless-mode members are ordered alphabetically by name with ordinal comparison. The existing contractless/keyAsPropertyName behavior may differ (declaration order), so the same type formatted by this generator versus the dynamic contractless resolver may emit map entries in a different order. Wire bytes differ for existing users who switch to or mix with the generated formatter. Also the documented intent differs from reality.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with properties declared in order Z, A using the ContractlessStandardResolver and the new generated formatter; compare map key order bytes."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "IsPublicReadWrite for fields requires field.IsReadOnly, which is inverted: public mutable fields are excluded and readonly fields are included. Generated code would assign to readonly fields (compile error CS0191 in user project) and silently omit normal public fields, contradicting the documented behaviour of serializing public read-write fields.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:279",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generator snapshot test: external type with `public int F;` and `public readonly int R;` annotated with [GeneratedMessagePackFormatter]; assert F is emitted, R is not, and output compiles."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "New error-severity diagnostics MsgPack019-022 are added to SupportedDiagnostics but the analyzer's AnalyzerReleases.Unshipped.md and doc/analyzers pages are not in the diff, so RS2000 release-tracking errors may break the build; the help links point to non-existent docs.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build MessagePack.SourceGenerator and check for RS2000 warnings or errors about missing entries in AnalyzerReleases.Unshipped.md."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Diagnostics for generated formatters are only reported through the generator's RegisterSourceOutput, while the analyzer descriptors are registered but nothing in the analyzer reports them. Also reused diagnostics (MemberNeedsKey, NoDeserializingConstructor, with a missing format arg) may throw formatting errors or show wrong messages. NoDeserializingConstructor is created with no message args.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:84",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test with a class lacking a parameterless constructor as T; verify the reported diagnostic message formats correctly with its arguments."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Generated formatter mode assumes a parameterless constructor and sets members; types with init-only or required members, and collections or members whose types lack formatters, are not handled with the usual MsgPack analyzer checks. The generated formatter is emitted without MsgPack analyzer validation.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:233",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "CreateMember sets IsInitOnly and IsRequired, but constructorParameters is empty; check the template's handling of init-only members with no constructor."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18533,
+  "output_tokens": 1326,
+  "ms": 9925,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

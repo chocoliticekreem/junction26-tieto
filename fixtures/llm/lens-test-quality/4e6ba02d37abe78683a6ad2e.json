@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `continue` added after the DoNotMixStringAndIntKeys diagnostic (property loop) is not covered by any test. No test mixes int and string keys, so removing the continue would go unnoticed. The non-`continue` path would add the mismatched member and could cause a crash or a different diagnostic set.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 delete-statement: continue; -> (removed); expected to survive because no test in the diff mixes [Key(0)] and [Key(\"a\")] on one type, so the added tests never reach this branch."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `continue` in the field loop for mixed keys has no test either. The new tests only use properties for duplicate keys, and no test uses fields with mixed key kinds.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148 delete-statement: continue; -> (removed); expected to survive because no added test has fields with mixed int and string keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ContainsKey guards on the field paths (intMembers and stringMembers) are not exercised, because every duplicate-key test uses properties (`{ get; set; }`). Removing either field-path guard would leave all tests green.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163 remove-guard: if (!intMembers.ContainsKey(member.IntKey)) -> unconditional Add; also :1179 for stringMembers; expected to survive because duplicate-key tests only declare properties, never fields."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests may pass on base, since they do not demonstrate the reported bug. The SuppressedSourceGenerationTests execution tests only check runtime behaviour (no generated formatter, dynamic round-trip). They never exercise the analyzer. In the analyzer tests, MsgPack004, MsgPack015 and MsgPack003 on suppressed types may already have been reported on base. Only the duplicate-key tests plausibly differ, so the test suite does not show that the analyzer stopped working under SuppressSourceGeneration.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:19",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests on the base commit. Tests that pass there (MemberWithoutKeyIsReported, AllowPrivateRequiredIsReported, MemberTypeMustBeMessagePackObjectIsReported) do not reproduce the bug."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "DuplicateKeysAreReportedWithoutAnalyzerFailureForGeneratedTypes covers the non-suppressed path only for properties with duplicate int keys. It has no mixed-key or field case, and no test checks that suppressed and non-suppressed types give identical diagnostics. The 'unchanged when not suppressed' criterion is therefore only thinly guarded.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:112",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176 negate-condition: !stringMembers.ContainsKey -> stringMembers.ContainsKey; the field variants survive because they are untested, and for properties only the string-key duplicate test catches the mutation."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 8329,
+  "output_tokens": 1508,
+  "ms": 10567,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

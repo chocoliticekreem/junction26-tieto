@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The contractless field filter is inverted. `IsPublicReadWrite` accepts an `IFieldSymbol` only when `field.IsReadOnly` is true. As a result, ordinary mutable public fields (`public int X;`) are never serialized, which breaks the documented and required 'every public read-write instance property and field'. This hits structs and DTOs from referenced assemblies that expose plain fields: they silently produce empty or partial payloads, so data is lost on round-trip.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:274",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterFieldSelectionTests.MutablePublicFieldIsSerialized. The data type has a public read-write field `MutableFieldMarker`, and the generated sources do not contain it on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same inverted check selects `public readonly` fields as serializable members. `CreateMember` then marks them `IsWritable: true`, so the generated Deserialize assigns to a readonly field. The result is CS0191 in generated code, which breaks the user's build. In surrogate mode, a surrogate `[Key]` member that names a public readonly field also passes `IsPublicReadWrite` and causes the same compile error, while a matching mutable field is rejected with MsgPack022.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:274",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterFieldSelectionTests.ReadonlyPublicFieldIsNotAssigned. The output compilation contains CS0191 and the generated text references `ReadonlyFieldMarker`."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In surrogate mode, every instance field and property of the surrogate must carry `[Key]` or `[IgnoreMember]`, including private and protected members, because `GetInstanceMembers` does not filter by accessibility. A surrogate with a private helper field, or a non-public property without `[Key]`, is rejected with MsgPack004. That is stricter than MsgPack004's contract, which per L5 applies only to public members.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:157",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Use a surrogate class with `[Key(0)] public int A { get; set; }` plus `private int helper;`, where T has a public `A` property. Run the generator and expect no MsgPack004. On head, MsgPack004 is reported on `helper` and no formatter is generated."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`IsPartial` checks only the formatter's own declaration. A `[GeneratedMessagePackFormatter] partial class F` nested inside a non-partial containing type gets no MsgPack019. The generator still emits the nesting wrappers through `EmitNestingTypesAndNamespaces`, which yields CS0260/CS0101 in generated code instead of a clear diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:291",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "IsPartial (lines 291-297) inspects only `symbol.DeclaringSyntaxReferences` of the formatter, not `ContainingType` chain; compare with MsgPack011 handling for nested [MessagePackObject] types in TypeCollector."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterFieldSelectionTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterFieldSelectionTests\n{\n    private static async Task<(Compilation Output, string GeneratedText)> RunGeneratorAsync(string source)\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = new(framework);\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpParseOptions parseOptions = new(LanguageVersion.Latest);\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new ISourceGenerator[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> _);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n        string text = string.Join(\"\\n\", result.GeneratedTrees.Select(t => t.ToString()));\n        return (output, text);\n    }\n\n    [Fact]\n    public async Task MutablePublicFieldIsSerialized()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace ProjectA\n            {\n                public class MyObject\n                {\n                    public int PropMarker { get; set; }\n                    public int MutableFieldMarker;\n                }\n            }\n\n            namespace ProjectB\n            {\n                [GeneratedMessagePackFormatter]\n                public partial class MyObjectFormatter : IMessagePackFormatter<ProjectA.MyObject> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n\n        (Compilation _, string generated) = await RunGeneratorAsync(source);\n        generated.Should().Contain(\"PropMarker\", \"the read-write property must be serialized in contractless mode\");\n        generated.Should().Contain(\"MutableFieldMarker\", \"a public read-write field must be serialized in contractless mode\");\n    }\n\n    [Fact]\n    public async Task ReadonlyPublicFieldIsNotAssigned()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace ProjectA\n            {\n                public class MyObject\n                {\n                    public int PropMarker { get; set; }\n                    public readonly int ReadonlyFieldMarker;\n                }\n            }\n\n            namespace ProjectB\n            {\n                [GeneratedMessagePackFormatter]\n                public partial class MyObjectFormatter : IMessagePackFormatter<ProjectA.MyObject> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n\n        (Compilation output, string generated) = await RunGeneratorAsync(source);\n        output.GetDiagnostics().Where(d => d.Id == \"CS0191\").Should().BeEmpty(\"generated code must not assign a readonly field\");\n        generated.Should().NotContain(\"ReadonlyFieldMarker\", \"a readonly field is not read-write and must not be part of the contractless contract\");\n    }\n}\n",
+        "test_names": [
+          "MutablePublicFieldIsSerialized",
+          "ReadonlyPublicFieldIsNotAssigned"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 21313,
+  "output_tokens": 9544,
+  "ms": 84823,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change raises `MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth` from 500 to 5000. REQ-2283 is a generator/analyzer crash fix and asks for nothing like this. The change weakens the stack-depth protection for untrusted data, which the ledger records as deliberate secure-by-default history (L9). L12 says only 'follow the requirement', and the requirement does not request it.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.UntrustedDataDepthReceipts.UntrustedData_MaximumObjectGraphDepth_IsUnchanged. It asserts the value is 500, so it passes on base and fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The reporter named three unguarded `DeclaringSyntaxReferences[0]` sites (lines 735, 1009, 1101). The diff only rewrites the two at old lines ~985 and ~1077. The new `ReportIfLocatedInCompilation` wrapper filters diagnostics only after `Diagnostic.Create` has evaluated its location argument. If a third unguarded index (the ~735 site) remains, it still throws `IndexOutOfRangeException` on a closed generic struct from metadata, and the CS8785/AD0001 acceptance criteria are not met.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ReferencedGenericStructReceipts (both theory cases of Generator_DoesNotThrow_AndEmitsResolver, plus Analyzer_DoesNotThrow) on head. Also grep head TypeCollector.cs for `DeclaringSyntaxReferences[0]`; any remaining hit on a path reachable from GetObjectInfo confirms the gap."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The constructor now wraps every analyzer report in `ReportIfLocatedInCompilation`. That wrapper drops any diagnostic whose location is not in a source tree of the compilation, not only diagnostics about metadata symbols. Diagnostics for same-assembly types whose location helper returns null (they become Location.None), or that are created without a location, are now silently suppressed. The requirement says the 'ok' rows and same-assembly types must keep working as before.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Enumerate the Diagnostic.Create calls in TypeCollector.cs whose location argument can be null or Location.None for a source-declared type, e.g. GetIdentifierLocation / GetParameterListLocation / GetLocation returning null, or derivedKeyAttribute.GetSyntax on a metadata attribute. For each, an existing analyzer test that expected the diagnostic would now miss it."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ReferencedGenericStructReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.IO;\nusing System.Linq;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ReferencedGenericStructReceipts(ITestOutputHelper logger)\n{\n    private const string RecordStructLib = \"\"\"\n        using MessagePack;\n        namespace Lib;\n\n        [MessagePackObject]\n        public partial record struct Item<T>([property: Key(0)] string Key);\n        \"\"\";\n\n    private const string StructLib = \"\"\"\n        using MessagePack;\n        namespace Lib;\n\n        [MessagePackObject]\n        public partial struct Item<T>\n        {\n            [Key(0)]\n            public string Key { get; set; }\n        }\n        \"\"\";\n\n    private const string AppSource = \"\"\"\n        using MessagePack;\n        using Lib;\n\n        namespace App\n        {\n            [MessagePackObject]\n            public sealed partial class Cmd\n            {\n                [Key(0)]\n                public string Scope { get; set; }\n\n                [Key(1)]\n                public Item<int> Member { get; set; }\n            }\n        }\n        \"\"\";\n\n    private static readonly CSharpParseOptions ParseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n\n    [Theory]\n    [InlineData(true)]\n    [InlineData(false)]\n    public async Task Generator_DoesNotThrow_AndEmitsResolver(bool recordStruct)\n    {\n        Compilation app = await CreateAppCompilationAsync(recordStruct ? RecordStructLib : StructLib);\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(app, out Compilation output, out ImmutableArray<Diagnostic> generatorDiagnostics);\n        GeneratorDriverRunResult runResult = driver.GetRunResult();\n\n        foreach (Diagnostic d in generatorDiagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        Assert.All(runResult.Results, r => Assert.Null(r.Exception));\n        Assert.DoesNotContain(generatorDiagnostics, d => d.Id == \"CS8785\");\n        Assert.NotEmpty(runResult.GeneratedTrees);\n        Assert.Contains(runResult.GeneratedTrees, t => t.ToString().Contains(\"GeneratedMessagePackResolver\"));\n    }\n\n    [Fact]\n    public async Task Analyzer_DoesNotThrow_OnReferencedGenericRecordStruct()\n    {\n        Compilation app = await CreateAppCompilationAsync(RecordStructLib);\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer());\n        ImmutableArray<Diagnostic> diagnostics = await app.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n\n        foreach (Diagnostic d in diagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.DoesNotContain(diagnostics, d => d.GetMessage().Contains(\"IndexOutOfRangeException\"));\n    }\n\n    private static async Task<Compilation> CreateAppCompilationAsync(string libSource)\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        ImmutableArray<MetadataReference> references = framework.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(libSource, ParseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using MemoryStream stream = new MemoryStream();\n        var emitResult = lib.Emit(stream);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics.Select(d => d.ToString())));\n        MetadataReference libReference = MetadataReference.CreateFromImage(stream.ToArray());\n\n        return CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(AppSource, ParseOptions) },\n            references.Add(libReference),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n    }\n}\n",
+        "test_names": [
+          "Generator_DoesNotThrow_AndEmitsResolver",
+          "Analyzer_DoesNotThrow_OnReferencedGenericRecordStruct"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/UntrustedDataDepthReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class UntrustedDataDepthReceipts\n{\n    [Fact]\n    public void UntrustedData_MaximumObjectGraphDepth_IsUnchanged()\n    {\n        // REQ-2283 is a generator/analyzer crash fix; it does not ask to relax the untrusted-data depth limit.\n        Assert.Equal(500, MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth);\n    }\n}\n",
+        "test_names": [
+          "UntrustedData_MaximumObjectGraphDepth_IsUnchanged"
+        ],
+        "expects": "fail-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 11692,
+  "output_tokens": 11143,
+  "ms": 97097,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

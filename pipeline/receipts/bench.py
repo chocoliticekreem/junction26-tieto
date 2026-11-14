@@ -207,21 +207,34 @@ def _strip_oracle_decisions() -> None:
 
     md = config.CONTEXT / "REVIEW_CONTEXT.md"
     if md.exists():
+        from .context import DECISIONS_HEADING, NO_DECISIONS
+
         kept = [ln for ln in md.read_text().split("\n") if f"answered by {ORACLE}" not in ln]
-        md.write_text("\n".join(kept))
+        text = "\n".join(kept)
+        heading = f"## {DECISIONS_HEADING}"
+        if text.rstrip().endswith(heading):  # no decision left: restore the placeholder
+            text = text.rstrip() + f"\n\n{NO_DECISIONS}\n"
+        md.write_text(text)
 
 
 class LedgerScope:
-    """Cold: ledger emptied. Warm: only the oracle's answers. Real entries come back on exit.
+    """The ledger lenses see during a bench run, and what is left afterwards.
+
+    Cold: empty. After cold the ledger holds the real entries plus the oracle's answers, so a warm
+    run can follow. Warm: only the oracle's answers (from the ledger, else from the archive
+    context/ledger.bench-oracle.jsonl). After warm the oracle's answers move to that archive and
+    the ledger holds the real entries only.
 
     Real (non-oracle) entries are first merged into context/ledger.cold-backup.jsonl, so nothing a
-    person answered is lost even if the process dies mid-run.
+    person answered is lost even if the process dies mid-run. Oracle answers never stay in
+    REVIEW_CONTEXT.md's decision list (lenses read the ledger, not that list).
     """
 
     def __init__(self, mode: str):
         self.mode = mode
         self.path = config.CONTEXT / "ledger.jsonl"
         self.backup = config.CONTEXT / "ledger.cold-backup.jsonl"
+        self.archive = config.CONTEXT / "ledger.bench-oracle.jsonl"
         self.real: list[str] = []
 
     def __enter__(self):
@@ -231,14 +244,19 @@ class LedgerScope:
         _write_lines(self.backup, saved + [ln for ln in self.real if ln not in saved])
         if self.mode == "cold":
             _write_lines(self.path, [])
-            _strip_oracle_decisions()
         else:
-            _write_lines(self.path, [ln for ln in lines if _is_oracle(ln)])
+            oracle = [ln for ln in lines if _is_oracle(ln)] or _lines(self.archive)
+            _write_lines(self.path, oracle)
+        _strip_oracle_decisions()
         return self
 
     def __exit__(self, *exc):
-        now = _lines(self.path)
-        _write_lines(self.path, self.real + [ln for ln in now if ln not in self.real])
+        now = [ln for ln in _lines(self.path) if ln not in self.real]
+        if self.mode == "warm":
+            _write_lines(self.archive, [ln for ln in now if _is_oracle(ln)])
+            now = [ln for ln in now if not _is_oracle(ln)]
+        _write_lines(self.path, self.real + now)
+        _strip_oracle_decisions()
         return False
 
 
@@ -254,7 +272,7 @@ def _json(path: Path, default=None):
 def run_case(entry: dict, mode: str, seq: int, log_dir: Path) -> dict:
     before = _latest(entry["id"])
     cmd = [sys.executable, "-m", "receipts.cli", "review", "--change", entry["id"],
-           "--req", entry["requirement"]]
+           "--req", entry["requirement"], "--no-ab"]
     log = log_dir / f"{entry['id']}.log"
     rec: dict = {"id": entry["id"], "mode": mode, "seq": seq,
                  "log": str(log.relative_to(config.RUNS))}
@@ -281,7 +299,9 @@ def run_case(entry: dict, mode: str, seq: int, log_dir: Path) -> dict:
                findings=len(receipt.get("findings", [])), hunches=len(receipt.get("hunches", [])),
                questions=len(_json(run_dir / "questions.json", [])),
                router=routing.get("router", ""), router_usd=routing.get("cost_usd", 0.0),
-               lens_usd=lenses.get("total_cost_usd", 0.0) if lenses else None)
+               lens_usd=lenses.get("total_cost_usd", 0.0) if lenses else None,
+               lens_spend_usd=round(sum(x.get("cost_usd", 0.0) for x in lenses.get("lenses", [])
+                                        if not x.get("from_fixture")), 6) if lenses else None)
     return rec
 
 
@@ -328,13 +348,19 @@ def cleanup_worktrees(entry: dict, commit: str, keep: set[str]) -> list[str]:
 
 
 def leak_scan(since: float, run_dirs: list[Path]) -> list[dict]:
-    """Search what prompts are built from (intake hunks) and every LLM fixture written during this
-    run for bench labels: branch names, manifest ids, variant words."""
+    """Search what prompts are built from (intake hunks) and the prompt side of every LLM fixture
+    written during this run for bench labels: branch names, manifest ids, variant words. Model
+    replies are not scanned: a lens may say "drift" in its own words."""
     pats = [re.compile(p, re.I) for p in LEAK_PATTERNS]
     sources: list[tuple[str, str]] = []
     for f in config.FIXTURES_LLM.rglob("*.json"):
         if f.stat().st_mtime >= since:
-            sources.append((str(f.relative_to(config.ROOT)), f.read_text(errors="replace")))
+            prompt = (_json(f, {}) or {}).get("prompt_preview", "")
+            if prompt:
+                sources.append((str(f.relative_to(config.ROOT)), prompt))
+    ledger_text = "\n".join(f"{e.get('question', '')} {e.get('answer', '')}"
+                            for e in map(json.loads, _lines(config.CONTEXT / "ledger.jsonl")))
+    sources.append(("context/ledger.jsonl (questions and answers lenses see)", ledger_text))
     for d in run_dirs:
         data = _json(d / "intake.json")
         if data:
@@ -365,6 +391,7 @@ def _write_summary(mode: str, records: list[dict], meta: dict) -> Path:
             "wall_s_sum": round(sum(walls), 1), "wall_s_max": max(walls, default=0),
             "router_usd": round(sum(r.get("router_usd") or 0 for r in cases), 6),
             "lens_usd": round(sum(r.get("lens_usd") or 0 for r in cases), 4),
+            "lens_spend_usd": round(sum(r.get("lens_spend_usd") or 0 for r in cases), 4),
             "verdicts": {v: sum(r.get("verdict") == v for r in cases)
                          for v in sorted({r["verdict"] for r in cases if r.get("verdict")})},
         },
@@ -372,6 +399,19 @@ def _write_summary(mode: str, records: list[dict], meta: dict) -> Path:
     config.RUNS.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(summary, indent=2) + "\n")
     return path
+
+
+def prune_raw(run_dir: Path) -> int:
+    """Drop raw TRX files and the compat harness build output (obj/, out/) from a bench run: most
+    of its size, and no receipt. tests.json holds the parsed results, compat/*.json the byte and
+    API results, and the dashboard reads the .log files only. Returns bytes freed."""
+    freed = 0
+    raw = [*run_dir.glob("logs/*-results"), *run_dir.glob("compat/harness-*/obj"),
+           *run_dir.glob("compat/harness-*/out")]
+    for d in raw:
+        freed += sum(f.stat().st_size for f in d.rglob("*") if f.is_file())
+        shutil.rmtree(d, ignore_errors=True)
+    return freed
 
 
 def _finish_case(fut, entry: dict, mode: str, seq: int, commit: str, keep: set[str],
@@ -385,6 +425,8 @@ def _finish_case(fut, entry: dict, mode: str, seq: int, commit: str, keep: set[s
         rec["oracle_answers"] = len(answers)
         oracle_log += [{"id": entry["id"], **a} for a in answers]
     rec["worktrees_removed"] = cleanup_worktrees(entry, commit, keep)
+    if rec.get("run"):
+        prune_raw(config.RUNS / rec["run"])
     return rec
 
 

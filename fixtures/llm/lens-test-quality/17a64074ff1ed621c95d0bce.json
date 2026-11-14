@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The guard test only counts occurrences of the attribute and requires every occurrence to be guarded. If a template stopped emitting the guard, or the guard condition were changed (e.g. dropping `&& !NETFRAMEWORK`), the test fails only if the exact string no longer matches. It never checks that the generated output compiles under netstandard2.0 or NETFRAMEWORK. The test also depends on the exact `\\n\\t` indentation, so it is brittle and does not validate the requirement that generated code compiles on every target.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:92",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 swap-boolean: `#if !NETSTANDARD2_0 && !NETFRAMEWORK` -> `#if NETSTANDARD2_0 && !NETFRAMEWORK`; expected to survive because the tests only compare the literal string against the guard constant, and the constant is copied in the test rather than derived from the source. Snapshot regeneration would catch it, but the new tests would not, since the mutation also needs to change the test constant."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test source has no generic type, no nested type and no type with constraints. The changed TransformUtilities line (`\"{\" -> \"{\\r\\n\"` for nesting types with constraints) is not exercised by any new test. No test would notice if this change were reverted, other than snapshot diffs.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: `writer(anyConstraints ? \"{\\r\\n\" : ...)` -> `writer(anyConstraints ? \"{\" : ...)`; expected to survive because CodeCoverageExclusionTests uses no nested generic type with constraints, so only snapshot tests could detect it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The first test asserts `generated.Count >= 5` and that every file contains the attribute, but it never checks that every emitted type (e.g. the nested FormatterCache, GetFormatterHelper) is decorated. A file that contains the attribute on only one type passes. The `FormatterCache<T>` and `GetFormatterHelper` attributes are not individually verified.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:77",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:55 delete-statement: remove the attribute from `private static class FormatterCache<T>`; expected to survive because the test only checks that the file contains the attribute at least once, and the resolver file still has it on the partial class."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12249,
+  "output_tokens": 1099,
+  "ms": 8098,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

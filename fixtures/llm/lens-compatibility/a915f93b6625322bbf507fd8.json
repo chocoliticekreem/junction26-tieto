@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The .tt and .cs templates diverge in TransformUtilities. The hunk changes the nesting-type brace emission from `anyConstraints ? \"{\" : \" {\\r\\n\"` to `hasConstraints ? \"{\\r\\n\" : \" {\\r\\n\"`. This changes the generated output for every formatter nested in a generic type with constraints, even though it has nothing to do with the coverage attribute. Users who check in generated output or snapshot it will see a whitespace diff. The compiled code is semantically the same, but the change is outside the requirement's scope and shows up as a diff in generated files.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests for a formatter nested in a constrained generic outer type. Confirm the snapshot diff contains a newline change after `{` that is unrelated to the ExcludeFromCodeCoverage attribute."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is emitted only under `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. Users on netstandard2.0 or .NET Framework get no coverage exclusion, so the requirement 'all generated code' is not met there. This is partly acknowledged in the ledger (L7), whose answer is 'follow the requirement'. Also, the `NETFRAMEWORK` symbol is not defined for older targets such as net35 or net40, nor for other TFMs that lack the attribute. Generated code could therefore fail to compile with CS0234 if the attribute type is missing, which would be a hard break for users on those targets.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compile the generator output in a project targeting a TFM that lacks System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage but defines neither NETSTANDARD2_0 nor NETFRAMEWORK (for example netstandard1.x or net35). Check whether CS0234 is reported."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The attribute is added to resolvers and formatters, but not to every generated type. For example, the generated GetFormatterHelper/FormatterCache and any other emitted helper types may be missed. The EnumTemplate formatter and resolver helpers are covered, but this is not verified for every template (for example the resolver's other nested members). 'All generated code' may therefore be only partly met, which is a coverage gap rather than a compatibility break.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the snapshot tests and grep every generated .g.cs for `class ` declarations that are not preceded by ExcludeFromCodeCoverage."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10298,
+  "output_tokens": 1077,
+  "ms": 8095,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

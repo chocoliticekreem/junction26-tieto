@@ -1,0 +1,46 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early return in `CollectGeneric` skips every closed generic whose definition comes from metadata before its substituted members or type arguments are collected. On base, `GetObjectInfo` walked the substituted members of such types; per the requirement, `class Item<T>` was an \"ok\" row. Consider a lib `[MessagePackObject] class Item<T> { [Key(0)] public T Value; }` used in app as `Item<MyEnum>` or `Item<LocalNonRootType[]>`, where `MyEnum` is declared in app and reached only through that type argument. The app resolver would no longer register a formatter for `MyEnum`. Ledger L8 only exempts formatters for referenced types; `MyEnum` belongs to app. This would contradict \"closed generic classes ... keep working as before\" and leave trimmed/NativeAOT apps without the formatter at runtime.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a lib containing `[MessagePackObject] public class Item<T> { [Key(0)] public T Value { get; set; } }` to an image and reference it from app. App has `public enum MyEnum { A }` and `[MessagePackObject] public class Cmd { [Key(0)] public Item<MyEnum> M { get; set; } }`. Run MessagePackGenerator on base and on head and diff the generated resolver. Expect base to register a formatter for `MyEnum` and head to omit it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`ReportIfLocatedInCompilation` wraps every TypeCollector diagnostic and silently drops any diagnostic with Location.None or a metadata location. This includes Error diagnostics (MsgPack004 is an Error per L2) about a `[MessagePackObject]` type declared in the current compilation, when the offending member is inherited from a base class in a referenced assembly. That base class may not be `[MessagePackObject]`, so no project ever reports the problem. This contradicts the new docs claim that such problems are reported by the defining project. The requirement asks only that these paths not crash. Roslyn allows reporting at Location.None, and a fallback location such as the derived type's identifier was available.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1451",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Lib: `public class Base { public int X { get; set; } }` (not MessagePackObject), emitted as a metadata reference. App: `[MessagePackObject] public class Derived : Base { [Key(0)] public int Y { get; set; } }`. Run MsgPack00xMessagePackAnalyzer on head. It reports no MsgPack004 for X, and the generator emits a formatter that silently omits X."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/Req2283ReferencedGenericStructTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class Req2283ReferencedGenericStructTests(ITestOutputHelper logger)\n{\n    private static readonly CSharpParseOptions ParseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n\n    private const string RecordStructLib = \"\"\"\n        using MessagePack;\n        namespace Lib;\n\n        [MessagePackObject]\n        public partial record struct Item<T>([property: Key(0)] string Key);\n        \"\"\";\n\n    private const string StructLib = \"\"\"\n        using MessagePack;\n        namespace Lib;\n\n        [MessagePackObject]\n        public struct Item<T>\n        {\n            [Key(0)]\n            public string Key { get; set; }\n        }\n        \"\"\";\n\n    private const string AppSource = \"\"\"\n        using MessagePack; using Lib;\n        namespace App;\n\n        [MessagePackObject]\n        public sealed partial record Cmd([property: Key(0)] string Scope)\n        {\n            [Key(1)] public Item<int> Member { get; init; }\n        }\n        \"\"\";\n\n    [Theory]\n    [InlineData(\"recordStruct\")]\n    [InlineData(\"struct\")]\n    public async Task Generator_DoesNotThrow_AndEmitsResolver(string kind)\n    {\n        CSharpCompilation app = await CreateAppCompilationAsync(kind);\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new global::MessagePack.SourceGenerator.MessagePackGenerator()).WithUpdatedParseOptions(ParseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(app, out Compilation output, out ImmutableArray<Diagnostic> generatorDiagnostics);\n        GeneratorDriverRunResult run = driver.GetRunResult();\n\n        foreach (Diagnostic d in generatorDiagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        foreach (GeneratorRunResult result in run.Results)\n        {\n            Assert.Null(result.Exception);\n        }\n\n        Assert.DoesNotContain(generatorDiagnostics, d => d.Id == \"CS8785\");\n        Assert.NotEmpty(run.GeneratedTrees);\n        Assert.Contains(run.GeneratedTrees, t => t.ToString().Contains(\"GeneratedMessagePackResolver\"));\n\n        List<Diagnostic> errors = output.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();\n        foreach (Diagnostic d in errors)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        Assert.Empty(errors);\n    }\n\n    [Theory]\n    [InlineData(\"recordStruct\")]\n    [InlineData(\"struct\")]\n    public async Task Analyzer_DoesNotThrow(string kind)\n    {\n        CSharpCompilation app = await CreateAppCompilationAsync(kind);\n\n        var exceptions = new List<Exception>();\n        var options = new CompilationWithAnalyzersOptions(\n            new Microsoft.CodeAnalysis.Diagnostics.AnalyzerOptions(ImmutableArray<AdditionalText>.Empty),\n            (ex, analyzer, diag) => exceptions.Add(ex),\n            concurrentAnalysis: false,\n            logAnalyzerExecutionTime: false);\n        CompilationWithAnalyzers withAnalyzers = app.WithAnalyzers(\n            ImmutableArray.Create<DiagnosticAnalyzer>(new global::MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer()),\n            options);\n        ImmutableArray<Diagnostic> diagnostics = await withAnalyzers.GetAnalyzerDiagnosticsAsync(CancellationToken.None);\n\n        foreach (Diagnostic d in diagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        foreach (Exception ex in exceptions)\n        {\n            logger.WriteLine(ex.ToString());\n        }\n\n        Assert.Empty(exceptions);\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n    }\n\n    private static async Task<CSharpCompilation> CreateAppCompilationAsync(string kind)\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        string libSource = kind == \"recordStruct\" ? RecordStructLib : StructLib;\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(libSource, ParseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using var stream = new MemoryStream();\n        var emitResult = lib.Emit(stream);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n        MetadataReference libReference = MetadataReference.CreateFromImage(stream.ToArray());\n\n        var appReferences = new List<MetadataReference>(references) { libReference };\n        return CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(AppSource, ParseOptions) },\n            appReferences,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n    }\n}\n",
+        "test_names": [
+          "Generator_DoesNotThrow_AndEmitsResolver",
+          "Analyzer_DoesNotThrow"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 10927,
+  "output_tokens": 14963,
+  "ms": 132612,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

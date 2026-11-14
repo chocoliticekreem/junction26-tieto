@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early return for generic types with no declaring syntax runs before the `type.IsDefinition` / closed-generic handling. It therefore skips every generic type from a referenced assembly, including closed generic classes (the 'ok' rows) and generic types from other libraries that previously got a generated formatter in the compiling assembly. The requirement says closed generic classes and other working cases must keep working as before. A closed `Item<int>` from a referenced assembly (e.g. a `[MessagePackObject]` generic class in lib, with no custom formatter) used to get a formatter generated in app; now it gets none. At runtime that falls back to the lib resolver or a dynamic resolver, which fails in AOT or trimmed apps.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run generator snapshot tests with a referenced-assembly `[MessagePackObject] class Item<T>` used as `Item<int>` in a member of an app type. Compare the generated output (formatter and resolver entries for Item<int>) between base and head. Any diff means a regression."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new return sits after the custom-formatter and enum checks but also applies to generic types such as `ImmutableArray<T>`, `KeyValuePair`-like BCL or third-party generics that have no declaring syntax. Any such generic type that previously reached the generic branch is no longer collected, which could drop generated formatter registrations or change formatter selection. Collection types such as List<T> are likely handled earlier, but that is unverified.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the existing generator snapshot tests (members of type ImmutableArray<T>, ValueTuple<..>, Nullable<struct>, custom generic collections) and diff against base. The generated resolver or formatter lists must be byte-identical."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The reportDiagnostic wrapper silently drops every diagnostic whose location is not in a syntax tree of the compilation. This includes diagnostics created with a null location (`Location.None`), which is what the new `FirstOrDefault()?.GetSyntax().GetLocation()` and `GetPropertyIdentifierLocation` produce for metadata symbols. It also applies to diagnostics previously reported with no location for other reasons. Users who relied on those location-less diagnostics (e.g. MsgPack003 or MsgPack005 with a null location, or errors that fire for referenced types) will stop seeing them. Because several of these are Errors (L2), a build that previously failed may now succeed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the analyzer tests for MsgPack003/004/005/006/007/008/009 and others that use null or `Location.None` (e.g. `GetLocation(parameter)` returning null, `GetParameterListLocation`). Confirm diagnostics are still reported when the location is None. Add a test with a location-less diagnostic and assert it is still reported."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 6826,
+  "output_tokens": 1178,
+  "ms": 9661,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

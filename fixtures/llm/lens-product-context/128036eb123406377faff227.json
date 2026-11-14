@@ -1,0 +1,45 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The README documents that MsgPack011/016/017 are not reported for suppressed types, but the diff shows no change to the analyzer or collector that gates those diagnostics. The docs and tests assert behaviour that this hunk set does not visibly implement, and it may conflict with 3.1.0 behaviour. The doc/analyzers pages for these rules are also not updated.",
+        "location": "README.md:1620",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare README claims with the gating logic in TypeCollector and MsgPack00xMessagePackAnalyzer for MsgPack011/016/017 under SuppressSourceGeneration. Run SuppressSourceGenerationAnalyzerTests.SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed on base and head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In the second string-key branch (the object-with-constructor path), the guard is inverted: `if (stringMembers.ContainsKey(...)) Add(...)`. It adds only when the key already exists, which throws ArgumentException on a duplicate. Non-duplicate members are never added, so string-keyed members are silently dropped. This breaks the analyzer and the generator for normal string-key types and contradicts the intent of the sibling fixes.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer or generator test with a [MessagePackObject] class using [Key(\"a\")] and [Key(\"b\")] in the path covered by hunk @@-1165, and a duplicate-string-key test in that same path. The members are dropped or an exception is thrown. Rerun the generator snapshot tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests do not cover the reported symptom beyond duplicate-key crashes. None of them exercises the first string-key path or the second (ctor) path with unique string keys, so the inverted condition goes unkilled by the added tests. The duplicate string-key test only hits one of the two paths.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:96",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Mutate the `ContainsKey` guards on the changed lines in TypeCollector.cs (for example, invert or remove). Check whether the new tests fail to kill the mutant for the string-key path in the ctor branch."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 9376,
+  "output_tokens": 937,
+  "ms": 7698,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

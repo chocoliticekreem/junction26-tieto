@@ -1,0 +1,83 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The throw in GetEqualityComparer was replaced with returning EqualityComparer<T>.Default, so unknown types no longer get a hash-resistant comparer. This is an unrelated security regression, and nothing in the change's tests covers it. The existing security tests that expect TypeAccessException would fail.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing MessagePackSecurity tests (e.g. UntrustedData with a non-whitelisted key type) and expect TypeAccessException; they should fail at head. Mutation: restore the throw and see no new test depend on the change."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The honour-attributes criterion is untested. No test puts [MessagePackObject]/[Key] on T and checks they are honoured, and the collector ignores them (see L21). Every external type used in tests is attribute-free.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:84",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an external type with [Key] attributes and assert the wire format uses those keys; it fails at head."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The GeneratedFormatterDataTypeNotSupported (MsgPack021) test covers only the abstract case. Mutations survive on the generic, interface and accessibility conditions: negating IsGenericType or removing the IsSymbolAccessibleWithin guard fails no test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:57",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:57 remove-guard: `|| !compilation.IsSymbolAccessibleWithin(type, formatter)` -> removed; expected to survive because only the abstract-type case is tested."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The NoDeserializingConstructor branch for a class with no accessible parameterless constructor has no test. The guard removal survives.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:66",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:66 remove-guard: `if (isClass && !type.InstanceConstructors.Any(...))` -> `if (false)`; expected to survive because no test uses a type without a default constructor."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The duplicate-key (KeysMustBeUnique) and missing-Key (MemberNeedsKey) surrogate paths are untested. The int-key mixing test also only checks that MsgPack005 appears. Deleting the claimedKeys check survives.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:150 delete-statement: the `if (!claimedKeys.Add(key)) {...}` block; expected to survive because no test has duplicate surrogate keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The IsUserDeclaredFormatter exclusion in GeneratorUtilities is not isolated by any test. A GeneratedMessagePackFormatter class might also be registered as a hand-written formatter, but the registration test only checks GetFormatter's type. The execution tests pass even if the generator registers duplicates, unless the duplicate causes a compile error.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: `&& !symbol.GetAttributes().Any(...)` -> removed; check whether any test fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "There are no generator snapshot or regeneration tests for the emitted output of contractless and surrogate formatters. The templates' partial class path is only exercised through the execution tests, and integer-key surrogate output with gaps and the struct path are checked only by array length. Execution tests for the struct do not cover a surrogate struct.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test for a [GeneratedMessagePackFormatter] class with an int-key surrogate and run it; there is no baseline today."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 26324,
+  "output_tokens": 1693,
+  "ms": 12801,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

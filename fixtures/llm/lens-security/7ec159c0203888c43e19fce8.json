@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Contractless mode generates a formatter for ANY accessible type T, including types with sensitive or non-serializable members. Generated code is not subject to MessagePackSecurity differences, but the string-key path deserializes via the generated formatter with `new T()`, bypassing constructor validation of T. This is inherent to the feature and not a regression, but no depth-guard is verified: confirm the generated Deserialize still calls `options.Security.DepthStep(ref reader)` for the user-declared formatter path.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:96",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate a formatter with [GeneratedMessagePackFormatter] for a recursive type T (T has a property of type T) and inspect the generated source for `options.Security.DepthStep(ref reader)` in both FormatterTemplate and StringKeyFormatterTemplate output; deserialize deeply nested input with UntrustedData and assert InsufficientExecutionStackException/MessagePackSerializationException rather than StackOverflow."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate/contractless collection silently returns null with reportDiagnostic: null in the generator path; if the analyzer path does not run (analyzers disabled/suppressed), a rejected formatter produces no output and no error, so the partial class compiles without the IMessagePackFormatter<T> members only if user omitted them, leading to a CS0535 compile error rather than a silent protection loss. No protection is disabled; low impact.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:70",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the generatedFormatters loop at MessagePackGenerator.cs: Collect(... reportDiagnostic: null ...) returns null silently; diagnostics only surface via the separate generatedFormatterDiagnostics pipeline."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18355,
+  "output_tokens": 727,
+  "ms": 6622,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

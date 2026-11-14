@@ -1,0 +1,46 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change does the opposite of what the requirement asks. When `suppressSourceGeneration is true`, the new early `return null;` exits object-info collection before any member, key or accessibility validation runs. The analyzer therefore reports no MsgPack003/004/005/012/015 diagnostics at all for types with `SuppressSourceGeneration = true`. The acceptance criterion says the analyzer must still report its MsgPack0xx diagnostics for such types. Ledger L12 only exempts the generation-only rules MsgPack011/016/017, not the contract rules.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:714",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerTests.SuppressedType_MissingKey_ReportsMsgPack004 on head. The expected MsgPack004 on member B is not reported, so the test fails. Also mutate by deleting lines 714-717: if the mutant makes the test pass, the early return is the cause."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README claims the analyzer still validates `SuppressSourceGeneration = true` types for MsgPack004, 005, 015, 003 and 012. The TypeCollector change skips all validation for exactly those types, so the documentation contradicts the shipped behaviour.",
+        "location": "README.md:1625",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Same receipt as the TypeCollector finding: SuppressedType_MissingKey_ReportsMsgPack004 fails on head, showing that the documented MsgPack004 validation does not happen."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests\n{\n    [Fact]\n    public async Task SuppressedType_MissingKey_ReportsMsgPack004()\n    {\n        string testSource = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                public int {|MsgPack004:B|} { get; set; }\n            }\n            \"\"\";\n        var test = new VerifyCS.Test\n        {\n            TestState = { Sources = { testSource } },\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        await test.RunAsync();\n    }\n\n    [Fact]\n    public async Task NotSuppressedType_MissingKey_ReportsMsgPack004()\n    {\n        string testSource = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                public int {|MsgPack004:B|} { get; set; }\n            }\n            \"\"\";\n        var test = new VerifyCS.Test\n        {\n            TestState = { Sources = { testSource } },\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "SuppressedType_MissingKey_ReportsMsgPack004",
+          "NotSuppressedType_MissingKey_ReportsMsgPack004"
+        ],
+        "expects": "fail-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 9997,
+  "output_tokens": 3573,
+  "ms": 31846,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

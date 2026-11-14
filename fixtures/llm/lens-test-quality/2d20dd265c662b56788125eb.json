@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The removal of the `case <= byte.MaxValue` branch in the unsigned-integer writer is unrelated to REQ-2283 and has no test in the diff. If the mutation is wrong, values 128..255 would be written as UInt16 (3 bytes) instead of UInt8 (2 bytes), which changes the wire format. Nothing in the added tests would notice.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize values 128..255 (for example (uint)200 and (ulong)255) with base-built and head-built MessagePack and compare bytes. Base emits 0xCC 0xC8; head would emit 0xCD 0x00 0xC8. Existing writer tests are expected to catch it, but the change adds none."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ReportIfLocatedInCompilation filter wrapper has no test that proves it works. All three new tests assert the absence of diagnostics, so they would pass even if the filter were deleted, as long as the crash sites are guarded. No test shows that diagnostics for in-compilation locations are still reported (a negative or positive pair), so the wrapper could drop every diagnostic and the tests would still pass.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239 delete-statement: this.reportDiagnostic = wrapper -> this.reportDiagnostic = null (or an always-drop filter); expected to survive because the new tests only assert zero diagnostics, and existing analyzer tests are not part of this change."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `GetPropertyIdentifierLocation` and the `FirstOrDefault()?` change in `MemberNeedsKey` are only exercised by the metadata path, where the result is a null location. The `ClosedGenericStruct_FromMetadataReference_UnkeyedMember` test would not fail if the `FirstOrDefault` guard were reverted to `[0]`, because the wrapper filter or the L12-style early exit might already prevent it from being reached. Nothing shows which guard is load-bearing. The BothStringAndIntKeyAreNull path has no test at all, since it needs a property with a null key, which is not constructible in source.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 remove-guard: item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() -> item.DeclaringSyntaxReferences[0].GetSyntax(); run ClosedGenericStruct_FromMetadataReference_UnkeyedMember. Also mutate line 985 GetPropertyIdentifierLocation(item) -> the original [0] cast; expected to survive for 985 because no test produces a null key."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `ClosedGenericStruct_FromMetadataReference` and `UnkeyedMember` tests compile the defining assembly with LanguageVersion.CSharp7_3, which is the default parameter. The test hunk includes only one record struct case, and the `Cmd` record in the usage source is only valid under Latest. The tests may therefore pass on base for the struct cases if the base crash needs the record or init-property shape, so they might not reproduce the bug. Nothing shows the struct tests fail on base.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:497",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the three new tests against base-built TypeCollector.cs and confirm each fails (AD0001/CS8785 or an IndexOutOfRangeException). Any that pass on base do not reproduce the bug."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests use SkipGeneratedSourcesCheck and verify generation only through a separate manual CSharpGeneratorDriver run. They check only that the resolver hint name exists, not its content (for example, no formatter registered for Item<int>). Behaviour for the metadata type at runtime is not asserted, and there is no negative case showing that same-assembly closed generic structs still report diagnostics.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:630",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests and add a snapshot for the metadata-struct scenario; the current tests would pass with an empty resolver body."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10643,
+  "output_tokens": 1749,
+  "ms": 14523,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

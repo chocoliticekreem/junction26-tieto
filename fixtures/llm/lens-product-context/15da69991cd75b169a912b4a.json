@@ -1,0 +1,55 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The README and the docs promise that the analyzer still validates SuppressSourceGeneration types (MsgPack003/004/005/012/015), but the TypeCollector change returns null early for suppressed types, so none of those diagnostics are reported. The requirement says the analyzer must still report its diagnostics. The tests assert the opposite of the docs (MemberWithoutKeyIsNotReported, AllowPrivateRequiredIsNotReported, MemberTypeMustBeMessagePackObjectIsNotReported).",
+        "location": "README.md:1623",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test with [MessagePackObject(SuppressSourceGeneration = true)] and a public member lacking [Key]. The README says MsgPack004 is reported, and the expected {|MsgPack004:...|} diagnostic is not produced at head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Early return null for suppressed types skips all diagnostics for them, which does not match 3.1.0 behaviour where the analyzer worked. The requirement says the analyzer should still report its diagnostics (MsgPack0xx) for violating code. Ledger L12 only declares generation-only diagnostics (MsgPack011/016/017) as deliberately not reported, so the suppression of MsgPack003/004/005/012/015 is not covered.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:713",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the analyzer on a suppressed type with duplicate [Key(0)] members, expecting MsgPack005. At head no diagnostic is produced, whereas an unsuppressed type reports it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new test file's header comment, together with the tests, states that suppressed types are skipped by the analyzer. That contradicts the README in the same change, which says the analyzer still validates them. Docs and tests of the same change disagree on the product behaviour.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:9",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare README.md lines 1623-1632 (analyzer still validates) with the test class summary and MemberWithoutKeyIsNotReported (analyzer skips them)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MsgPack011, MsgPack016 and MsgPack017 are not reported for suppressed types. This is declared deliberate in the ledger, so it is fine.",
+        "location": "README.md:1632",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L12] Generation-only diagnostics (MsgPack011, MsgPack016, MsgPack017) are deliberately not reported for SuppressSourceGeneration types."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 10026,
+  "output_tokens": 1056,
+  "ms": 7174,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

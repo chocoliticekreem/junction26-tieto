@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Inverted condition in the second copy (property/field loop): `if (stringMembers.ContainsKey(...)) Add` should be `!ContainsKey`. As written, a string key is added only when it already exists, so Add throws ArgumentException on a duplicate, and new keys are never added. Every [MessagePackObject] type with string keys then gets no members, so the generated formatters are empty or missing and the output differs from base. This hits users who never opted in to anything.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests on a [MessagePackObject(keyAsPropertyName: true)] class or a class with [Key(\"a\")] on the field/property path covered by the second loop. Compare against base. Expect missing members in the generated formatter, or an ArgumentException on duplicate keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys changes the generated code for types with mixed key kinds. Mismatched members are now dropped from the formatter. Before, they were added to intMembers/stringMembers. Builds that report the diagnostic only as a warning, or have it suppressed, now get different generated formatters and serialized bytes with members missing.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate a formatter for a type with [Key(0)] on one member and [Key(\"b\")] on another. Diff the generator output between base and head. Members are now omitted at head."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Duplicate keys are now silently deduplicated: the first member wins and the later one is dropped. Before, Add threw ArgumentException. This is a behavior change for types with duplicate [Key] values, and the generator output differs from base (a member is omitted). It relies on a separate duplicate-key diagnostic existing, so the second member's data is lost without any visible error.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a [MessagePackObject] type with two members sharing [Key(0)]. Assert which diagnostics are reported and that the generator does not throw. Compare with base, where it throws."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5081,
+  "output_tokens": 895,
+  "ms": 6988,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

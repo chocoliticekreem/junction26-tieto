@@ -1,0 +1,61 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Unrelated wire-format change. Removing the `case <= byte.MaxValue` branch from the unsigned `MessagePackPrimitives.TryWrite` overload means values 128..255 no longer use the 2-byte uint8 form (0xcc xx). They now fall through to the 3-byte uint16 form (0xcd 00 xx). Serialized output changes size and bytes for every such value, which breaks byte-exact consumers and the MessagePack 'smallest representation' convention. REQ-2283 does not ask for this.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run ReceiptsUInt32WriterTests.UInt32InUInt8RangeUsesUInt8Encoding: TryWrite(buffer, 200u) must produce 2 bytes {0xcc, 0xc8}. On head it produces 3 bytes. A byte-diff of MessagePackSerializer.Serialize(200u) between base and head would show the same."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new GetPropertyIdentifierLocation uses `as PropertyDeclarationSyntax` and returns null for a source property whose declaring syntax is a ParameterSyntax, i.e. a positional record property. The diagnostic then gets Location.None, and the new ReportIfLocatedInCompilation wrapper drops every diagnostic that is not IsInSource. So `record R([property: Key((string)null)] int A)` declared in the compiling assembly no longer gets the BothStringAndIntKeyAreNull error, which it would get as a class property. The same wrapper also silently drops any other source-type diagnostic whose location helper returns null. That is a source symbol, not the metadata-only case covered by L12.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run ReceiptsPositionalRecordNullKeyTests.NullKeyOnPositionalRecordPropertyIsReportedLikeOnClassProperty: the MsgPack ids reported for a class with [Key((string)null)] must also be reported for the positional-record equivalent. On head the record reports none."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The issue names three unguarded `DeclaringSyntaxReferences[0]` sites (reporter's lines 735, 1009, 1101). This diff fixes only the two near new lines 985 and 1077, which are offset by 24 from the reported 1009/1101. No hunk touches the region corresponding to the reported line 735 (about line 711). The location is computed before reportDiagnostic is invoked, so the new filtering wrapper cannot prevent an IndexOutOfRangeException there. If that site is reached for a metadata closed generic struct, the CS8785/AD0001 crash from the repro remains.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Grep TypeCollector.cs on head for `DeclaringSyntaxReferences[0]` in GetObjectInfo around lines 700-740. Confirm with a two-compilation test: lib compilation with `[MessagePackObject] public partial record struct Item<T>([property: Key(0)] string Key)` emitted to a MetadataReference, then app `Cmd` with an `Item<int>` member. Run the generator plus MsgPack00xMessagePackAnalyzer and assert there is no CS8785/AD0001."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ReceiptsUInt32WriterTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nnamespace Receipts.GeneratedTests;\n\npublic class ReceiptsUInt32WriterTests\n{\n    [Theory]\n    [InlineData(128u)]\n    [InlineData(200u)]\n    [InlineData(255u)]\n    public void UInt32InUInt8RangeUsesUInt8Encoding(uint value)\n    {\n        byte[] buffer = new byte[16];\n        _ = MessagePack.MessagePackPrimitives.TryWrite(buffer, value, out int bytesWritten);\n        Assert.Equal(2, bytesWritten);\n        Assert.Equal(new byte[] { 0xcc, (byte)value }, buffer.AsSpan(0, bytesWritten).ToArray());\n    }\n}\n",
+        "test_names": [
+          "UInt32InUInt8RangeUsesUInt8Encoding"
+        ],
+        "expects": "fail-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ReceiptsPositionalRecordNullKeyTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ReceiptsPositionalRecordNullKeyTests\n{\n    private const string ClassSource = \"\"\"\n        using MessagePack;\n\n        [MessagePackObject]\n        public class C\n        {\n            [Key((string)null)]\n            public int A { get; set; }\n        }\n        \"\"\";\n\n    private const string RecordSource = \"\"\"\n        using MessagePack;\n\n        [MessagePackObject]\n        public record R([property: Key((string)null)] int A);\n        \"\"\";\n\n    [Fact]\n    public async Task NullKeyOnPositionalRecordPropertyIsReportedLikeOnClassProperty()\n    {\n        ImmutableHashSet<string> classIds = await GetAnalyzerDiagnosticIdsAsync(ClassSource);\n        ImmutableHashSet<string> recordIds = await GetAnalyzerDiagnosticIdsAsync(RecordSource);\n\n        Assert.NotEmpty(classIds);\n        Assert.All(classIds, id => Assert.Contains(id, recordIds));\n    }\n\n    private static async Task<ImmutableHashSet<string>> GetAnalyzerDiagnosticIdsAsync(string source)\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        IEnumerable<MetadataReference> references = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer());\n        ImmutableArray<Diagnostic> diagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n        return diagnostics.Where(d => d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal)).Select(d => d.Id).ToImmutableHashSet();\n    }\n}\n",
+        "test_names": [
+          "NullKeyOnPositionalRecordPropertyIsReportedLikeOnClassProperty"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10116,
+  "output_tokens": 13331,
+  "ms": 123633,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

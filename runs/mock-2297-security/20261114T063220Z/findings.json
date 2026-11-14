@@ -1,0 +1,232 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guard leaves all generated code on netstandard2.0 and .NET Framework targets without `ExcludeFromCodeCoverage`. The requirement asks for all generated code to be decorated. The guard is unnecessary: `System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute` exists in netstandard2.0 and in .NET Framework 4.0+, and it accepts class targets. Libraries targeting netstandard2.0, very common for MessagePack users, still have their coverage skewed. The README text added by this change wrongly states that the attribute is unavailable on those targets.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageDownlevelTargetsTests.GeneratedCodeIsExcludedEvenWhenDownlevelSymbolDefined (Theory: NETSTANDARD2_0, NETFRAMEWORK). It first asserts that the attribute type resolves from the netstandard2.0 and net472 reference assemblies. It then runs the generator with that preprocessor symbol defined and asserts every generated type carries the attribute. It fails on head. The same guard appears in every template touched by the change (resolver, composite resolver, enum, union, string-key)."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "This change removes `this.HashCollisionResistant = copyFrom.HashCollisionResistant;` from the MessagePackSecurity copy constructor, which is unrelated to the requirement. Every derived copy (Clone, `WithMaximumObjectGraphDepth`, and so on) now silently drops collision-resistant hashing. For example, `MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(100)` returns an instance with `HashCollisionResistant == false`. That re-opens hash-flooding DoS for untrusted data, which contradicts the secure-by-default history recorded in L4.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:63",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Write an xUnit test: `Assert.True(MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(100).HashCollisionResistant);`. It passes on base and fails on head. Optionally also deserialize a Dictionary<string,int> with that options instance on base and on head and compare the comparer type."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The `MessagePackSecurity` copy constructor no longer copies `HashCollisionResistant`. `Clone()` and every `With*` method build on that constructor. So `MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(100)` silently returns an instance with `HashCollisionResistant == false`. Hashtable and dictionary formatters then use a non-collision-resistant comparer on untrusted input. This is a hash-flooding DoS regression and is unrelated to REQ-2297.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:63",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.MessagePackSecurityCloneTests.WithMaximumObjectGraphDepth_PreservesHashCollisionResistant. It asserts that `UntrustedData.WithMaximumObjectGraphDepth(100).HashCollisionResistant` is true; this fails on head and passes on base."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "The generated half of a user resolver now unconditionally carries `[ExcludeFromCodeCoverage]`. That attribute has `AllowMultiple = false`. A user who already puts `[ExcludeFromCodeCoverage]` on their `[GeneratedMessagePackResolver] partial class` gets CS0579 (duplicate attribute), and code that compiled on base breaks. The same applies to the composite resolver template.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageDuplicateTests.UserAttributeOnResolver_NoDuplicateAttributeError. It drives `MessagePackGenerator` over a resolver the user already marked `[ExcludeFromCodeCoverage]` and asserts no CS0579 in the output compilation."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-4"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-3",
+    "lens": "logic-edge",
+    "claim": "The emitted attribute is guarded by `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. `System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute` exists in netstandard2.0 and .NET Framework 4.0+, and is valid on classes there. So consumers targeting those frameworks get no attribute, contrary to 'All generated code is decorated'. The guard is unnecessary for compilation.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run the generator with `CSharpParseOptions.WithPreprocessorSymbols(\"NETSTANDARD2_0\")` against netstandard2.0 reference assemblies. Then use the semantic model to check whether the generated formatter type has `ExcludeFromCodeCoverageAttribute`. On head it does not, although the attribute resolves in that compilation."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "The copy constructor of MessagePackSecurity no longer copies HashCollisionResistant. Any derived or cloned security instance (e.g. WithMaximumObjectGraphDepth, or Clone) silently loses collision resistance, so UntrustedData-derived options become hash-vulnerable. This is unrelated to the requirement and is a security regression.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:62",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Create MessagePackSecurity.UntrustedData (HashCollisionResistant true), call WithMaximumObjectGraphDepth(10) (or the clone path using the copy ctor), and assert HashCollisionResistant is still true. It fails at head and passes at base."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-2",
+    "lens": "compatibility",
+    "claim": "The attribute is wrapped in #if !NETSTANDARD2_0 && !NETFRAMEWORK, so generated code in projects targeting netstandard2.0 or .NET Framework is still not excluded from coverage. The requirement says all generated code. The ledger says follow the requirement for this case (L9). The compile-safety part is satisfied, but the coverage goal is not met for those targets.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Run the generator snapshot tests with a netstandard2.0 or net472 compilation and check that the formatter output has no ExcludeFromCodeCoverage attribute outside the #if block."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-3",
+    "lens": "compatibility",
+    "claim": "The nesting emission now writes `{\\r\\n` when type constraints exist, where it wrote `{` before. Generated output changes by one newline for generic nested types, so users' checked-in or snapshot output changes. The change is not related to the attribute.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Rerun the snapshot tests for nested generic types with constraints and diff the output against base."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "security-1",
+    "lens": "security",
+    "claim": "The copy constructor MessagePackSecurity(MessagePackSecurity copyFrom) no longer copies HashCollisionResistant. Anything built from a copy, such as WithMaximumObjectGraphDepth or other derived instances, silently loses hash-collision resistance. A copy of MessagePackSecurity.UntrustedData would then use non-resistant comparers for Dictionary/HashSet keys, which re-opens the hash-flooding DoS that UntrustedData is meant to prevent. The change is unrelated to the ExcludeFromCodeCoverage requirement.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:62",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add a unit test: var s = MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(10); Assert.True(s.HashCollisionResistant). Also deserialize a Dictionary<string,..> with s and assert the comparer is collision-resistant. It passes on base and fails on head. A mutation that restores the deleted line would be killed by this test."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "Unrelated change in MessagePackSecurity copy constructor removes copying of HashCollisionResistant. A cloned/derived security instance silently loses the collision-resistant setting, reverting to the default and weakening secure-by-default behavior. This is out of scope for the code-coverage requirement and is a security regression (L4 records secure-by-default history).",
+    "location": "src/MessagePack/MessagePackSecurity.cs:62",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Unit test: create MessagePackSecurity.UntrustedData (HashCollisionResistant true), call WithMaximumObjectGraphDepth(10) which uses the copy ctor, assert HashCollisionResistant is still true. Fails at head."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-3",
+    "lens": "product-context",
+    "claim": "The attribute is applied only to formatters and resolvers, plus the resolver's nested helper classes. Any other emitted types are not covered, so 'all generated code' depends on the test enumerating every emitted file. The test only covers one source sample (object, string-key, enum, union, resolver), so generic or nested-type formatters and other templates are unchecked.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:57",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Rerun the snapshot tests and grep all generated outputs for type declarations lacking ExcludeFromCodeCoverage, including generic and nested cases."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "MessagePackSecurity copy constructor no longer copies HashCollisionResistant, so derived/cloned options silently lose the collision-resistant setting. No test in the diff exercises this. This is an out-of-scope security regression and nothing in the change would fail on it.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:62",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack/MessagePackSecurity.cs:62 delete-statement: this.HashCollisionResistant = copyFrom.HashCollisionResistant; (already deleted by change) -> expected to survive because no test in the diff constructs MessagePackSecurity via the copy constructor and asserts HashCollisionResistant is preserved; the new tests only cover source generator output. A test that does WithMaximumObjectGraphDepth on UntrustedData and asserts HashCollisionResistant would fail."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The TransformUtilities change from \"{\" to \"{\\r\\n\" when constraints are present is not covered by the new tests. The test source has no nested generic types with constraints, so reverting it would not fail the new tests.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: writer(anyConstraints ? \"{\\r\\n\" : ...) -> writer(anyConstraints ? \"{\" : ...); expected to survive because CodeCoverageExclusionTests.TestSource has no nesting generic type with constraints, and the only check for this would be the snapshot tests."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The tests only check text and never compile the generated output with a netstandard2.0/NETFRAMEWORK define. They also only check that the guard string exists, not that the guard is correct. If the guard were inverted or the symbol misspelled, the string checks would still pass or the netstandard compile would not be exercised. The tests also use a single set of types: no generic, nested or constrained formatter and no CompositeResolver template, even though CompositeResolverTemplate was changed.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:73",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7 remove-guard: delete the attribute on the CompositeResolver partial class; expected to survive because TestSource uses only GeneratedMessagePackResolver, not a CompositeResolver, so only snapshot tests would notice."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "The test's assertion generated.Count >= 5 and per-file Contains check pass if any single type in a file has the attribute. A file with several types (resolver file: resolver class, FormatterCache, GetFormatterHelper) passes even if one of them loses its attribute, since the guarded count is compared only to the attribute count, not to the type count.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:77",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48 delete-statement: remove the attribute from GetFormatterHelper; expected to survive because the resolver file still contains other ExcludeFromCodeCoverage occurrences and the tests count only attribute presence per file."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-2",
+    "lens": "product-context",
+    "claim": "Generated code on netstandard2.0 and .NET Framework is not excluded from coverage, so the 'all generated code' requirement is only partly met. The README documents this gap. Ledger L9 says follow the requirement without recording a preference; this is a known limitation rather than a recorded decision.",
+    "location": "README.md:1640",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Cite the '#if !NETSTANDARD2_0 && !NETFRAMEWORK' guards in the templates and the README sentence; compare to acceptance criterion 'All generated code is decorated'."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  }
+]

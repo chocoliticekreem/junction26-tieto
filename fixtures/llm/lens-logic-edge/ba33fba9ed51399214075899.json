@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "When a `[MessagePackObject]` type declared in source inherits an unkeyed public field from a base class in a referenced assembly, MsgPack004 is now silently dropped. The guard at the changed line checks only `formattedType.DeclaringSyntaxReferences.IsEmpty`, and `formattedType` here is the source type, so the diagnostic is still built. But `item` (the inherited field) comes from metadata, so `DeclaringSyntaxReferences.FirstOrDefault()` gives a null location, i.e. `Location.None`. The new wrapper `ReportIfLocatedInCompilation` (line 239, body at 1446) then throws the diagnostic away. The user's own source type gets no error for a public member that has neither `[Key]` nor `[IgnoreMember]` (L3), and nothing tells them the member is mishandled. Base crashed here (AD0001); head swaps the crash for a silent miss instead of reporting at a fallback location such as the derived type's identifier. The `BothStringAndIntKeyAreNull` path via `GetPropertyIdentifierLocation` has the same gap for inherited metadata properties.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1079",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.InheritedMetadataMemberNeedsKeyTests.MemberNeedsKey_IsReported_ForPublicFieldInheritedFromReferencedAssembly. It compiles lib (`public class BaseType { public int Unkeyed; }`) to an image, references it from app (`[MessagePackObject] public class Derived : Lib.BaseType { [Key(0)] public int Keyed; }`), runs MsgPack00xMessagePackAnalyzer, and asserts that MsgPack004 is reported. On head no MsgPack004 is produced, so the test fails."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/InheritedMetadataMemberNeedsKeyTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack.SourceGenerator.Analyzers;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class InheritedMetadataMemberNeedsKeyTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public InheritedMetadataMemberNeedsKeyTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task MemberNeedsKey_IsReported_ForPublicFieldInheritedFromReferencedAssembly()\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        CSharpParseOptions parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n\n        string libSource = \"\"\"\n            namespace Lib\n            {\n                public class BaseType\n                {\n                    public int Unkeyed;\n                }\n            }\n            \"\"\";\n\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(libSource, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using MemoryStream stream = new MemoryStream();\n        var emitResult = lib.Emit(stream);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n        MetadataReference libReference = MetadataReference.CreateFromImage(stream.ToArray());\n\n        string appSource = \"\"\"\n            using MessagePack;\n\n            namespace App\n            {\n                [MessagePackObject]\n                public class Derived : Lib.BaseType\n                {\n                    [Key(0)]\n                    public int Keyed;\n                }\n            }\n            \"\"\";\n\n        CSharpCompilation app = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(appSource, parseOptions) },\n            references.Append(libReference),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        CompilationWithAnalyzers withAnalyzers = app.WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(new MsgPack00xMessagePackAnalyzer()));\n        ImmutableArray<Diagnostic> diagnostics = await withAnalyzers.GetAllDiagnosticsAsync();\n        foreach (Diagnostic d in diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack004\");\n    }\n}\n",
+        "test_names": [
+          "MemberNeedsKey_IsReported_ForPublicFieldInheritedFromReferencedAssembly"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10857,
+  "output_tokens": 8265,
+  "ms": 75016,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early return in CollectGeneric fires for every closed generic whose definition comes from a referenced assembly, including the previously working `class Item<T>` row. On base, that closed-generic branch first collected the substituted type arguments (`foreach (var item in type.TypeArguments) this.CollectCore(item, ...)`) and only then called GetObjectInfo. Returning before that branch means a source-declared type argument is no longer collected. Example: `Item<App.Color>` where `Color` is an enum declared in the app and reachable only through that member. The app's generated resolver loses `Color`'s formatter, so AOT/trimmed apps fail at runtime. The analyzer also stops checking those app-local type arguments. L8 only exempts the metadata type itself, not app-local type arguments.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ReferencedGenericTypeArgumentTests.LocalEnumTypeArgumentOfReferencedGenericClassStillGetsFormatter. It compiles lib (`[MessagePackObject] public class Item<T>`) to a PE image and references it from app (`Cmd { [Key(0)] Item<Color> Member }`, with `enum Color` in app). It asserts the generator output contains `IMessagePackFormatter<global::App.Color>`. Expected to pass on base (the class row was 'ok') and fail on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new reportDiagnostic wrapper silently drops every diagnostic whose location is Location.None, not only those for metadata symbols. GetPropertyIdentifierLocation returns null for source-declared properties whose syntax is not a PropertyDeclarationSyntax. That covers record positional properties (ParameterSyntax) and indexers. So BothStringAndIntKeyAreNull on, for example, a source record `[property: Key((string)null)] string X` is now dropped instead of being reported at the parameter. Base threw an InvalidCastException here; head hides the error and generation proceeds with a member that has no key.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:991",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "GetPropertyIdentifierLocation (TypeCollector.cs:1440) casts with `as PropertyDeclarationSyntax`, which yields null for a positional record property. ReportIfLocatedInCompilation (1450-1456) then drops the diagnostic because Location.None.IsInSource is false."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ReferencedGenericTypeArgumentTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.IO;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ReferencedGenericTypeArgumentTests(ITestOutputHelper logger)\n{\n    private const string LibSource = \"\"\"\n        using MessagePack;\n        namespace Lib\n        {\n            [MessagePackObject]\n            public class Item<T>\n            {\n                [Key(0)]\n                public T Value { get; set; }\n            }\n        }\n        \"\"\";\n\n    private const string AppSource = \"\"\"\n        using MessagePack;\n        using Lib;\n        namespace App\n        {\n            public enum Color { Red, Green }\n\n            [MessagePackObject]\n            public class Cmd\n            {\n                [Key(0)]\n                public Item<Color> Member { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            partial class R { }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task LocalEnumTypeArgumentOfReferencedGenericClassStillGetsFormatter()\n    {\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        var framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        var lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(LibSource, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        using var ms = new MemoryStream();\n        var emit = lib.Emit(ms);\n        Assert.True(emit.Success, string.Join(\"\\n\", emit.Diagnostics));\n        var libRef = MetadataReference.CreateFromImage(ms.ToArray());\n\n        var app = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(AppSource, parseOptions) },\n            references.Append(libRef),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(app, out _, out _);\n        var result = driver.GetRunResult();\n\n        foreach (var r in result.Results)\n        {\n            Assert.Null(r.Exception);\n        }\n\n        var generated = result.Results.SelectMany(r => r.GeneratedSources).Select(s => s.SourceText.ToString()).ToList();\n        foreach (var text in generated)\n        {\n            logger.WriteLine(text);\n        }\n\n        Assert.Contains(generated, t => t.Contains(\"IMessagePackFormatter<global::App.Color>\"));\n    }\n}\n",
+        "test_names": [
+          "LocalEnumTypeArgumentOfReferencedGenericClassStillGetsFormatter"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 9770,
+  "output_tokens": 9770,
+  "ms": 89937,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The preprocessor condition in EnumTemplate is inverted relative to every other template. It emits ExcludeFromCodeCoverage only on NETSTANDARD2_0/NETFRAMEWORK, where the other templates deliberately skip it. On NETSTANDARD2_0 and NETFRAMEWORK targets the attribute is emitted, so a compile error is possible if the attribute is unavailable or inapplicable there. On modern TFMs enum formatters are not excluded from coverage, so the requirement (all generated code) is not met.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests and inspect the enum formatter snapshot. It has `#if NETSTANDARD2_0 || NETFRAMEWORK` around the attribute while the other formatters use `#if !...`. Then compile the generated enum formatter in a net8.0 project and check for the attribute via reflection. It will be absent. Also compile it in a netstandard2.0 project."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is not emitted on NETSTANDARD2_0/NETFRAMEWORK. ExcludeFromCodeCoverage exists in netstandard2.0 and .NET Framework 4.0+, so users on those targets (common for MessagePack) still get coverage skew. The requirement asks for all generated code to be decorated. The guard also changes nothing observable about compilation, but it silently leaves the issue unfixed for those TFMs.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "ExcludeFromCodeCoverageAttribute is available in netstandard2.0 (System.Diagnostics.CodeAnalysis). Compile a generated formatter in a netstandard2.0 project with the attribute applied unconditionally and confirm it builds. The `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guard is therefore unnecessary."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change emits `{\\r\\n` instead of `{` when nesting types have constraints. This alters the generated output for every nested generic type with constraints in users' projects and in snapshots, and the change is unrelated to the requirement. It is whitespace-only, so there is no compile impact, but it is a snapshot churn risk.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests for nested generic types with constraints and check that the diff contains the added newline after `{`."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10001,
+  "output_tokens": 1020,
+  "ms": 7221,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

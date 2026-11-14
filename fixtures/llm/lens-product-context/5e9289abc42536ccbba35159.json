@@ -1,0 +1,45 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new README section and the MsgPack004 doc state that diagnostics for members of referenced-assembly types are reported by the defining assembly. This is consistent with the deliberate behavior in [L8], so it is not a defect. The ledger records that metadata types are not analysed by the consuming project.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] Types from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly; the docs match."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README claims closed generic types from referenced assemblies get no diagnostics from the consumer. The new ReportIfLocatedInCompilation filter drops every diagnostic whose location is outside the compilation. Closed generics are routed through GetObjectInfo, whereas [L8] describes non-generic metadata types returning early. This is a new, broader suppression layer than the one recorded. Diagnostics tied to a source member of the consuming type, but with a location in metadata, are silently dropped. That is consistent with [L8]'s intent but not recorded as a general filter. [L10] warns that analyzer reporting changes can cause wrong reports.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] and [L10]: metadata types intentionally not analysed; the filter extends this to closed generics. Verify with a test that a diagnostic with Location.None (for example one built with a null location) is still handled as intended."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Diagnostic.Create with a null location yields Location.None, which ReportIfLocatedInCompilation drops. A diagnostic that previously reported without a location, for example on the same-assembly path where FirstOrDefault returns null, is now silently suppressed. This could hide real errors, since the filter applies to every diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1444",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing analyzer tests (MsgPack003/004/005 etc.) and add a case where a diagnostic has no source location in the same assembly; assert it is still reported."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 10617,
+  "output_tokens": 860,
+  "ms": 7080,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

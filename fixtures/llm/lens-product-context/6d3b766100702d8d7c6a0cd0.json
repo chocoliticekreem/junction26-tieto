@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The generator emits formatters for a type from a referenced assembly. A context-free reviewer would see this as contradicting the deliberate rule that referenced-assembly types get no formatter from the compiling assembly. L11 covers only the implicit TypeCollector path and is not a defect there. This is an explicit opt-in via [GeneratedMessagePackFormatter], and the requirement asks for it, so it is consistent.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:60",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] referenced-assembly types are deliberately skipped by TypeCollector.CollectCore. The new collector is a separate explicit opt-in path, and TypeCollector.cs:367 is not modified."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode skips public get-only properties and readonly fields, and constructor parameters are not matched. This differs from ContractlessStandardResolver, but L19 says to follow the requirement, and the requirement only says public members are in scope.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L19] no preference on get-only members; follow the requirement. The README documents the limitation."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement says that if T carries MessagePack attributes (DataContract or MessagePackObject), they are honoured. The collector ignores [MessagePackObject], [Key] and [DataMember] on T and always uses contractless members or the surrogate. A T annotated with [Key] therefore gets contractless output.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:96",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "In the ExecutionTests, add an external-style type with [MessagePackObject] and [Key(0)] members, then generate a formatter for it with no surrogate. Assert that the output is an array with integer keys. The current code emits a string-key map."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new public attribute GeneratedMessagePackFormatterAttribute in MessagePack.Annotations has no PublicAPI.Unshipped.txt entry shown in the diff. This is a convention violation if the repo tracks the public API surface.",
+        "location": "src/MessagePack.Annotations/Attributes.cs:143",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check src/MessagePack.Annotations/PublicAPI.Unshipped.txt, if present, for the GeneratedMessagePackFormatterAttribute entries."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Contractless by default, plus an optional SurrogateType for keys. Attributes on T are not read, and the surrogate type must be in the consuming assembly."
+      },
+      {
+        "label": "B",
+        "summary": "Contractless by default, but honour the attributes already on T ([MessagePackObject]/[Key]/[DataContract]). Drop the surrogate, or keep it only as an extra. This requires reading T's attributes in GeneratedFormatterCollector and choosing int or string keys from them."
+      }
+    ]
+  },
+  "input_tokens": 29507,
+  "output_tokens": 1196,
+  "ms": 8538,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

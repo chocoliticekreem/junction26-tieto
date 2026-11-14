@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `MessagePackSecurity` copy constructor no longer copies `HashCollisionResistant`. Every derived instance (`Clone()`, used by `WithMaximumObjectGraphDepth` and by subclasses) silently reverts to non-collision-resistant hashing. Example: `MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(100).HashCollisionResistant` is now false. `GetEqualityComparer<T>()` then returns `EqualityComparer<T>.Default` for untrusted data, which re-opens the hash-flooding DoS that UntrustedData exists to prevent. This change is unrelated to REQ-2297.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:62",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.MessagePackSecurityCopyTests.UntrustedData_WithMaximumObjectGraphDepth_KeepsHashCollisionResistance. It asserts the derived security still has HashCollisionResistant == true; it fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, but `System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute` exists on .NET Framework 4.0+ and in netstandard2.0. Users whose generated code compiles for netstandard2.0 or net4x (a very common case) therefore get no attribute on any formatter or resolver. That breaks the 'all generated code is decorated' acceptance criterion with no compatibility reason. A further gap: compilations that define neither symbol but lack the type would fail, because the condition guards on TFM symbols rather than type availability.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Drive CSharpGeneratorDriver over a [MessagePackObject] type with CSharpParseOptions.WithPreprocessorSymbols(\"NETFRAMEWORK\") (or NETSTANDARD2_0) and a [GeneratedMessagePackResolver] partial class. Compile the output and assert the generated formatter and resolver type symbols carry ExcludeFromCodeCoverageAttribute; this fails on head. The same applies to EnumTemplate.tt:8, UnionTemplate.tt:10, StringKeyFormatterTemplate.tt:18, ResolverTemplate.tt:14/31/48 and CompositeResolverTemplate.tt:7/35."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Ledger L9 records the decision 'Add an opt-out setting' for this area. The change emits the attribute unconditionally (apart from the TFM guard) and adds no generator option to suppress it.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "L9 (area=codegen-templates): 'Add an opt-out setting'. No GeneratorOptions/AnalyzerOptions change or template condition appears in the diff."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`CompositeResolverTemplate.tt` gains a second attribute on the nested `FormatterCache<T>` class. The shown `CompositeResolverTemplate.cs` hunks only update the outer `partial class` write, so the compiled T4 output may be out of sync with the .tt. The cache class in composite resolvers would then lack the attribute, while ResolverTemplate's equivalent class has it.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Re-run T4 transformation of CompositeResolverTemplate.tt and diff against the committed CompositeResolverTemplate.cs. Alternatively, inspect a composite resolver snapshot for an ExcludeFromCodeCoverage line above `static class FormatterCache<T>`."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MessagePackSecurityCopyTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MessagePackSecurityCopyTests\n{\n    [Fact]\n    public void UntrustedData_WithMaximumObjectGraphDepth_KeepsHashCollisionResistance()\n    {\n        MessagePackSecurity.UntrustedData.HashCollisionResistant.Should().BeTrue();\n\n        MessagePackSecurity derived = MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(100);\n\n        derived.MaximumObjectGraphDepth.Should().Be(100);\n        derived.HashCollisionResistant.Should().BeTrue(\"deriving a security setting from UntrustedData must not silently drop collision-resistant hashing\");\n    }\n}\n",
+        "test_names": [
+          "UntrustedData_WithMaximumObjectGraphDepth_KeepsHashCollisionResistance"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 12767,
+  "output_tokens": 6209,
+  "ms": 55332,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

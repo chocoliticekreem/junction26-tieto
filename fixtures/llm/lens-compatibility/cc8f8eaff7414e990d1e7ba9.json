@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new ReportIfLocatedInCompilation wrapper drops every diagnostic whose Location is not in source of the current compilation, including diagnostics created with a null location (Location.None). Previously, diagnostics like MsgPack004/MsgPack003 etc. that were created with a null/None location (e.g. via GetIdentifierLocation returning null) would be reported; now they silently vanish. It also drops diagnostics located in a syntax tree from another compilation. This is a global filter on all analyzer diagnostics, beyond the narrow crash fix, and could suppress diagnostics users currently see.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the analyzer tests (MsgPack003/004/005/006/007/008/009/012/018 verifiers) at base and head; add a case where the diagnostic is created with a null location from a partial or source-declared type and assert it is still reported. Any test whose expected diagnostic disappears fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper is applied only to reportDiagnostic, while the crash fix covers just two of the three DeclaringSyntaxReferences[0] sites. Line 735 (the reporter's first site) is not changed in this diff. If it is still reachable for a metadata closed generic struct, the IndexOutOfRangeException persists.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:735",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer/generator test with the repro (a referenced-assembly struct Item<T> used as Item<int> member in a [MessagePackObject]) and assert no CS8785/AD0001; also grep for remaining DeclaringSyntaxReferences[0] in TypeCollector.cs."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7243,
+  "output_tokens": 694,
+  "ms": 5948,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

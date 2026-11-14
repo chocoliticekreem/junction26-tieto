@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Unrelated change to the timestamp writer condition (0xffffffff00000000 -> 0x00000000ffffffff) has no test in the diff. Mutation here would corrupt DateTime/timestamp encoding: timestamp32 would be chosen only when the low 32 bits are zero, so ordinary timestamps would take another path. No test in the diff exercises timestamp encoding.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize DateTime/Timestamp (e.g. 2020-01-01 UTC, nanoseconds=0) with base-built and head-built MessagePack; compare bytes. Expected: base emits 6-byte timestamp32 (0xd6 0xff), head emits 10-byte timestamp64."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless member ordering and key assignment (OrderBy name, intKey: i) has no test that detects a change. The tests only check string keys via JSON Contains and a header byte 0x82; a mutant removing OrderBy or altering the ordering would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:157",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:157 delete-statement: .OrderBy(m => m.Name, StringComparer.Ordinal) -> removed; expected to survive because tests assert only Contains on JSON and round-trip, not byte order."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate string-key mode is never tested end to end (only integer-key surrogate in execution tests), so the `intKey: members.Count, stringKey: (string)key` branch and the string-key detection are unverified. Duplicate-key (KeysMustBeUnique), MemberNeedsKey, and no-parameterless-constructor (NoDeserializingConstructor) paths also have no tests.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:215",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:215 remove-guard: `if (!claimedKeys.Add(key))` -> `if (false)`; expected to survive because no test has a surrogate with duplicate keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratedFormatterMustImplementFormatter test only covers zero interfaces; the `Length != 1` case with multiple IMessagePackFormatter<T> interfaces is untested. The Collect-side check for inaccessible/generic/struct data types is likewise untested (only abstract). No generator snapshot (regeneration) test covers the new partial-class template output.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:61",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:61 negate-condition: `formatterInterfaces.Length != 1` -> `== 0`; expected to survive because no test implements two formatter interfaces."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities filter that excludes [GeneratedMessagePackFormatter] classes from hand-written formatter registration is only indirectly tested; a duplicate registration might not be noticed by GeneratedFormattersAreRegisteredInGeneratedResolver, which only checks the returned type.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: delete `!symbol.GetAttributes().Any(...)`; expected to survive because tests only assert resolver returns the right type."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25875,
+  "output_tokens": 1425,
+  "ms": 10269,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The contractless mode only emits public read-write members, so public get-only properties and readonly fields are skipped. ContractlessStandardResolver (the dynamic mode users have today) includes these members, which are serialized and restored through a constructor. A user switching to this attribute would get different wire content. Separately, a class with no parameterless constructor is rejected with MsgPack005 and gets no formatter at all.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with `public int A {get;set;}` and `public int B {get;}` (set in the constructor) using ContractlessStandardResolver, then using the generated formatter. Compare the bytes; the generated output will lack key B."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Contractless mode sorts members by ordinal name, and it ignores any [DataContract]/[DataMember]/[MessagePackObject]/[Key] attributes on T. The requirement says T's own attributes must be honoured when present. The implementation honours only surrogate attributes, so a T with [Key] or [DataMember] gets contractless string keys. This differs from the dynamic resolver's output for the same T.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:122",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Take a T annotated with [MessagePackObject] and [Key(0)]/[Key(1)] in a referenced assembly. Serialize it with the dynamic resolver, then with the [GeneratedMessagePackFormatter] formatter. The dynamic output is an array, while the generated output is a map with name keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute-based exclusion of user-declared formatters in the hand-written formatter scan runs per candidate class. Hand-written formatters that happen to be partial and annotated are now silently dropped from the generated resolver. Also, the diagnostics MsgPack019-022 are Error severity and are newly reported only for opted-in classes, so this should not affect existing users. However, Collect is called without an accessibility guard on the generated partial's own declared accessibility: the template emits `partial class` with no accessibility modifier. Combined with the user's `public partial class`, the generated formatter may be inaccessible if the formatter is nested, or its resolver registration may not compile in an internal resolver.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:35",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with a public partial formatter annotated with the attribute, plus a resolver-generating assembly. Check that the generated resolver references the formatter correctly and that the build has no errors."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new diagnostics MsgPack019-022 are added to the analyzer's SupportedDiagnostics, but nothing in the diff updates AnalyzerReleases.Unshipped.md or adds doc/analyzers pages. The help links point to missing docs. The RS2000 release-tracking analyzer would fail the build with warnings-as-errors.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that src/MessagePack.SourceGenerator/AnalyzerReleases.Unshipped.md has no MsgPack019-022 entries; the build would report RS2000."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18728,
+  "output_tokens": 1301,
+  "ms": 10771,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The added `continue` after reporting DoNotMixStringAndIntKeys changes generator behavior for types that mix int and string keys. Previously the mismatched member fell through to the code below and could be added, or crash. Now it is skipped, so the generated formatter for such a type omits that member. Users with this already-erroring code could see different generated output, though the diagnostic is an error so the build already fails.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run generator snapshot tests on a [MessagePackObject] type mixing [Key(0)] and [Key(\"a\")]. Compare base and head output to confirm only the erroring case differs and that MsgPack analyzer diagnostics are unchanged."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate Key values (int or string) are now silently deduplicated, first wins, instead of throwing ArgumentException on Dictionary.Add. Generator output for types with duplicate keys changes from crash/no output to a formatter containing only the first member. This relies on a duplicate-key diagnostic (MsgPack006) being reported elsewhere; if it is not reported on every path, such code silently compiles and drops members from the wire format.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a [MessagePackObject] type with two members sharing [Key(0)] and another with a duplicate string key. Assert MsgPack006 is still reported, and that the generator does not throw and emits a formatter. Do it for both the property and field loops, and with SuppressSourceGeneration both true and false."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5394,
+  "output_tokens": 651,
+  "ms": 5725,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Ledger L7 records that an opt-out setting should be added, but the change emits the attribute unconditionally on every template with no opt-out. Users whose coverage tooling relies on generated code, or who want no new attributes, cannot disable it. The attribute is also silently omitted on netstandard2.0 and .NET Framework, so the requirement 'all generated code' is not met there.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "Cite L7 ('Add an opt-out setting'). Grep the diff and the generator options (MessagePackGeneratorOptions) for any new option. None exists."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guard excludes netstandard2.0 and .NET Framework targets, so generated code there stays undecorated and coverage is still skewed. The guard also does not cover targets such as netstandard2.1 or netcoreapp where the symbol is defined only by an unusual constant, and the preprocessor symbols depend on the user's TFM. A user whose project defines neither symbol but targets an older TFM lacking the attribute (e.g. netstandard1.x, or a custom TFM) would fail to compile.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile generated output in a project targeting net462 and netstandard2.0, and check for the attribute. Then compile with a custom TFM, e.g. netstandard1.6, that lacks ExcludeFromCodeCoverage, and expect a compile error."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Generated output changed for every formatter and resolver: new `#if` blocks and attributes are inserted. Users who check in or snapshot generator output will see diffs. In TransformUtilities, the brace emission changed from `\"{\"` to `\"{\\r\\n\"` when constraints exist, which alters whitespace in existing generated output for nested constrained generic types. This is unrelated to the requirement.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests with a nested generic type that has constraints, and diff the output between base and head around the nesting brace."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10328,
+  "output_tokens": 910,
+  "ms": 7364,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

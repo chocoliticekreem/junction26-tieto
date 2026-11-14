@@ -1,0 +1,51 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Removing the `case <= byte.MaxValue` branch from the string-header writer changes the wire format for every string of 32–255 UTF-8 bytes. They are now written as str16 (0xda plus a 2-byte length, 3 bytes) instead of str8 (0xd9 plus a 1-byte length, 2 bytes). Every such string grows by one byte and no longer matches base-built bytes, which breaks byte-for-byte compatibility (hashes, golden files, other MessagePack implementations' canonical output). This is unrelated to REQ-2234 and violates the criterion that behaviour without SuppressSourceGeneration does not change.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:916",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.StringHeaderStr8ReceiptTests.StringOf40BytesUsesStr8Header. It calls MessagePackPrimitives.TryWriteStringHeader(buffer, 40, out written) and expects written == 2 and buffer[0] == MessagePackCode.Str8 (0xd9). On head it writes 3 bytes starting with 0xda. Confirm with a byte-diff of MessagePackSerializer.Serialize(new string('a', 40)) built from base and from head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `if (!intMembers.ContainsKey(...))` and `if (!stringMembers.ContainsKey(...))` guards silently drop the second member that shares a key with an earlier one. No diagnostic is reported for it. Before the change the duplicate made the collector throw, which was a loud failure. Now a [MessagePackObject] with two [Key(0)] members gets no analyzer error, and the generated formatter omits the second member, so its data is silently never serialized. The dynamic resolver used under SuppressSourceGeneration = true rejects duplicate keys at run time, yet the analyzer stays silent, which runs against the requirement that the analyzer report violations.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeyDiagnosticReceiptTests.DuplicateIntKeyIsReported. It runs all MessagePack analyzers over a public [MessagePackObject] class with two [Key(0)] properties and expects an Error-severity MsgPack diagnostic (or AD0001). On head no diagnostic is produced. The same applies to the string-key path at TypeCollector.cs:1039 and the second collector at lines 1163 and 1179."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/StringHeaderStr8ReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class StringHeaderStr8ReceiptTests\n{\n    [Fact]\n    public void StringOf40BytesUsesStr8Header()\n    {\n        byte[] buffer = new byte[8];\n        bool ok = MessagePackPrimitives.TryWriteStringHeader(buffer, 40, out int written);\n        ok.Should().BeTrue();\n        written.Should().Be(2);\n        buffer[0].Should().Be(MessagePackCode.Str8);\n        buffer[1].Should().Be((byte)40);\n    }\n}\n",
+        "test_names": [
+          "StringOf40BytesUsesStr8Header"
+        ],
+        "expects": "fail-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeyDiagnosticReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeyDiagnosticReceiptTests\n{\n    private static ImmutableArray<DiagnosticAnalyzer> LoadAnalyzers()\n    {\n        return typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract\n                && typeof(DiagnosticAnalyzer).IsAssignableFrom(t)\n                && t.GetCustomAttributes(typeof(DiagnosticAnalyzerAttribute), false).Length > 0\n                && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n    }\n\n    [Fact]\n    public async Task DuplicateIntKeyIsReported()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class Dup\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                [Key(0)]\n                public int B { get; set; }\n            }\n            \"\"\";\n\n        var refs = new List<MetadataReference>();\n        refs.AddRange(await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None));\n        refs.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsDuplicateKey\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp7_3)) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        var analyzers = LoadAnalyzers();\n        analyzers.Should().NotBeEmpty();\n\n        var diagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n\n        diagnostics.Should().Contain(d => (d.Id.StartsWith(\"MsgPack\") && d.Severity == DiagnosticSeverity.Error) || d.Id == \"AD0001\");\n    }\n}\n",
+        "test_names": [
+          "DuplicateIntKeyIsReported"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8907,
+  "output_tokens": 8717,
+  "ms": 76719,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

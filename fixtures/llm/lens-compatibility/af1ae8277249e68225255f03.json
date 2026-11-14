@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new reportDiagnostic wrapper drops every diagnostic whose Location is not IsInSource. Diagnostics that were previously reported with Location.None, for example when a null location is passed, are now silently suppressed. A user type whose diagnostic lacks a source location, such as one using GetLocation helpers that return null, no longer gets that diagnostic. This is a behaviour change for same-assembly types, which are meant to \"keep working as before\".",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the analyzer tests for MsgPack003/004/005/006/007/008/009 and others that report with GetLocation(...) helpers returning null on a source type. Check that no diagnostic previously reported is now missing. Compare the diagnostics from a build with base vs head over the existing analyzer test suite."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The filter does not fix the crash from the other unguarded `DeclaringSyntaxReferences[0]` indexers the reporter named. Only the property-identifier site (now GetPropertyIdentifierLocation) and the two guarded contractAttr sites are fixed. Other paths in GetObjectInfo are unguarded for a metadata closed generic struct (e.g. around line 735), so the crash may remain. Also, for a metadata type the whole GetObjectInfo still runs and the resulting ObjectSerializationInfo is built, which may differ from the non-generic metadata case, where CollectCore returns early.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:983",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a generator/analyzer test with a two-compilation setup: a referenced-assembly `[MessagePackObject] struct Item<T>` with [Key] members, used as `Item<int>` in a MessagePackObject in the app. Assert there is no CS8785/AD0001 and that a GeneratedMessagePackResolver is produced. Also test with members lacking keys and with the init property."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7913,
+  "output_tokens": 769,
+  "ms": 6318,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

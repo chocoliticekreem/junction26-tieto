@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change contains no test hunks. Snapshot outputs are updated but no test asserts that the attribute is emitted, that the #if guard is correct, or that the generated code compiles on netstandard2.0 or net framework. Removing the attribute from a template would only change snapshots, which are regenerated rather than hand-asserted.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 delete-statement: remove the ExcludeFromCodeCoverage line from the written string -> expected to survive unless verified snapshots are checked in; no explicit test asserts the attribute is present"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The #if condition `!NETSTANDARD2_0 && !NETFRAMEWORK` is untested. Negating it or dropping the guard would not fail any test in the diff, and no test compiles the generated output under a netstandard2.0 or net framework target to prove the guard is needed or correct.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:38",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:38 negate-condition: #if !NETSTANDARD2_0 && !NETFRAMEWORK -> #if NETSTANDARD2_0 && NETFRAMEWORK; expected to survive because no test compiles generated code with those symbols defined, and snapshots are regenerated"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change from \"{\" to \"{\\r\\n\" when constraints exist alters whitespace for nested generic types with constraints. No test hunk targets this, so the line is covered only by snapshots, and only if a snapshot has a nested constrained type.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: anyConstraints ? \"{\\r\\n\" : \" {\\r\\n\" -> anyConstraints ? \"{\" : \" {\\r\\n\"; expected to survive if no snapshot has a nested type with constraints"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute was added to the hand-edited generated .cs files and the .tt files separately, so they can drift. The Union and Enum .cs hunks and the .tt hunks must stay in sync. No test regenerates the .cs files from the .tt files to check this, and the diff shows no differences such as the CompositeResolver .cs/.tt line placement.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/UnionTemplate.cs:30",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the T4 transform on all .tt files and byte-diff the output against the committed .cs files; any difference shows drift not caught by tests"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Per ledger L6 an opt-out setting is expected, but the change adds no setting and no test for opt-out behavior, so no test would detect that the opt-out is missing.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "L6: 'Add an opt-out setting'; the diff emits the attribute unconditionally on non-netstandard2.0 and non-net-framework targets, with no option and no test for the opt-out"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10217,
+  "output_tokens": 1375,
+  "ms": 10235,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

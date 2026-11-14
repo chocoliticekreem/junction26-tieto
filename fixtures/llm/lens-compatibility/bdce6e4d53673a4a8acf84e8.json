@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new MsgPack019-022 descriptors are added to SupportedDiagnostics, but GeneratedFormatterCollector reports them through the source generator's RegisterSourceOutput. They are only enabled for [GeneratedMessagePackFormatter] users, so existing users are not affected. However, the rows may be missing from AnalyzerReleases.Unshipped.md. If so, RS2008 would fire in the analyzer project, and warnings-as-errors would break the build for contributors. The hunks do not show this file, so this is unverified.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that src/MessagePack.SourceGenerator/AnalyzerReleases.Unshipped.md lists MsgPack019-022; build the analyzer project and look for RS2000/RS2008."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new GeneratedFormatterCollector is not run during normal analysis. It is only wired into the generator pipeline, which means MsgPack019-022 are reported only when the generator runs. A hand-written class that implements IMessagePackFormatter<T> and carries the attribute is now skipped by the hand-written-formatter registration in GeneratorUtilities. If the collector then rejects it (non-partial, or a generic T), the class is silently dropped from the generated resolver and only a diagnostic remains. This is only reachable for classes that already use the new attribute, so existing users are not affected.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:35",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read GeneratorUtilities.cs:35 and the generatedFormatterDiagnostics path in MessagePackGenerator.cs."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode serializes only public read-write members. For fields, IsPublicReadWrite requires field.IsReadOnly, so it keeps only readonly fields and excludes normal mutable public fields. The doc comment says public read-write fields are serialized, so this looks like an inverted condition. Ordinary public fields would be silently omitted from the wire format.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:277",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a formatter for `class T { public int F; public int P {get;set;} }` and serialize it. Expect keys F and P; currently F is missing. Also try `public readonly int R`, which would be wrongly included and cannot be assigned on deserialize."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "A new GeneratedFormatterCollector.Collect call and the contractless member ordering (alphabetical ordinal) differ from ContractlessStandardResolver, which orders members by declaration order. This changes the map key order on the wire, so bytes are not identical to dynamic contractless output. Readers match keys, so it is mostly interoperable, but the bytes differ.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:176",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize `class T { public int Z{get;set;} public int A{get;set;} }` with ContractlessStandardResolver and with the generated formatter, then compare the bytes."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18700,
+  "output_tokens": 1253,
+  "ms": 9255,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

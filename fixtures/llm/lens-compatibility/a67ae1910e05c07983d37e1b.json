@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetPropertyIdentifierLocation still indexes DeclaringSyntaxReferences[0] unguarded, despite its doc comment saying it returns null for metadata properties. For a closed generic struct from a referenced assembly with a property that has neither Key nor IgnoreMember (BothStringAndIntKeyAreNull path), this still throws IndexOutOfRangeException. The ReportIfLocatedInCompilation filter only runs after Diagnostic.Create, so it cannot prevent the throw. Also the cast to PropertyDeclarationSyntax would throw for non-property syntax.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer/generator test with a metadata reference library declaring `[MessagePackObject] public struct Item<T> { [Key(0)] public string K {get;set;} }` and a consumer with `Item<int>` as a member. For BothStringAndIntKeyAreNull, use a property with a derived KeyAttribute that has both keys null, or any path that reaches line 985. Assert no CS8785/AD0001 and no exception. It should fail at GetPropertyIdentifierLocation with IndexOutOfRangeException."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new ReportIfLocatedInCompilation wrapper drops every diagnostic whose location is not in source or not in this compilation. This includes location-less diagnostics (null Location becomes Location.None, so IsInSource is false). Existing diagnostics created with a null location and reported for source types are now silently suppressed. For example, MemberNeedsKey with FirstOrDefault()?... null, or GetLocation helpers returning null for partial or implicit declarations, would no longer be reported in users' builds. That is a behavior change in analyzer output for users.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing analyzer test suite (MsgPack003/004/005/etc.) and add a case where a diagnostic is created with a null or Location.None location for a source type (e.g. a record primary-constructor-generated property missing a Key). Compare reported diagnostics at base vs head; head loses the diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7239,
+  "output_tokens": 855,
+  "ms": 7196,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

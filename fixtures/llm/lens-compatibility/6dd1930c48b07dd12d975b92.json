@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Every generated type now embeds `#if !NETSTANDARD2_0 && !NETFRAMEWORK` preprocessor lines. In user projects that target netstandard2.0 or .NET Framework, or multi-target with them, the generated types get no ExcludeFromCodeCoverage. The ledger entry L7 says to follow the requirement, which says all generated code. So the acceptance criterion is only partly met on those targets. The same code also changes for all users on modern TFMs with no opt-out, which is the intended purpose, so that part is not breaking.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile generator output in a project targeting netstandard2.0 and check via reflection or Roslyn that the generated formatter or resolver lacks ExcludeFromCodeCoverageAttribute. Compare with net8.0, where it is present."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The `TransformUtilities` change from `{` to `{\\r\\n` when the nesting type has constraints alters the generated text for every nested or generic-constrained type. Users who check in or snapshot generated output will see whitespace diffs, though behaviour is unchanged. This is an unrelated tweak to the requirement and could be a byte-level surprise for snapshot-based users.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests for nested generic types with constraints and inspect the diff on the `{` line after the constraints."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated code uses `ExcludeFromCodeCoverage` on types in `global::System.Diagnostics.CodeAnalysis`. On a TFM that is not NETSTANDARD2_0 or NETFRAMEWORK, such as netstandard2.1, netcoreapp2.x, or an old Unity profile, the attribute may be missing or lack the needed AttributeTargets. That could cause a compile error (CS0234) in user builds. The condition tests the target framework, not whether the attribute exists. Netstandard2.1 has the attribute, but other TFMs might not.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile the generated output in a project for each supported TFM, including netstandard2.1, and confirm there are no CS0234 or CS0246 errors."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10246,
+  "output_tokens": 945,
+  "ms": 7758,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

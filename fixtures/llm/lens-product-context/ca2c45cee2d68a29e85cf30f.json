@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change ignores [MessagePackObject]/[DataContract]/[Key] attributes on T and always uses contractless or surrogate mode. The requirement says attributes on T must be honoured. Ledger L21 gives no preference and says to follow the requirement, so this acceptance criterion is unmet.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:98",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an execution test where an external type has [MessagePackObject] and [Key(0)]/[Key(1)] and is formatted via [GeneratedMessagePackFormatter]. Assert the output is an int-key array, not a string-key map."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MessagePackSecurity.GetEqualityComparer fallback was changed from throwing TypeAccessException to returning EqualityComparer<T>.Default. This removes the hash-collision resistance guard for untrusted data and is unrelated to REQ-2129. L12 records a deliberate secure-by-default posture, and L15 says to follow the requirement, which does not mention this change.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing MessagePackSecurity tests, e.g. deserializing a Dictionary with an unknown key type under UntrustedData. They should expect TypeAccessException and will fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new attribute is a public runtime type with no [Conditional(\"NEVERDEFINED\")]. L16 records that attributes consumed only by the generator or analyzer are marked [Conditional(\"NEVERDEFINED\")] on purpose, so they are not emitted into user assemblies. GeneratedMessagePackFormatterAttribute is consumed only by the generator and lacks it, which is inconsistent with that convention.",
+        "location": "src/MessagePack.Annotations/Attributes.cs:164",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L16] Attributes consumed only by the analyzer or generator are marked [Conditional(\"NEVERDEFINED\")]; compare with the attribute declaration lacking it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless member order is name-sorted and read-only members are skipped, which differs from ContractlessStandardResolver. L22 accepts this, so it is deliberate.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:144",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L22] Name-sorted read-write-only is acceptable; [L20] contractless by default with an optional surrogate."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Contractless by default plus an optional SurrogateType for keys. Attributes on T are ignored. Implemented as GeneratedFormatterCollector with CreateContractlessMembers or CreateSurrogateMembers."
+      },
+      {
+        "label": "B",
+        "summary": "Contractless only when T lacks [MessagePackObject]/[DataContract]. When T has [MessagePackObject]/[Key], run the normal TypeCollector on T and emit its formatter into the user partial class. This needs no surrogate, which was left undecided in the thread."
+      }
+    ]
+  },
+  "input_tokens": 30211,
+  "output_tokens": 1227,
+  "ms": 10114,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

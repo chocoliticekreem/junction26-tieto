@@ -1,0 +1,76 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "IsPublicReadWrite's field branch is inverted: it uses `field.IsReadOnly && !field.IsConst`. Ordinary public mutable fields (`public int X;`) are never serialized in contractless mode. Public `readonly` fields are treated as read-write (CreateMember hardcodes IsWritable: true), so the generated Deserialize assigns to a readonly field and the generated code fails with CS0191.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:279",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterCollectorLogicTests.Contractless_PublicMutableField_IsSerialized: the generated formatter text lacks 'MutableFieldXyz'. Run Contractless_PublicReadonlyField_DoesNotBreakCompilation: the output compilation has a CS0191 error in generated code."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "When no SurrogateType is set, the collector always goes contractless (CreateContractlessMembers) and never reads [MessagePackObject]/[Key]/[IgnoreMember] (or [DataContract]/[DataMember]) on T. An [IgnoreMember] public property of an attributed T is still serialized, and [Key(int)] array layout is replaced by string-key map mode. This violates the acceptance criterion that MessagePack attributes on T are honoured.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:89",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterCollectorLogicTests.AttributedType_IgnoreMember_IsHonoured: the generated user formatter text contains 'SecretXyz' although that member is [IgnoreMember]."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "needsCast compares m.Name against \"OnBeforeSerialize\"/\"OnAfterDeserialize\" for explicit interface implementations. The metadata name of an explicit implementation is 'MessagePack.IMessagePackSerializationCallbackReceiver.OnBeforeSerialize', so needsCast is always false. For a T that implements the callback receiver explicitly, the template emits `value.OnBeforeSerialize()` without the cast, and the generated code does not compile (CS1061). The check also only inspects T's own members, not base types.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:84",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterCollectorLogicTests.ExplicitCallbackReceiver_DoesNotBreakCompilation: the output compilation reports errors on the OnBeforeSerialize/OnAfterDeserialize calls."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "IsPartial only checks the formatter's own declaration. A [GeneratedMessagePackFormatter] partial class nested inside a non-partial containing class passes validation. The template then wraps the body in EmitNestingTypesAndNamespaces (re-declaring the outer class), which yields CS0260 (missing partial modifier) instead of a MsgPack019 diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:47",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator on `class Outer { [GeneratedMessagePackFormatter] public partial class F : IMessagePackFormatter<P> { } }` with P a public class with a public property. Assert the output compilation has no CS0260 and that MsgPack019 (or a working formatter) is produced."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated-formatter model is added to modelPerType alongside the regular TypeCollector models with no deduplication by DataType. When T is also a [MessagePackObject] type in the same compilation, the resolver gets two ObjectSerializationInfo entries for the same data type. This risks a duplicate key in the resolver's type lookup (TypeInitializationException at run time) or a duplicate registration.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:74",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "MessagePackGenerator.cs:70-76 adds generatedModel unconditionally. Confirm by generating a resolver for a [MessagePackObject] T plus a [GeneratedMessagePackFormatter] for T, then resolving T's formatter at run time."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterCollectorLogicTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterCollectorLogicTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public GeneratedFormatterCollectorLogicTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task Contractless_PublicMutableField_IsSerialized()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace ProjectB\n            {\n                public class FieldHolder\n                {\n                    public int MutableFieldXyz;\n\n                    public int Prop { get; set; }\n                }\n\n                [GeneratedMessagePackFormatter]\n                public partial class FieldHolderFormatter : IMessagePackFormatter<FieldHolder> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n\n        (Compilation _, ImmutableArray<SyntaxTree> generated) = await this.RunGeneratorAsync(source);\n        string formatterSource = FindUserFormatter(generated, \"FieldHolderFormatter\");\n        Assert.Contains(\"MutableFieldXyz\", formatterSource);\n    }\n\n    [Fact]\n    public async Task Contractless_PublicReadonlyField_DoesNotBreakCompilation()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace ProjectB\n            {\n                public class ReadonlyHolder\n                {\n                    public readonly int ReadonlyFieldXyz;\n\n                    public int Prop { get; set; }\n                }\n\n                [GeneratedMessagePackFormatter]\n                public partial class ReadonlyHolderFormatter : IMessagePackFormatter<ReadonlyHolder> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n\n        (Compilation output, ImmutableArray<SyntaxTree> _) = await this.RunGeneratorAsync(source);\n        List<Diagnostic> errors = output.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();\n        foreach (Diagnostic error in errors)\n        {\n            this.logger.WriteLine(error.ToString());\n        }\n\n        Assert.Empty(errors);\n    }\n\n    [Fact]\n    public async Task AttributedType_IgnoreMember_IsHonoured()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace ProjectB\n            {\n                [MessagePackObject]\n                public class Tagged\n                {\n                    [Key(0)]\n                    public int A { get; set; }\n\n                    [IgnoreMember]\n                    public int SecretXyz { get; set; }\n                }\n\n                [GeneratedMessagePackFormatter]\n                public partial class UserTaggedFormatter : IMessagePackFormatter<Tagged> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n\n        (Compilation _, ImmutableArray<SyntaxTree> generated) = await this.RunGeneratorAsync(source);\n        string formatterSource = FindUserFormatter(generated, \"UserTaggedFormatter\");\n        Assert.DoesNotContain(\"SecretXyz\", formatterSource);\n    }\n\n    [Fact]\n    public async Task ExplicitCallbackReceiver_DoesNotBreakCompilation()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace ProjectB\n            {\n                public class Cb : IMessagePackSerializationCallbackReceiver\n                {\n                    public int X { get; set; }\n\n                    void IMessagePackSerializationCallbackReceiver.OnBeforeSerialize() { }\n\n                    void IMessagePackSerializationCallbackReceiver.OnAfterDeserialize() { }\n                }\n\n                [GeneratedMessagePackFormatter]\n                public partial class CbFormatter : IMessagePackFormatter<Cb> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n\n        (Compilation output, ImmutableArray<SyntaxTree> _) = await this.RunGeneratorAsync(source);\n        List<Diagnostic> errors = output.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();\n        foreach (Diagnostic error in errors)\n        {\n            this.logger.WriteLine(error.ToString());\n        }\n\n        Assert.Empty(errors);\n    }\n\n    private static string FindUserFormatter(ImmutableArray<SyntaxTree> trees, string name)\n    {\n        SyntaxTree? tree = trees.FirstOrDefault(t => t.ToString().Contains(\"partial class \" + name, StringComparison.Ordinal));\n        Assert.NotNull(tree);\n        return tree!.ToString();\n    }\n\n    private async Task<(Compilation Output, ImmutableArray<SyntaxTree> Generated)> RunGeneratorAsync(string source)\n    {\n        CSharpParseOptions parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = framework.Concat<MetadataReference>(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new ISourceGenerator[] { new global::MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> generatorDiagnostics);\n\n        foreach (Diagnostic diagnostic in generatorDiagnostics)\n        {\n            this.logger.WriteLine(diagnostic.ToString());\n        }\n\n        GeneratorDriverRunResult run = driver.GetRunResult();\n        foreach (SyntaxTree tree in run.GeneratedTrees)\n        {\n            this.logger.WriteLine(\"// \" + tree.FilePath);\n            this.logger.WriteLine(tree.ToString());\n        }\n\n        return (output, run.GeneratedTrees);\n    }\n}\n",
+        "test_names": [
+          "Contractless_PublicMutableField_IsSerialized",
+          "Contractless_PublicReadonlyField_DoesNotBreakCompilation",
+          "AttributedType_IgnoreMember_IsHonoured",
+          "ExplicitCallbackReceiver_DoesNotBreakCompilation"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 21146,
+  "output_tokens": 15776,
+  "ms": 133011,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

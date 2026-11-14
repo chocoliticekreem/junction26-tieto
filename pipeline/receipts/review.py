@@ -37,9 +37,11 @@ def _test_evidence(run: TestRun, side: str) -> Evidence:
 
 def run_review(change: str, req: str, base: str | None = None, router: str = "auto",
                skip_mutation: bool = False, req_tests_fixture: bool = False,
-               head: str | None = None, ab_reading: Interpretation | None = None) -> int:
+               head: str | None = None, ab_reading: Interpretation | None = None,
+               no_ab: bool = False) -> int:
     """Review `change` (a branch, or `head` when given). `ab_reading` marks a per-branch run of an
-    A/B decision (<change>__A / __B): it reviews that branch and never starts another A/B."""
+    A/B decision (<change>__A / __B): it reviews that branch and never starts another A/B.
+    `no_ab` keeps the lenses' interpretations and refusal but builds no A/B branches (bench runs)."""
     run_dir = runstore.new_run_dir(change)
     print(f"run dir: {run_dir}")
     title, req_text, req_missing = load_requirement(req)
@@ -143,6 +145,11 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
                      f"{ab_reading.branch}: {ab_reading.summary}")
         interpretations, questions = [], []
         refused = [r for r in refused if "(A or B)" not in r.what]
+    elif interpretations and no_ab:
+        not_checked.append(NotChecked(
+            what="A/B review branches",
+            why="--no-ab: the two readings are recorded, but branches A and B were not built or "
+                "reviewed in this run"))
     elif interpretations:
         # Built even when a blocker exists: the reading is still the human's call, and each
         # branch carries its own receipts (the blocker may hold on one reading only).

@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "EnumTemplate has the inverted guard (#if NETSTANDARD2_0 || NETFRAMEWORK) in both .tt and .cs, so the attribute is emitted only on netstandard2.0/.NET Framework, where it is unavailable per the README and the other templates. Enum formatters fail to compile there and are not excluded from coverage on modern targets. This contradicts the requirement that all generated code is decorated and compiles on every target.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run CodeCoverageExclusionTests.AllGeneratedTypesAreExcludedFromCodeCoverage and ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable. The enum file's guard text differs from the expected '#if !NETSTANDARD2_0 && !NETFRAMEWORK'. Also compile generated enum formatter on netstandard2.0 to see the CS0234 error."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Requirement says all generated code, but the attribute is emitted only on generated formatters and resolvers, and the README says so. Other generated types, such as helper or nested types, are not covered. Also the guard excludes netstandard2.0/.NET Framework, so those targets are not decorated, although the attribute does exist in .NET Framework 4.0+ and netstandard2.0 does not include it. The README claim of availability is unverified.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check the generator output for any emitted types without the attribute, and check whether System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage exists on net472/netstandard2.0 reference assemblies. It does exist in net472 and netstandard2.1+, not netstandard2.0."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "TransformUtilities change to emit '{\\r\\n' when constraints exist is an unrelated formatting change and alters output for all constrained nested types. It is not mentioned in the requirement, and no tests cover it besides snapshot churn.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun snapshot tests and inspect the diffs for nested generic constrained types that changed only in brace newline."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditional, no setting: the attribute is emitted on generated formatters and resolvers, guarded by #if for targets where the attribute is unavailable, with no opt-out option."
+      },
+      {
+        "label": "B",
+        "summary": "Add an opt-out setting such as a MessagePackGeneratedCodeOptions or analyzer config property, defaulting to on, that suppresses the attribute emission in all templates. Alternatively, cover every generated type, including helper types."
+      }
+    ]
+  },
+  "input_tokens": 13047,
+  "output_tokens": 1076,
+  "ms": 8456,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

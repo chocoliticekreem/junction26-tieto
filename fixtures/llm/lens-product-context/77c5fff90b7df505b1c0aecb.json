@@ -1,0 +1,66 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Requirement says a type in a referenced assembly gets a formatter generated in the consuming assembly; the ledger entry says TypeCollector deliberately skips metadata-only types. The new GeneratedFormatterCollector bypasses that path and is explicit opt-in, so there is no conflict. The absence of an automatic formatter for external types remains deliberate.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L15] Types from a referenced assembly are deliberately not analysed by TypeCollector; the new opt-in attribute path is separate."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change modifies the shared runtime MessagePackPrimitives.Writers.cs timestamp encoding (mask 0xffffffff00000000 changed to 0x00000000ffffffff), which is unrelated to REQ-2129. It inverts the timestamp32 vs timestamp64 selection, so values that fit in 32 bits would now use the 64-bit format and vice versa, corrupting or changing wire bytes. The ledger notes numeric serialization is bug-prone.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize DateTime values such as 1970-01-01T00:00:01Z (timestamp32) and one with nonzero nanoseconds using base-built and head-built MessagePack, then compare bytes; also run the existing timestamp tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "New diagnostics MsgPack019-022 are added to the docs and AnalyzerReleases.Unshipped.md, but the analyzer only registers descriptors. The partial, formatter-interface and data-type diagnostics are reported from the generator via RegisterSourceOutput. The first-listed generator-reported diagnostics will not appear in the IDE as live analyzer results, and a surrogate-less formatter gets no diagnostic if the analyzer never runs on it. This is a mismatch between the documented analyzer behavior and the actual implementation.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:115",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare the registration in MsgPack00xMessagePackAnalyzer.Initialize with the diagnostics reported by MessagePackGenerator.generatedFormatterDiagnostics."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "The thread settled no design. The change implements contractless by default plus an optional SurrogateType. Should contractless be the default and the surrogate included, or should only the contractless part ship, or should the formatted type's own MessagePack attributes be honored?",
+        "options": [
+          "Ship contractless plus surrogate (as implemented)",
+          "Contractless only, honor attributes on T",
+          "Surrogate only"
+        ],
+        "why_it_matters": "The requirement says attributes on T must be honoured, but the collector ignores them. If attribute-honouring is required the change does not meet the requirement; if the surrogate-only design is the intended resolution it does.",
+        "area": "source-generator",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Contractless over public read-write members, with an optional SurrogateType to define keys. The type's own MessagePack attributes are not read. Constructor-less types are rejected."
+      },
+      {
+        "label": "B",
+        "summary": "The collector also reads [MessagePackObject]/[Key]/[DataContract] attributes on T when present, using them for keys, ignore and unions. It falls back to contractless only when no attributes exist, and the surrogate is not needed."
+      }
+    ]
+  },
+  "input_tokens": 29762,
+  "output_tokens": 1324,
+  "ms": 10779,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

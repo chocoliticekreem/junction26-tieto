@@ -1,0 +1,83 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Requirement says that if T carries MessagePack attributes they are honoured, but the collector ignores T's own [Key]/[MessagePackObject]/[DataContract] attributes entirely. No test covers a T with attributes, so deleting or adding that behaviour changes nothing in the suite.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:101",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an ExecutionTests case with a T carrying [MessagePackObject]/[Key(n)] on its members and a formatter marked [GeneratedMessagePackFormatter] with no surrogate. Assert that the output uses integer keys. Expected to fail because CreateContractlessMembers always emits string keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The partial-class guard (IsPartial), the MsgPack019 path, and the NoDeserializingConstructor path for a class with no accessible parameterless constructor have no coverage that would catch their removal. The diagnostic tests cover MsgPack019 only for a non-partial class. The no-default-constructor branch has no test at all, so deleting it survives.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:68",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:68 remove-guard: delete the `isClass && !...Parameters.Length == 0` check and its `return null`; expected to survive because no test declares a T without a parameterless constructor."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test covers the IsPublicReadWrite filter on fields (public fields, readonly fields, const fields) or on non-public setters. ExternalPerson has a get-only property only, and the fixtures have no fields. Mutating the field branch (for example dropping `!field.IsReadOnly`) survives.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:277",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:277 negate-condition: `!field.IsReadOnly` -> `field.IsReadOnly`; expected to survive because no fixture type has a public field."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate duplicate-key (KeysMustBeUnique) branch, the missing-[Key] branch (MemberNeedsKey), and the all-string-key surrogate path are untested. SurrogateControlsKeysAndMembership uses only int keys, and the Tests project covers only the mixed-key diagnostic. Deleting the claimedKeys check or breaking the string-key member construction `intKey: members.Count` survives.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:171",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:171 remove-guard: delete the `if (!claimedKeys.Add(key))` block; expected to survive because no test has duplicate surrogate keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The base-type member walk in GetInstanceMembers has no test. Neither the contractless nor the surrogate fixtures use inheritance, so removing the BaseType traversal or the `seen` de-duplication survives. The IsInitOnly and IsRequired members are likewise untested.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:243",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:243 delete-statement: replace `current = current.BaseType` with `current = null`; expected to survive because no fixture has a base class with members."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities filter that excludes [GeneratedMessagePackFormatter] classes from the hand-written formatter registration has no direct test. GeneratedFormattersAreRegisteredInGeneratedResolver checks only the resolved formatter type. A double-registration would likely cause a duplicate-case compile error, but nothing asserts it. There are no generator snapshot tests for the new output, so the template change for user-declared formatters (`partial class`) is verified only by compilation.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: delete the `!symbol.GetAttributes().Any(...)` clause; run ExecutionTests and see whether anything fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate test checks only the array header length (8) and that Internal deserializes to 0. It never checks that Id lands at index 3 or Name at index 7, so swapping the key mapping or ignoring the IntKey would survive.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:62",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:182 swap: `CreateMember(target, intKey: intKey, ...)` -> `intKey: members.Count`; a round-trip plus array-length assertion still passes if MaxKey stays 7, so it is likely to survive unless slot positions are asserted."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25798,
+  "output_tokens": 2000,
+  "ms": 14019,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

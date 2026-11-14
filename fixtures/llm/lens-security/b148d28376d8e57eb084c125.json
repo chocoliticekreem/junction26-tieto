@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Generated contractless formatter deserializes with only the 'Collect' path never setting MessagePackSecurity: the generated formatter for a user-declared class does not appear to apply MessagePackSecurity.DepthStep or UntrustedData collision-resistant handling, but this relies on the existing templates which do call DepthStep; the user-declared template switch only changes the class header. However the template still emits a 'partial class' header with a base list `: IMessagePackFormatter<T>` redundantly; no depth-limit regression is verified.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.cs:37",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run generator snapshot test for a [GeneratedMessagePackFormatter] class with a nested self-referencing member and confirm the output contains options.Security.DepthStep(ref reader) in Deserialize; if absent, depth limit MaximumObjectGraphDepth is bypassed."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless generated formatter always sets IsWritable/IsReadable true and passes empty constructorParameters for classes; for structs or types with required/init members the generated object creation may bypass invariants, but more importantly the formatted type from an external assembly is deserialized by assigning every public read-write member from attacker-controlled maps; there is no MessagePackSecurity/UntrustedData concern added beyond existing behaviour. Unknown string keys are skipped via reader.Skip, which is existing behaviour.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:225",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read GeneratedFormatterCollector.CreateMember: IsWritable: true is hard-coded without checking accessibility of setters beyond IsPublicReadWrite; confirm no private member access is emitted."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18519,
+  "output_tokens": 715,
+  "ms": 7314,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetEqualityComparer<T> used to throw TypeAccessException for types with no known hash-resistant comparer when UntrustedData is active. It now returns EqualityComparer<T>.Default. This silently disables the collision-resistance protection: an attacker can send hash-colliding keys for any non-whitelisted key type (custom structs, classes) in Dictionary/HashSet and cause a hash-flooding DoS. The change is unrelated to the requirement and breaks a secure-by-default behavior.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Deserialize a Dictionary<CustomKey,int> (CustomKey is a user type with no hash-resistant comparer) with MessagePackSecurity.UntrustedData. Base throws TypeAccessException; head succeeds with the default comparer. Existing tests asserting TypeAccessException (e.g. in MessagePackSecurityTests) should fail on head. Mutation: reverting the line is killed by that test."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate mode lets string keys come from KeyAttribute, but the member-name match uses only the first member with that name. The new generated-formatter path reads and writes members without checking MsgPack-level restrictions on the target (for example, it gives no diagnostic for init-only or required members, and passes empty constructorParameters). A struct or class lacking a settable path could emit code that fails to compile or leaves required members unset. This is mainly a correctness risk, with a minor security impact from partially initialized objects.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:232",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with [GeneratedMessagePackFormatter] over a type with a required or init-only public property and run the generator tests to see whether the output compiles and whether required members are set."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18768,
+  "output_tokens": 717,
+  "ms": 6440,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

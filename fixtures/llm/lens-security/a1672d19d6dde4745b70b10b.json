@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The switch in the unsigned-integer writer drops the `<= byte.MaxValue` case, so values 128..255 now fall through to TryWriteUInt16 and are encoded as uint16 (0xcd) instead of the canonical uint8 (0xcc). Output is non-canonical and larger. Readers still decode it, so this is not a security hole. The change is unrelated to the requirement and alters the wire format, so it breaks byte-compat for hash- or signature-based consumers, and any strict-format expectations.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:477",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize uint values 128, 200 and 255 (and an int in that range) with base-built and head-built MessagePack. Compare bytes: base emits CC xx, head emits CD 00 xx. Also run the existing MessagePackWriter/Primitives tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "ReportIfLocatedInCompilation drops every diagnostic whose location is not in the compilation. It also drops diagnostics with a null Location, which Diagnostic.Create turns into Location.None. Diagnostics that guard users against insecure or unsupported configurations can then be silently lost whenever a location lookup returns null, for example GetPropertyIdentifierLocation returning null for a non-PropertyDeclarationSyntax such as a record positional parameter. The result is a silent failure to warn, not a crash. The diagnostics affected are mostly compile-time diagnostics such as MsgPack004 and MsgPack00x, so the security impact is low.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer test with a [MessagePackObject] record whose positional property lacks a Key and has a null location. Assert that the expected MsgPack diagnostic is still reported, before and after the change."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7776,
+  "output_tokens": 725,
+  "ms": 6596,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

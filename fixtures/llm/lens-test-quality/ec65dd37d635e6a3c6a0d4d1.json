@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The reportDiagnostic wrapper (ReportIfLocatedInCompilation) is a broad behavioral change: it silently drops every diagnostic whose location is not in a source tree of the compilation, including diagnostics with Location.None that were previously reported. No test asserts that diagnostics for same-assembly types are still reported, so the filter could be negated or removed with no test noticing.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445 swap-boolean: `if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))` -> `if (true)`; expected to survive because the new tests only assert no diagnostics. Conversely, mutating to `if (false)` is likely to be killed only by pre-existing analyzer tests, not by any test in this diff."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests that cover the line-1077 MemberNeedsKey fix (FirstOrDefault()?.GetSyntax()) cannot fail on the changed line. ClosedGenericStruct_FromMetadataReference_UnkeyedMember has an unkeyed public property, but CollectCore returns early for metadata types or the diagnostic is dropped by the wrapper. Reverting the line to DeclaringSyntaxReferences[0] would probably still pass thanks to the filter or the early exit. The same test passes on a type that never reaches that code path.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 delete-statement/revert: `item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation()` -> `item.DeclaringSyntaxReferences[0].GetSyntax().GetLocation()`; run ClosedGenericStruct_FromMetadataReference_UnkeyedMember. If it still passes, the mutant survives."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test exercises the BothStringAndIntKeyAreNull path (line ~985, GetPropertyIdentifierLocation) for a metadata type, such as a keyed attribute with a null key. GetPropertyIdentifierLocation could revert to the crashing indexer with no failing test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433 delete-statement: replace helper body with `((PropertyDeclarationSyntax)property.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation()`; expected to survive because no added test triggers a null-key diagnostic on a metadata generic struct."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generator check in RunWithMetadataReferenceAsync only asserts that the resolver hint name exists. It does not check that the resolver registers a formatter for the closed generic Item<int>/MyGenericStruct<int>, and the source-snapshot comparison is skipped (SkipGeneratedSourcesCheck). A resolver missing the member's formatter would pass.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:630",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator on the repro with head-built code and inspect/snapshot the generated resolver. Assert whether it contains a formatter entry for the closed generic type; the current tests would pass either way."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10720,
+  "output_tokens": 1445,
+  "ms": 9551,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

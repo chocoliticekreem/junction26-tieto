@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The attribute is emitted only under `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. Projects targeting netstandard2.0 or .NET Framework, which MessagePack supports and which are common in coverage-sensitive enterprise codebases, get no ExcludeFromCodeCoverage on generated code. This only partly meets the requirement that all generated code is decorated. Compilation is safe, but coverage numbers for those targets are still skewed. Compatibility-wise, the generated output now carries preprocessor directives that user projects compile and snapshot.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests with a compilation targeting netstandard2.0 and check whether the generated formatter and resolver types carry ExcludeFromCodeCoverage. The `#if` guard compiles the attribute out, so the type is not decorated. Alternatively, build a netstandard2.0 sample and inspect the attributes by reflection."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The TransformUtilities change from `{` to `{\r\n` when the nesting type has constraints alters the whitespace of generated output for every nested or generic-constrained type. This is a layout change not required by the feature. It could be needed so the new `#if` directive starts on its own line, but it is not covered by the requirement and shifts the verified snapshots and users' checked-in generated output.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests for nested generic types with constraints. Diff the base and head outputs and confirm that the only differences are the new attribute lines and the one added newline after `{`."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Preprocessor directives such as `#if` inside the generated code must start on a fresh line. The new text `#if...` is written immediately after previous output. In FormatterTemplate, StringKeyFormatterTemplate and UnionTemplate the old literal began `\\tinternal sealed class` directly after an `EmitNestingTypesAndNamespaces` that may end with `{` and no newline when there are no constraints. The new literals start with `#if` without a leading `\\r\\n`, so correctness depends on the `{\\r\\n` fix. Namespace emission and the non-nested case should be verified, since a missing newline would produce a compile error in user projects.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/UnionTemplate.cs:30",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate a Union formatter and a string-key formatter for (a) a top-level type in the global namespace, (b) a type in a namespace, (c) a nested type with constraints, and (d) a generic nested type without constraints. Compile each output and check that no `#if` lands mid-line."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should generated code on netstandard2.0 and .NET Framework targets also be excluded from code coverage, for example by emitting a locally defined attribute or by checking for the attribute's existence rather than the target framework?",
+        "options": [
+          "Yes, all targets must be decorated",
+          "No, a modern-target-only guard is acceptable"
+        ],
+        "why_it_matters": "If all targets are required, the `#if` guard means the requirement is not met (a high-severity finding). If a modern-only guard is acceptable, the guard is fine and the finding is moot.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 10137,
+  "output_tokens": 1279,
+  "ms": 10042,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

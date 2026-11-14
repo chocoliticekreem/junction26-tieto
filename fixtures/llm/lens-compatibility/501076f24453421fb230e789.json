@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "ReportIfLocatedInCompilation only drops diagnostics whose Location is in source but belongs to another compilation. Diagnostics with Location.None (metadata/null location, e.g. from FirstOrDefault()?.GetSyntax().GetLocation() returning null) have IsInSource false and are still reported. For a closed generic struct from a referenced assembly, MsgPack004 (an Error per L2) for a member lacking [Key] is now emitted with no location in the user's build. Previously the type would crash; now a metadata type that lacks keys could fail the user's build with a location-less error, contradicting L8 (referenced types are deliberately not analysed).",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1441",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer/generator test: lib defines generic struct Item<T> with a public member lacking [Key]/[IgnoreMember] inside [MessagePackObject], compiled to a metadata reference; app has Cmd with Item<int> member. Assert no MsgPack004 diagnostic (or any Location.None diagnostic) is reported in app. Expect failure with the current filter since !IsInSource is true."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new filter is applied to all reportDiagnostic calls in TypeCollector, not just the crashing paths. Any diagnostic previously reported with a location in a different syntax tree/compilation is now silently dropped. Existing users could lose diagnostics they used to see, such as source-declared types in another compilation or linked/multi-project cases. This is a behavior change for analyzer output without opt-in.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing analyzer test suite (MsgPack003/004/005/etc. tests) at head and compare against base; add a case where the diagnostic location is in a tree not in compilation.SyntaxTrees and verify whether the diagnostic was previously reported."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 6631,
+  "output_tokens": 760,
+  "ms": 6643,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

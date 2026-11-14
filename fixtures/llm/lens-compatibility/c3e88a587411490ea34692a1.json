@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The mask in the timestamp writer was changed from 0xffffffff00000000 to 0x00000000ffffffff. The timestamp32 branch is now chosen when the low 32 bits are zero. That is wrong: it should apply when the high 32 bits (nanoseconds) are zero. Timestamps with zero nanoseconds and nonzero seconds now take the 64-bit path, and values with a zero low 32 bits may take the 32-bit path and lose data. This changes the serialized bytes of DateTime and DateTimeOffset values for every user, and it is unrelated to the requirement.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize new DateTime(2020,1,1,0,0,0,DateTimeKind.Utc) with MessagePackSerializer and the native DateTime formatter on base and head builds, and compare the bytes. Base emits the 6-byte timestamp32 form (0xd6 0xff ...). Head emits the 10-byte timestamp64 form (0xd7 0xff ...). Also run a round trip for a value whose seconds are a multiple of 2^32 with nonzero nanoseconds."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The user-declared formatter template emits `partial class Name` with no accessibility modifier or `sealed`. Generated output for ordinary formatters is unchanged, but the diagnostic registration only lists the new ids. The new descriptors MsgPack019-022 are not shown in AnalyzerReleases.Unshipped.md, and the analyzer's SupportedDiagnostics lists them, so RS2000 release-tracking errors may appear. Docs for the help links are also missing.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:318",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that AnalyzerReleases.Unshipped.md has rows for MsgPack019-022 and that doc/analyzers/MsgPack019-022.md exist."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless members are sorted ordinally by name and read-only members are dropped. Standard contractless serialization keeps declaration order and includes members that are readable but not writable, such as constructor-initialized members. Wire output from the generated formatter differs from ContractlessStandardResolver for the same type. A consumer in Project B who mixes the dynamic and generated formatters would see different map key order. The requirement says only 'contractless behaviour over public members'.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "For a type with public properties Z and A declared in that order, serialize with ContractlessStandardResolver and with the generated formatter, then compare the bytes. Key order should differ."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18802,
+  "output_tokens": 1074,
+  "ms": 8235,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

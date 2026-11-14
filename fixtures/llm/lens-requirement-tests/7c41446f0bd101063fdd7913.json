@@ -1,0 +1,74 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The enum formatter template uses the inverted condition `#if NETSTANDARD2_0 || NETFRAMEWORK`, while every other template uses `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. On every modern target (net6/net8 and others), generated enum formatters therefore get no ExcludeFromCodeCoverage attribute. That breaks the criterion that all generated code is decorated. It also contradicts the README sentence that all generated formatters carry the attribute.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageTargetCoverageTests.EnumFormatter_IsDecoratedWithExcludeFromCodeCoverage. With no preprocessor symbols defined, the generated MyEnum formatter class has no ExcludeFromCodeCoverage attribute list, so the test fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change leaves out the attribute for consumers that define NETSTANDARD2_0 or NETFRAMEWORK. On those targets no generated formatter or resolver is decorated, except the enum formatters through the inverted condition. System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute exists in .NET Framework 4.0+ and in .NET Standard 2.0, and it allows AttributeTargets.Class. The derived criterion only permits conditional emission where the attribute does not exist, so 'all generated code is decorated' is not met for netstandard2.0 and .NET Framework projects.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageTargetCoverageTests.ObjectFormatter_IsDecoratedWhenTargetingNetStandard20. It parses with preprocessor symbol NETSTANDARD2_0 and asserts the MyObject formatter carries the attribute; it fails on head. Optionally also compile the generated output against netstandard2.0 reference assemblies with the attribute forced on, to show it compiles."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README states that the attribute 'is only emitted for targets where it is available (not netstandard2.0 or .NET Framework)'. This is factually wrong: the attribute is available on both. The README also says 'All generated formatters and resolvers are decorated', which is false for enum formatters on modern targets.",
+        "location": "README.md:1640",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Cite the .NET API docs: ExcludeFromCodeCoverageAttribute 'Applies to' lists .NET Framework 4.0+ and .NET Standard 2.0. Cite EnumTemplate.tt:8, which shows the inverted #if."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageOnGeneratedTypesTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Threading;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageOnGeneratedTypesTests\n{\n    private const string Source = \"\"\"\n        using MessagePack;\n\n        namespace TestNs\n        {\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n            }\n\n            [MessagePackObject(true)]\n            public class MyMapObject\n            {\n                public int B { get; set; }\n            }\n\n            [Union(0, typeof(UnionA))]\n            public interface IMyUnion\n            {\n            }\n\n            [MessagePackObject]\n            public class UnionA : IMyUnion\n            {\n                [Key(0)]\n                public int C { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            partial class MyResolver\n            {\n            }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task ObjectAndUnionFormatters_AreDecoratedWithExcludeFromCodeCoverage()\n    {\n        IReadOnlyList<SyntaxTree> trees = await RunGeneratorAsync();\n        List<ClassDeclarationSyntax> formatters = trees\n            .SelectMany(t => t.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())\n            .Where(c => c.BaseList is not null && c.BaseList.ToString().Contains(\"IMessagePackFormatter\"))\n            .ToList();\n\n        Assert.True(formatters.Count >= 3, $\"Expected at least 3 generated formatters but found {formatters.Count}.\");\n        foreach (ClassDeclarationSyntax formatter in formatters)\n        {\n            Assert.True(HasExcludeFromCodeCoverage(formatter), $\"Generated formatter '{formatter.Identifier.Text}' is not decorated with ExcludeFromCodeCoverage.\");\n        }\n    }\n\n    [Fact]\n    public async Task GeneratedResolver_IsDecoratedWithExcludeFromCodeCoverage()\n    {\n        IReadOnlyList<SyntaxTree> trees = await RunGeneratorAsync();\n        List<ClassDeclarationSyntax> resolvers = trees\n            .SelectMany(t => t.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())\n            .Where(c => c.Identifier.Text == \"MyResolver\" && c.BaseList is not null && c.BaseList.ToString().Contains(\"IFormatterResolver\"))\n            .ToList();\n\n        Assert.NotEmpty(resolvers);\n        foreach (ClassDeclarationSyntax resolver in resolvers)\n        {\n            Assert.True(HasExcludeFromCodeCoverage(resolver), \"Generated resolver MyResolver is not decorated with ExcludeFromCodeCoverage.\");\n        }\n    }\n\n    private static bool HasExcludeFromCodeCoverage(ClassDeclarationSyntax declaration)\n    {\n        return declaration.AttributeLists\n            .SelectMany(list => list.Attributes)\n            .Any(a => a.Name.ToString().Contains(\"ExcludeFromCodeCoverage\"));\n    }\n\n    private static async Task<IReadOnlyList<SyntaxTree>> RunGeneratorAsync(params string[] preprocessorSymbols)\n    {\n        CSharpParseOptions parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3, preprocessorSymbols: preprocessorSymbols);\n        ImmutableArray<MetadataReference> frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = frameworkReferences.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(Source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation _, out ImmutableArray<Diagnostic> _);\n        IReadOnlyList<SyntaxTree> trees = driver.GetRunResult().GeneratedTrees;\n        Assert.NotEmpty(trees);\n        return trees;\n    }\n}\n",
+        "test_names": [
+          "ObjectAndUnionFormatters_AreDecoratedWithExcludeFromCodeCoverage",
+          "GeneratedResolver_IsDecoratedWithExcludeFromCodeCoverage"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageTargetCoverageTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Threading;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageTargetCoverageTests\n{\n    private const string Source = \"\"\"\n        using MessagePack;\n\n        namespace TestNs\n        {\n            public enum MyEnum\n            {\n                One,\n                Two,\n            }\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                [Key(1)]\n                public MyEnum E { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            partial class MyResolver\n            {\n            }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task EnumFormatter_IsDecoratedWithExcludeFromCodeCoverage()\n    {\n        IReadOnlyList<SyntaxTree> trees = await RunGeneratorAsync();\n        List<ClassDeclarationSyntax> enumFormatters = FormatterClasses(trees)\n            .Where(c => c.BaseList!.ToString().Contains(\"MyEnum\"))\n            .ToList();\n\n        Assert.NotEmpty(enumFormatters);\n        foreach (ClassDeclarationSyntax formatter in enumFormatters)\n        {\n            Assert.True(HasExcludeFromCodeCoverage(formatter), $\"Generated enum formatter '{formatter.Identifier.Text}' is not decorated with ExcludeFromCodeCoverage.\");\n        }\n    }\n\n    [Fact]\n    public async Task ObjectFormatter_IsDecoratedWhenTargetingNetStandard20()\n    {\n        IReadOnlyList<SyntaxTree> trees = await RunGeneratorAsync(\"NETSTANDARD2_0\");\n        List<ClassDeclarationSyntax> objectFormatters = FormatterClasses(trees)\n            .Where(c => c.BaseList!.ToString().Contains(\"MyObject\"))\n            .ToList();\n\n        Assert.NotEmpty(objectFormatters);\n        foreach (ClassDeclarationSyntax formatter in objectFormatters)\n        {\n            Assert.True(HasExcludeFromCodeCoverage(formatter), $\"Generated formatter '{formatter.Identifier.Text}' is not decorated with ExcludeFromCodeCoverage when NETSTANDARD2_0 is defined.\");\n        }\n    }\n\n    private static List<ClassDeclarationSyntax> FormatterClasses(IEnumerable<SyntaxTree> trees)\n    {\n        return trees\n            .SelectMany(t => t.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())\n            .Where(c => c.BaseList is not null && c.BaseList.ToString().Contains(\"IMessagePackFormatter\"))\n            .ToList();\n    }\n\n    private static bool HasExcludeFromCodeCoverage(ClassDeclarationSyntax declaration)\n    {\n        return declaration.AttributeLists\n            .SelectMany(list => list.Attributes)\n            .Any(a => a.Name.ToString().Contains(\"ExcludeFromCodeCoverage\"));\n    }\n\n    private static async Task<IReadOnlyList<SyntaxTree>> RunGeneratorAsync(params string[] preprocessorSymbols)\n    {\n        CSharpParseOptions parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3, preprocessorSymbols: preprocessorSymbols);\n        ImmutableArray<MetadataReference> frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = frameworkReferences.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsTargetTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(Source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation _, out ImmutableArray<Diagnostic> _);\n        IReadOnlyList<SyntaxTree> trees = driver.GetRunResult().GeneratedTrees;\n        Assert.NotEmpty(trees);\n        return trees;\n    }\n}\n",
+        "test_names": [
+          "EnumFormatter_IsDecoratedWithExcludeFromCodeCoverage",
+          "ObjectFormatter_IsDecoratedWhenTargetingNetStandard20"
+        ],
+        "expects": "fail-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Always on, no setting: every template unconditionally emits [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage] (behind a target #if) on the formatter, resolver, FormatterCache and GetFormatterHelper types. Users cannot opt out."
+      },
+      {
+        "label": "B",
+        "summary": "On by default with an opt-out setting: add a boolean option (for example GeneratorOptions.ExcludeFromCodeCoverage, default true, settable through the existing generator options or an MSBuild property). Pass it into the template objects and wrap each emitted attribute line in the .tt/.cs templates in a check of that flag, so users who want coverage of generated code can turn it off."
+      }
+    ]
+  },
+  "input_tokens": 14012,
+  "output_tokens": 11899,
+  "ms": 96665,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

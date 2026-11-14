@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change generates a formatter in the consuming assembly for a type from a referenced assembly, which L11 says the compiler deliberately does not do (TypeCollector skips metadata-only types). This is not a defect: the new path bypasses TypeCollector via an explicit opt-in attribute, so the L11 behavior for implicit types is unchanged.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] types from referenced assemblies get no implicit formatter and no MsgPack003/004/005; the explicit [GeneratedMessagePackFormatter] opt-in is a separate path, so L11 still holds."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode serializes types lacking [MessagePackObject] and [Key]. L3 and L8 record that requiring MessagePackObject is intentional for explicitness. The new feature is opt-in per formatter and the requirement explicitly asks for contractless-by-default here, so it is consistent.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8]/[L3] explicitness is required by default; this feature is explicit opt-in via the attribute, and the requirement's maintainer note asks for contractless."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "IsPublicReadWrite treats a public field as writable only if field.IsReadOnly is true. This is inverted: it accepts readonly fields and rejects normal mutable public fields. Mutable public fields are skipped, and readonly fields would generate uncompilable assignments. This contradicts the README claim that public read-write fields are serialized.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:274",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an external class with `public int F;` and a `public readonly int R;`, generate a contractless formatter, and round-trip. F is dropped, and R produces a CS0191 compile error."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new MsgPack019-022 diagnostics are added to the analyzer release notes and docs, but the diagnostics are reported only from the generator via RegisterSourceOutput. The analyzer's Initialize registers no actions for them, so they come from the generator, not the analyzer. Also, MessageFormat arguments for the reused NoDeserializingConstructor, MemberNeedsKey and DoNotMixStringAndIntKeys descriptors may not match their format strings. NoDeserializingConstructor is passed only a location, with no message args.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:75",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare the argument counts passed to Diagnostic.Create for NoDeserializingConstructor, MemberNeedsKey and KeysMustBeUnique with the messageFormat placeholders in MsgPack00xMessagePackAnalyzer."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "The change implements both contractless mode and the surrogate-type design (SurrogateType property). It adds the new GeneratedMessagePackFormatterAttribute to MessagePack.Annotations, requires integer or string keys on the surrogate, and matches members by name and type."
+      },
+      {
+        "label": "B",
+        "summary": "Contractless-only: the attribute has no SurrogateType, so the generator uses the type's own MessagePack attributes (DataContract, Key, etc.) if present and otherwise contractless. This drops the surrogate path and the MsgPack022 diagnostic, and instead honours existing attributes on T."
+      }
+    ]
+  },
+  "input_tokens": 29253,
+  "output_tokens": 1363,
+  "ms": 10301,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

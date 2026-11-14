@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The attribute is emitted behind `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. Users on netstandard2.0 and .NET Framework (including the library's own netstandard2.0 targets) get no coverage exclusion, so the requirement 'all generated code' is only partly met. The ledger says to follow the requirement, so this is a scope gap.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate a formatter in a project targeting netstandard2.0 or net472 and check the output. Confirm the guarded attribute is compiled out and the type stays in coverage reports."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The `#if` directives are emitted at column 0 inside generated nested-type bodies, and the TransformUtilities change adds a newline after `{` when constraints are present. This changes the layout of the generated output for every nested type with constraints. Users who check in or snapshot generator output will see diffs beyond the attribute. This is a behavior change outside the requirement.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests for nested generic types with constraints. Verify the diff in the snapshots comes only from the new attribute and not from whitespace or newline changes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The preprocessor symbols NETSTANDARD2_0 and NETFRAMEWORK are evaluated in the user's compilation, so the guard is inexact. A target such as netstandard2.1 or net462 has the attribute available, but others such as .NET Core 2.x or Unity may not. If the symbol set in a user project lacks the attribute, the generated code fails to compile. This is a breaking compile error for existing users who upgrade the generator.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile the generated output in a project targeting netstandard2.1, net6.0, and Unity-style older frameworks that lack ExcludeFromCodeCoverage. Check for CS0234 or CS0246 errors."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9962,
+  "output_tokens": 856,
+  "ms": 6843,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

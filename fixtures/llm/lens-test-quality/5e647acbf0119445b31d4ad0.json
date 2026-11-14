@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The feature's behavior when the formatted type carries [MessagePackObject]/[Key]/[DataContract] is untested and not implemented. No test places attributes on T, and the collector never reads them. Requirement: attributes on T are honoured.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a [GeneratedMessagePackFormatter] for a type annotated with [MessagePackObject]+[Key(n)] and assert the serialized bytes use the integer keys; expected to fail because GeneratedFormatterCollector.CreateContractlessMembers ignores attributes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless test checks that a read-only member is skipped but nothing covers public fields, non-public setters, init/required properties, inherited members, or the alphabetical ordering. Mutating IsPublicReadWrite (e.g. dropping the SetMethod check or the field.IsReadOnly check), the OrderBy, or the GetInstanceMembers base-type walk would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:226",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:226 remove-guard: `&& !field.IsReadOnly && !field.IsConst` -> removed; expected to survive because no test type has a readonly/const public field or a base-class member."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate duplicate-key path (MsgPack006/KeysMustBeUnique), the missing-key path (MsgPack003 MemberNeedsKey), the no-parameterless-constructor path (MsgPack007), and the inaccessible/generic data type path are untested. Deleting those guards or their return null statements would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:176",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:176 delete-statement: `return null;` after the KeysMustBeUnique diagnostic -> removed; expected to survive because no test declares duplicate surrogate keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The diagnostic tests do not assert that no source is generated when a formatter is rejected. The comment in MessagePackGenerator.cs promises 'no partial output', yet the model-building path calls Collect with a null reporter, and nothing in the tests checks this.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs:30",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the diagnostic tests with GeneratedSources asserted empty, or inspect the output for rejected formatters; the current tests only check for diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate test only checks the array header length (8) and that the round trip works. It never asserts the actual key positions (3 and 7) or that Internal is absent from the bytes. A mutant that mapped key indices incorrectly or serialized Internal into another slot could survive, as round-trip would still pass.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:62",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Read the array elements after the header and assert that slots 3 and 7 hold the Id and Name values and that the other slots are nil."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities filter, which excludes [GeneratedMessagePackFormatter] classes from hand-written formatter registration, is only indirectly covered. Removing the attribute check would probably still pass the tests unless it causes a visible duplicate registration, and there is no snapshot of the resolver output.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: `!symbol.GetAttributes().Any(...)` -> true; check whether the ExecutionTests or snapshot tests fail."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25909,
+  "output_tokens": 1613,
+  "ms": 10857,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}
