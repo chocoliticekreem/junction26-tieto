@@ -1,16 +1,16 @@
 # Submission pack
 
 ## Project name (max 30)
-Receipts: auditable AI review
+PullReceipts
 
 ## Punchline (max 200)
-AI code review where every finding has an executed receipt, every gap and untested caller is declared, trust is earned per area, and a named human signs off on what was and was not checked.
+PullReceipts: AI code review where every finding has an executed receipt, every gap and untested caller is declared, trust is earned per area, and a named human signs off.
 
 ## Description (max 5000, Markdown)
 
 **The problem.** Agent-written code now outpaces human review. An AI reviewer that only comments asks people to trust its confidence. "The AI said it was fine" is an unowned merge.
 
-**Our recommendation: ask the AI reviewer for receipts, not opinions.** Receipts is a reference implementation of a PR-review factory built on five rules:
+**Our recommendation: ask the AI reviewer for receipts, not opinions.** PullReceipts is a reference implementation of a PR-review factory built on five rules:
 
 1. **No receipt, no finding.** A claim becomes a finding only when an executed artifact backs that specific claim: a test written from the requirement alone that fails on base and passes on the change, a surviving mutant, a byte diff, or a failed regeneration. Everything else is shown apart as an unverified hunch.
 2. **Declare the gaps.** Every review lists what was not checked and why, generated from what did not run. Silence is never approval.

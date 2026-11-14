@@ -1,10 +1,10 @@
-# Receipts: AI review you can audit
+# PullReceipts: AI review you can audit
 
 Junction 2026 entry for Tieto's "Earned Trust in AI Code" challenge.
 
 **Every finding has a receipt, every gap is declared, every area has a track record, and a named human signs off in one click.**
 
-An AI reviewer that only comments asks the human to trust its confidence. Receipts shows a claim as a finding only when an executed artifact backs it: a test written from the requirement that fails before the change and passes after, a mutant the change's tests fail to kill, a byte diff, or a failed regeneration. Everything else is listed apart as an unverified hunch. Each review declares what was not checked and why. Genuinely ambiguous requirements are refused, not guessed: the reviewer builds both readings as branches with receipts, and a named human picks. Nothing merges without a named human.
+An AI reviewer that only comments asks the human to trust its confidence. PullReceipts shows a claim as a finding only when an executed artifact backs it: a test written from the requirement that fails before the change and passes after, a mutant the change's tests fail to kill, a byte diff, or a failed regeneration. Everything else is listed apart as an unverified hunch. Each review declares what was not checked and why. Genuinely ambiguous requirements are refused, not guessed: the reviewer builds both readings as branches with receipts, and a named human picks. Nothing merges without a named human.
 
 Also in the box:
 - **Blast radius.** Existing code the change modifies, its callers outside the change, which of those callers any test executes, and tests written from the base code that pin the old behaviour (they must pass before the change; a failure after it blocks). A modified member with outside callers is never auto-ready. See `notes/blast-radius.md`.

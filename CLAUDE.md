@@ -1,6 +1,6 @@
 Mode: hackathon
 
-# Junction 2026: Tieto "Earned Trust in AI Code" entry
+# Junction 2026: Tieto "Earned Trust in AI Code" entry (PullReceipts)
 
 Challenge brief and judging rubric: `CHALLENGE.md` (what the judges want; compare every milestone against its self-check). Build spec: `SPEC.md`. Startup prompt: `START.md`. Progress log: `PROGRESS.md` (the agent keeps it current).
 

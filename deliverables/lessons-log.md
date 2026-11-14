@@ -1,6 +1,6 @@
 # Lessons log
 
-Failure modes we actually saw while building and running Receipts, and what each one changed. Newest last.
+Failure modes we actually saw while building and running PullReceipts, and what each one changed. Newest last.
 
 ## Failure modes in the AI-written changes under review
 

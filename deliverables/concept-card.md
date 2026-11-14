@@ -1,4 +1,4 @@
-# Receipts: AI review you can audit
+# PullReceipts: AI review you can audit
 
 **Recommendation.** Stop asking an AI reviewer for an opinion. Ask it for receipts. A finding is shown to the human only when an executed artifact backs it. Every gap is declared, each code area earns trust from a measured track record, and a named human signs off on exactly what was and was not checked.
 
@@ -6,7 +6,7 @@ Tieto's question: *How can AI review the code made by AI so that humans can trus
 
 ## The four trust holes, and what closes each
 
-| Hole | Today | Receipts |
+| Hole | Today | PullReceipts |
 |---|---|---|
 | Findings are opinions | "Possible null dereference" | No receipt, no finding: a failing test, a surviving mutant, a byte diff or a failed regeneration. Unbacked suspicions are listed apart as hunches. |
 | Nobody knows what was not checked | "LGTM" | Every change carries "not checked, and why". Silence is never approval. |
