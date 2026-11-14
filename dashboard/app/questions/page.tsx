@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { MessageCircleQuestion } from "lucide-react";
-import { loadLatestRuns, pendingQuestions, readLedger } from "@/lib/data";
+import { loadLatestRuns, pendingQuestions } from "@/lib/data";
+import { ledgerEntries } from "@/lib/demo-state";
 import { currentHuman } from "@/lib/human";
 import { isReadOnly } from "@/lib/readonly";
 import { DemoNote } from "@/components/demo-note";
@@ -13,8 +14,9 @@ export const dynamic = "force-dynamic";
 
 export default async function QuestionsPage() {
   const runs = loadLatestRuns();
-  const pending = pendingQuestions(runs);
-  const ledger = readLedger().slice().reverse();
+  const answers = await ledgerEntries();
+  const pending = pendingQuestions(runs, answers);
+  const ledger = answers.slice().reverse();
   const human = await currentHuman();
   const readOnly = isReadOnly();
 

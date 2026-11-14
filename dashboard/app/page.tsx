@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { AB_SUFFIX, isProviderRun, isSampleChange, isSqlChange, loadLatestRuns, pendingQuestions, readDecision, receiptCounts } from "@/lib/data";
+import { AB_SUFFIX, isProviderRun, isSampleChange, isSqlChange, loadLatestRuns, pendingQuestions, receiptCounts } from "@/lib/data";
+import { decisionFor, ledgerEntries } from "@/lib/demo-state";
 import { humanizeVerdict } from "@/lib/humanize";
 import { impactQueueClause } from "@/lib/impact-summary";
 import { decideSentence, wrongSentence } from "@/lib/plain-summary";
@@ -71,17 +72,18 @@ function Group({ title, cards, testId }: { title: string; cards: QueueCardData[]
   );
 }
 
-export default function QueuePage() {
+export default async function QueuePage() {
   const all = loadLatestRuns().filter((r) => !AB_SUFFIX.test(r.changeId));
   // The queue is the reviewer's own provider; reruns on another provider are linked from each change.
   const latest = all.filter((r) => isSampleChange(r.changeId) && !isProviderRun(r.changeId));
   const practice = all.filter((r) => !isSampleChange(r.changeId) && !isSqlChange(r.changeId) && !isProviderRun(r.changeId)).length;
   const sql = all.filter((r) => isSqlChange(r.changeId)).length;
-  const pending = pendingQuestions(latest);
+  const pending = pendingQuestions(latest, await ledgerEntries());
   const pendingByChange = new Map<string, number>();
   for (const q of pending) pendingByChange.set(q.change_id, (pendingByChange.get(q.change_id) ?? 0) + 1);
 
-  const cards = latest.map((run) => card(run, readDecision(run.changeId), pendingByChange.get(run.changeId) ?? 0));
+  const decisions = await Promise.all(latest.map((run) => decisionFor(run.changeId)));
+  const cards = latest.map((run, i) => card(run, decisions[i], pendingByChange.get(run.changeId) ?? 0));
   const done = cards.filter((c) => c.decided);
   const blocked = cards.filter((c) => !c.decided && c.verdict === "blocked");
   const needs = cards.filter((c) => !c.decided && c.verdict !== "blocked");

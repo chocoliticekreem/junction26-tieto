@@ -229,8 +229,8 @@ export function writeContextStatus(s: ContextStatus): void {
 }
 
 /** Pending = question ids from all latest runs with no ledger entry. */
-export function pendingQuestions(runs?: RunBundle[]): Question[] {
-  const answered = new Set(readLedger().map((e) => e.question_id).filter(Boolean));
+export function pendingQuestions(runs?: RunBundle[], ledger: LedgerEntry[] = readLedger()): Question[] {
+  const answered = new Set(ledger.map((e) => e.question_id).filter(Boolean));
   const all = (runs ?? loadLatestRuns()).flatMap((r) => r.questions);
   const seen = new Set<string>();
   return all.filter((q) => {

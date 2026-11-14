@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { appendLedger, loadRun, readLedger } from "@/lib/data";
+import { appendLedger, loadRun } from "@/lib/data";
+import { addAnswer, isEphemeral, ledgerEntries, readDemoState, saveDemoState } from "@/lib/demo-state";
 import { nowIso, requireHuman } from "@/lib/human";
 import { readOnlyRefusal } from "@/lib/readonly";
 import type { LedgerEntry } from "@/lib/types";
@@ -19,7 +20,7 @@ export async function POST(req: Request) {
   const run = loadRun(changeId);
   const q = run?.questions.find((x) => x.id === questionId);
   if (!q) return NextResponse.json({ error: `Question ${questionId} not found in the latest run of ${changeId}` }, { status: 404 });
-  if (readLedger().some((e) => e.question_id === questionId)) {
+  if ((await ledgerEntries()).some((e) => e.question_id === questionId)) {
     return NextResponse.json({ error: "Already answered." }, { status: 409 });
   }
   const entry: LedgerEntry = {
@@ -31,6 +32,11 @@ export async function POST(req: Request) {
     change_id: changeId,
     question_id: questionId,
   };
+  if (isEphemeral()) {
+    const res = NextResponse.json({ entry });
+    saveDemoState(res, addAnswer(await readDemoState(), entry));
+    return res;
+  }
   appendLedger(entry);
   return NextResponse.json({ entry });
 }

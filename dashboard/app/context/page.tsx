@@ -1,6 +1,7 @@
 import { BookOpenText, CircleCheck, MessageCircleQuestion, PencilLine } from "lucide-react";
 import { parseContextDoc, splitAreas } from "@/lib/context-doc";
-import { readContextMarkdown, readContextStatus, readLedger } from "@/lib/data";
+import { readContextMarkdown } from "@/lib/data";
+import { contextStatus, ledgerEntries } from "@/lib/demo-state";
 import { currentHuman } from "@/lib/human";
 import { isReadOnly } from "@/lib/readonly";
 import { DemoNote } from "@/components/demo-note";
@@ -15,8 +16,8 @@ export const dynamic = "force-dynamic";
 export default async function ContextPage() {
   const md = readContextMarkdown();
   const doc = md ? parseContextDoc(md) : undefined;
-  const status = readContextStatus();
-  const ledger = readLedger().slice().reverse();
+  const status = await contextStatus();
+  const ledger = (await ledgerEntries()).slice().reverse();
   const human = await currentHuman();
   const confirmed = status.status === "confirmed";
   const readOnly = isReadOnly();

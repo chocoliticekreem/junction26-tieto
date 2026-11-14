@@ -39,6 +39,10 @@ export function MergeButtons({
             <>
               · <span data-testid="merge-sha">{done.merge_sha}</span>
             </>
+          ) : done.simulated ? (
+            <>
+              · <span data-testid="merge-simulated">Merge recorded (simulated on the public demo: no git repository here)</span>
+            </>
           ) : (
             "· no merge commit"
           )}{" "}

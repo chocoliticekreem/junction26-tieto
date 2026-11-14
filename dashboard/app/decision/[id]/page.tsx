@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight, CircleCheck, Info, Users } from "lucide-react";
-import { loadRun, readDecision } from "@/lib/data";
+import { loadRun } from "@/lib/data";
+import { decisionFor } from "@/lib/demo-state";
 import { currentHuman } from "@/lib/human";
 import { isReadOnly } from "@/lib/readonly";
 import { DemoNote } from "@/components/demo-note";
@@ -161,7 +162,7 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
   const runB = loadRun(`${changeId}__B`);
   const human = await currentHuman();
   const readOnly = isReadOnly();
-  const decision = readDecision(changeId);
+  const decision = await decisionFor(changeId);
   const blocked = Object.fromEntries(
     (
       [
