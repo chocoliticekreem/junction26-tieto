@@ -33,9 +33,3 @@ Then run the commands in `docs/verda.md` ("Reproduce"). Every Verda call is capp
 4. Optionally sign off 2283 or 2234 (needs sign-off) from the change page.
 5. Commit the resulting `decisions/` and `context/status.json` through a PR, or ask the agent to.
 
-## 3. `.env.example` could not be written by the agent
-The global guard hook blocks any write to a file whose name starts with `.env`, including the example file. Create it yourself; it holds no secrets:
-
-```
-printf 'ANTHROPIC_API_KEY=\nJEV_API_KEY=\nVERDA_API_KEY=\nLLM_PROVIDER=anthropic\nMOCK_LLM=0\nDOTNET=~/.dotnet/dotnet\n' > .env.example
-```
