@@ -1,13 +1,16 @@
 # Blocked items for Anson
 
 ## 1. Anthropic API usage limit reached (blocks every new model call) — Sat 14 Nov ~09:10
-Every Anthropic call now returns HTTP 400: "You have reached your specified API usage limits. You will regain access on 2026-12-01 at 00:00 UTC." *Specified* means a spend limit set on the account, not an outage. Spend in this run: about $60 (bench cold $24.56, bench warm $17.11 before the limit hit, four real reviews about $15, A/B variants and prompt iteration the rest).
+Every Anthropic call now returns HTTP 400: "You have reached your specified API usage limits. You will regain access on 2026-12-01 at 00:00 UTC." *Specified* means a spend limit set on the account, not an outage. Spend in this run: the full $100 limit (three bench passes about $55, real reviews recorded twice about $17, A/B variants about $8, prompt iteration and router comparison the rest).
 
-**Unblock (2 minutes):** console.anthropic.com, then Settings, then Limits. Raise the monthly spend limit by about $60. No code change; the pipeline reads the key from the local env file as before.
+**Unblock (2 minutes):** console.anthropic.com, then Settings, then Limits. Raise the monthly spend limit by **about $20** (bench runs now go through the Message Batches API at half price; PR #29). No code change; the pipeline reads the key from the local env file as before.
 
-Waiting on it, in order:
-1. **Bench re-run on the final pipeline.** The published bench numbers come from the pipeline as of PR #11. The adversarial-review fixes (PR #13) and the reader vote (PR #15) changed the lens prompts, so recorded fixtures do not replay. Run `cd pipeline && uv run receipts bench run --jobs 3 && uv run receipts bench run --warm --jobs 3 && uv run receipts metrics` (about 50 min, about $45).
-2. **Round 2 of 2297:** `uv run receipts review --change ju26-issue-2297-r2 --req REQ-2297` (about $2). A fix commit for the verified findings is on that branch in `mock-repo`, written by an agent playing the implementer (see `notes/round2.md`). If its re-review comes back `decision-A-B` with both sides unblocked, that is the real A/B merge for the demo.
+Waiting on it, in order (estimates from `--dry-run`, no API calls; see `notes/cost.md`):
+1. **Bench re-run on the final pipeline.** The published bench numbers come from the pipeline as of PR #11; later fixes changed the lens prompts, so recorded fixtures do not replay.
+   - Cold, all 36 cases: `cd pipeline && uv run receipts bench run --batch --max-usd 12` (estimate $9.93).
+   - Warm, the 2283 and 2234 subsets: `uv run receipts bench run --warm --batch --only mock-2283 --max-usd 4 && uv run receipts bench run --warm --batch --only mock-2234 --max-usd 4` (about $5).
+   - Then `uv run receipts metrics`, and update the two date and PR strings in `dashboard/app/track-record/page.tsx`.
+2. **Round 2 of 2297:** `uv run receipts review --change ju26-issue-2297-r2 --req REQ-2297` (about $2, live). A fix commit for the verified findings is on that branch in `mock-repo`, written by an agent playing the implementer (see `notes/round2.md`). If its re-review comes back `decision-A-B` with both sides unblocked, that is the real A/B merge for the demo.
 
 What still works without it: the dashboard, every committed run, `MOCK_LLM=1` replay of the four Tieto reviews, the Jev router, and every deterministic receipt (builds, tests, mutation, byte diff, regeneration). Model steps without a key are listed under "not checked" in each receipt, never invented.
 
