@@ -18,7 +18,7 @@ from .rule import RuleRouter, floor_for
 
 # name -> (module relative to this package, class name). Missing modules are skipped silently.
 OPTIONAL_ROUTERS: dict[str, tuple[str, str]] = {
-    "llm": (".llm", "LLMRouter"),
+    "llm": (".llm_router", "LLMRouter"),
     "jev": (".jev", "JevRouter"),
 }
 

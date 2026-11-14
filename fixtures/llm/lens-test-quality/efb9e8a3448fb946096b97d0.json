@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The wrapper ReportIfLocatedInCompilation filters out all diagnostics outside the compilation, but no test verifies that diagnostics for in-source types are still reported. If the guard were removed or negated, the change's tests would not fail: they only expect zero diagnostics, and for metadata types the null-location diagnostics are dropped either way. Negating the condition would suppress all analyzer diagnostics, yet no test in the diff checks that a real diagnostic still fires.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(...)) -> if (!(...)); expected to survive in the new tests, which only assert zero diagnostics and that the resolver is generated, so they pass regardless. Run the new tests under that mutant, plus the existing analyzer tests, to see whether any other test catches it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The MemberNeedsKey change from DeclaringSyntaxReferences[0] to FirstOrDefault() is only partly covered. The _UnkeyedMember test uses a public property with no Key on a metadata struct. The test may not reach the MemberNeedsKey branch at all (the type has [MessagePackObject], so it is probably reached, but nothing asserts that). Reverting to [0] might not be detected if the branch is not hit. The BothStringAndIntKeyAreNull path (GetPropertyIdentifierLocation) has no test with a metadata-defined property whose key is null, and the line-735 and line-1101 [0] indexers named in the requirement are not touched or tested.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 delete-statement: FirstOrDefault()?.GetSyntax().GetLocation() -> DeclaringSyntaxReferences[0].GetSyntax().GetLocation(); run ClosedGenericStruct_FromMetadataReference_UnkeyedMember and check that it fails. Likewise revert GetPropertyIdentifierLocation to [0] at line 985 and confirm some test fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests may not discriminate the base from head behavior for the analyzer half. TestBehaviors.SkipGeneratedSourcesCheck is set and the verifier runs with no expected diagnostics. If the verifier does not run the MsgPack00x analyzer, the AD0001 path is never exercised by the first call. Only the generator is checked directly in the second half, through a separate driver.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:640",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the three new tests against base-built TypeCollector and confirm each fails with AD0001 or CS8785. If the first RunAsync passes on base, the analyzer assertion is vacuous."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9537,
+  "output_tokens": 1200,
+  "ms": 10090,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\nGenerator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\n#### Bug description\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]` type has a member whose type is a **closed generic value type defined in a referenced assemb"
+}

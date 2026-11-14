@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The test only checks `Contains` of the attribute per generated file, so it cannot detect a type in a file that is missing the attribute. A file with multiple types (resolver with FormatterCache and GetFormatterHelper) passes if only one has it. The guard test also only counts attributes against guarded attributes, so deleting an attribute from one nested class would still pass.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:73",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48 delete-statement: remove the #if/[ExcludeFromCodeCoverage]/#endif lines before GetFormatterHelper -> expected to survive because the file still contains the attribute on the resolver class and FormatterCache, so Contains and count==guardedCount both still pass"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change from `{` to `{\\r\\n` when type constraints exist has no targeted test. The test source has no generic nesting types with constraints, so that branch is never exercised. A revert of it would not be noticed.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: writer(anyConstraints ? \"{\\r\\n\" : ...) -> writer(anyConstraints ? \"{\" : ...); expected to survive because no test uses a generic nesting type with constraints"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests assert the text contains the guard but never compile the generated output for a netstandard2.0 or .NET Framework target, so they do not prove the guard prevents compile errors. They also run the generator without checking the output compilation has no diagnostics. Existing snapshot tests were not shown as updated, so the template change may leave them stale.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:119",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests in MessagePack.SourceGenerator.Tests and check whether the verified snapshots differ because of the new attribute lines and the `{\\r\\n` change"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test source has no generic type, nested type with constraints, or non-default-resolver composite resolver. CompositeResolverTemplate output is therefore never generated or tested, so removing its attribute would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27 delete-statement: remove the attribute from the Write string -> expected to survive because TestSource has no [CompositeResolver] attribute so that template is never run"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 11099,
+  "output_tokens": 1140,
+  "ms": 9803,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\nAdd ExcludeFromCodeCoverage attribute to generated code.\n\n#### Is your feature request related to a problem? Please describe.\nMessagePack generated code is not decorated with ExcludeFromCodeCoverage attribute.\n\nBecause it is very hard to write good coverage for generated MessagePack code, it may skew coverage numbers, especially on large projects with a lot of generated"
+}

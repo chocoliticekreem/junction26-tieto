@@ -1,0 +1,55 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The requirement asks for ALL generated code to be decorated, but the change only decorates top-level types. Nested helper types and the resolver's GetFormatterHelper are covered in some templates, but nothing shows other emitted types (for example in the CompositeResolver or non-.tt-driven generators) are covered. Also the attribute is omitted for netstandard2.0/.NET Framework, so those consumers still get skewed coverage, which is not what the requirement asked for. The README documents this limitation.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare the requirement 'all generated code' with the #if !NETSTANDARD2_0 && !NETFRAMEWORK guards in each template. Search generator output for 'class ' or 'struct ' declarations that lack the attribute. The test only checks that a file contains the attribute at least once, not that every type in it has it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test asserts only that the attribute appears at least once per generated file and that every occurrence is guarded. It does not verify that each type declaration is decorated. Dropping the attribute from a nested class such as FormatterCache or GetFormatterHelper would not fail it.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:64",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Remove the attribute from the FormatterCache<T> or GetFormatterHelper block in ResolverTemplate.cs and run CodeCoverageExclusionTests. The tests still pass because the outer class still carries the attribute."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the ExcludeFromCodeCoverage attribute be emitted unconditionally, or guarded out for netstandard2.0/.NET Framework as the change does?",
+        "options": [
+          "Keep the guard (attribute emitted only where available)",
+          "Always emit, and polyfill or define the attribute for older targets"
+        ],
+        "why_it_matters": "The requirement says 'all generated code'. If the team wants coverage exclusion for netstandard2.0/.NET Framework consumers too, the guard is a gap. If compile-safety is the priority, the guard is correct.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Decorate generated types only on targets where ExcludeFromCodeCoverage exists, using an #if !NETSTANDARD2_0 && !NETFRAMEWORK guard, with no opt-out setting. This is the change as implemented."
+      },
+      {
+        "label": "B",
+        "summary": "Decorate generated types on all targets, either by emitting a polyfill or by detecting availability another way (e.g. a generator-time compilation check for the attribute type). Optionally add a setting to toggle it, which the requirement says would also be acceptable."
+      }
+    ]
+  },
+  "input_tokens": 11901,
+  "output_tokens": 1005,
+  "ms": 8392,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\nAdd ExcludeFromCodeCoverage attribute to generated code.\n\n#### Is your feature request related to a problem? Please describe.\nMessagePack generated code is not decorated with ExcludeFromCodeCoverage attribute.\n\nBecause it is very hard to write good coverage for generated MessagePack code, it may skew coverage numbers, especially on large projects with a lot of generated"
+}

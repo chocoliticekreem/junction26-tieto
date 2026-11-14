@@ -11,6 +11,7 @@ under "not checked" instead of inventing output.
 import hashlib
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from . import config
@@ -40,7 +41,8 @@ def _fixture_path(purpose: str, key: str):
 
 
 def call_json(
-    purpose: str, model: str, system: str, user: str, schema: dict, effort: str = "medium"
+    purpose: str, model: str, system: str, user: str, schema: dict, effort: str = "medium",
+    max_tokens: int = 16000,
 ) -> LLMResult:
     """Ask `model` for a JSON object matching `schema`. `purpose` names the fixture folder."""
     key = _key(model, system, user, schema)
@@ -64,7 +66,7 @@ def call_json(
     try:
         with client.messages.stream(
             model=model,
-            max_tokens=16000,
+            max_tokens=max_tokens,
             system=system,
             messages=[{"role": "user", "content": user}],
             output_config=output_config,
@@ -95,3 +97,37 @@ def call_json(
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(rec, indent=2, ensure_ascii=False))
     return LLMResult(data, model, msg.usage.input_tokens, msg.usage.output_tokens, ms, False)
+
+
+# USD per million tokens (input, output), Anthropic first-party list prices; Jev per typesafe.ai.
+PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
+    "claude-opus-5-5": (4.0, 20.0),
+    "claude-sonnet-5-5": (2.0, 10.0),
+    "claude-haiku-4-5-20251001": (1.0, 5.0),
+    "jev-latest": (0.042, 0.0),  # $42 per billion input tokens; output price not published
+}
+
+
+def cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
+    pin, pout = PRICES_PER_MTOK.get(model, (0.0, 0.0))
+    return round((input_tokens * pin + output_tokens * pout) / 1_000_000, 6)
+
+
+def replay_or_record(purpose: str, key_parts: list, fetch: Callable[[], dict]) -> tuple[dict, bool]:
+    """Record/replay for non-Anthropic HTTP calls (e.g. Jev), with the same keying and MOCK_LLM rules.
+
+    `key_parts` must be deterministic (no keys, timestamps or temp paths). `fetch` performs the real
+    call and returns a JSON-able record; it raises LLMUnavailable when it cannot. Returns (record,
+    from_fixture).
+    """
+    blob = json.dumps(key_parts, sort_keys=True, ensure_ascii=False)
+    key = hashlib.sha256(blob.encode()).hexdigest()[:24]
+    path = _fixture_path(purpose, key)
+    if path.exists():
+        return json.loads(path.read_text()), True
+    if config.MOCK_LLM:
+        raise LLMUnavailable(f"MOCK_LLM=1 and no fixture for {purpose}/{key}")
+    rec = fetch()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rec, indent=2, ensure_ascii=False))
+    return rec, False

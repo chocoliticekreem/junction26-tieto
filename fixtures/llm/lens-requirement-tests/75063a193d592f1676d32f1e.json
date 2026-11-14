@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Every new attribute is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. As a result, consuming projects that target netstandard2.0 or .NET Framework get generated formatters and resolvers with no [ExcludeFromCodeCoverage]. The requirement asks for ALL generated code to be decorated. System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute exists in .NET Framework 4.0+ and in netstandard2.0, and is valid on classes there, so the exclusion is not needed. Multi-targeting libraries lose the exclusion on those target frameworks.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageLegacyTargetsTests.GeneratedTypesAreExcludedFromCodeCoverageOnLegacyTargets(\"NETSTANDARD2_0\") and (\"NETFRAMEWORK\"). The test runs the generator with that preprocessor symbol defined and reports every generated formatter or resolver type that lacks the attribute. Expected to fail on head. The same guard appears in EnumTemplate.tt:8, StringKeyFormatterTemplate.tt:18, UnionTemplate.tt:10, ResolverTemplate.tt:14/31/48 and CompositeResolverTemplate.tt:7/35."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README states the attribute is 'not available' on netstandard2.0 or .NET Framework. This is factually wrong: ExcludeFromCodeCoverageAttribute ships in both. The docs therefore justify a coverage gap the requirement does not allow.",
+        "location": "README.md:1640",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "API docs for System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute list it under .NET Framework 4.0+ and .NET Standard 2.0. Compare with README.md lines 1639-1640."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageGeneratedTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageGeneratedTests\n{\n    private const string Source = \"\"\"\n        using MessagePack;\n\n        namespace MyNs\n        {\n            public enum MyEnum { A, B }\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)] public int A { get; set; }\n                [Key(1)] public MyEnum E { get; set; }\n            }\n\n            [MessagePackObject(true)]\n            public class MapObject\n            {\n                public int C { get; set; }\n            }\n\n            [Union(0, typeof(Derived))]\n            public interface IUnion { }\n\n            [MessagePackObject]\n            public class Derived : IUnion\n            {\n                [Key(0)] public int B { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            partial class MyResolver { }\n        }\n        \"\"\";\n\n    private static async Task<List<string>> GetTypesMissingAttributeAsync(string[] preprocessorSymbols, List<string> checkedTypes)\n    {\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest, preprocessorSymbols: preprocessorSymbols);\n        SyntaxTree tree = CSharpSyntaxTree.ParseText(Source, parseOptions);\n        var refs = new List<MetadataReference>(await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None));\n        refs.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpCompilation compilation = CSharpCompilation.Create(\"ReceiptsTestAssembly\", new[] { tree }, refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new global::MessagePack.SourceGenerator.MessagePackGenerator()).WithUpdatedParseOptions(parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> _);\n\n        var missing = new List<string>();\n        foreach (SyntaxTree generated in driver.GetRunResult().GeneratedTrees)\n        {\n            SemanticModel model = output.GetSemanticModel(generated);\n            SyntaxNode root = await generated.GetRootAsync();\n            foreach (ClassDeclarationSyntax cls in root.DescendantNodes().OfType<ClassDeclarationSyntax>())\n            {\n                if (model.GetDeclaredSymbol(cls) is not INamedTypeSymbol symbol)\n                {\n                    continue;\n                }\n\n                bool relevant = symbol.AllInterfaces.Any(i => i.Name == \"IMessagePackFormatter\" || i.Name == \"IFormatterResolver\");\n                if (!relevant)\n                {\n                    continue;\n                }\n\n                string name = symbol.ToDisplayString();\n                if (checkedTypes.Contains(name))\n                {\n                    continue;\n                }\n\n                checkedTypes.Add(name);\n                if (!symbol.GetAttributes().Any(a => a.AttributeClass?.Name == \"ExcludeFromCodeCoverageAttribute\"))\n                {\n                    missing.Add(name);\n                }\n            }\n        }\n\n        return missing;\n    }\n\n    [Fact]\n    public async Task GeneratedFormattersAreExcludedFromCodeCoverage()\n    {\n        var checkedTypes = new List<string>();\n        List<string> missing = await GetTypesMissingAttributeAsync(Array.Empty<string>(), checkedTypes);\n        checkedTypes.Should().NotBeEmpty();\n        missing.Should().BeEmpty();\n    }\n\n    [Fact]\n    public async Task GeneratedResolverIsExcludedFromCodeCoverage()\n    {\n        var checkedTypes = new List<string>();\n        List<string> missing = await GetTypesMissingAttributeAsync(Array.Empty<string>(), checkedTypes);\n        checkedTypes.Should().Contain(\"MyNs.MyResolver\");\n        missing.Should().NotContain(\"MyNs.MyResolver\");\n    }\n}\n",
+        "test_names": [
+          "GeneratedFormattersAreExcludedFromCodeCoverage",
+          "GeneratedResolverIsExcludedFromCodeCoverage"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageLegacyTargetsTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageLegacyTargetsTests\n{\n    private const string Source = \"\"\"\n        using MessagePack;\n\n        namespace MyNs\n        {\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)] public int A { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            partial class MyResolver { }\n        }\n        \"\"\";\n\n    [Theory]\n    [InlineData(\"NETSTANDARD2_0\")]\n    [InlineData(\"NETFRAMEWORK\")]\n    public async Task GeneratedTypesAreExcludedFromCodeCoverageOnLegacyTargets(string symbol)\n    {\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest, preprocessorSymbols: new[] { symbol });\n        SyntaxTree tree = CSharpSyntaxTree.ParseText(Source, parseOptions);\n        var refs = new List<MetadataReference>(await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None));\n        refs.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpCompilation compilation = CSharpCompilation.Create(\"ReceiptsLegacyAssembly\", new[] { tree }, refs, new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new global::MessagePack.SourceGenerator.MessagePackGenerator()).WithUpdatedParseOptions(parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out ImmutableArray<Diagnostic> _);\n\n        var checkedTypes = new List<string>();\n        var missing = new List<string>();\n        foreach (SyntaxTree generated in driver.GetRunResult().GeneratedTrees)\n        {\n            SemanticModel model = output.GetSemanticModel(generated);\n            SyntaxNode root = await generated.GetRootAsync();\n            foreach (ClassDeclarationSyntax cls in root.DescendantNodes().OfType<ClassDeclarationSyntax>())\n            {\n                if (model.GetDeclaredSymbol(cls) is not INamedTypeSymbol type)\n                {\n                    continue;\n                }\n\n                if (!type.AllInterfaces.Any(i => i.Name == \"IMessagePackFormatter\" || i.Name == \"IFormatterResolver\"))\n                {\n                    continue;\n                }\n\n                string name = type.ToDisplayString();\n                if (checkedTypes.Contains(name))\n                {\n                    continue;\n                }\n\n                checkedTypes.Add(name);\n                if (!type.GetAttributes().Any(a => a.AttributeClass?.Name == \"ExcludeFromCodeCoverageAttribute\"))\n                {\n                    missing.Add(name);\n                }\n            }\n        }\n\n        checkedTypes.Should().NotBeEmpty();\n        missing.Should().BeEmpty();\n    }\n}\n",
+        "test_names": [
+          "GeneratedTypesAreExcludedFromCodeCoverageOnLegacyTargets"
+        ],
+        "expects": "fail-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Always-on, with no setting. Every generated formatter and resolver class is unconditionally decorated with [global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage] in the T4 templates. This is what the change does, minus its target-framework #if guard."
+      },
+      {
+        "label": "B",
+        "summary": "Configurable, as the requirement says 'setting would be fine'. Add a boolean generator option (e.g. on the formatter/resolver options read by the generator, default true). The templates emit the attribute line only when that option is enabled, so users can turn the exclusion off. This needs a new option property, plumbing it into the template classes, and wrapping each emitted attribute line in a template-level `if (option)`."
+      }
+    ]
+  },
+  "input_tokens": 12734,
+  "output_tokens": 11995,
+  "ms": 100547,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\nAdd ExcludeFromCodeCoverage attribute to generated code.\n\n#### Is your feature request related to a problem? Please describe.\nMessagePack generated code is not decorated with ExcludeFromCodeCoverage attribute.\n\nBecause it is very hard to write good coverage for generated MessagePack code, it may skew coverage numbers, especially on large projects with a lot of generated"
+}
