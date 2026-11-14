@@ -26,6 +26,9 @@ test("queue shows only the Tieto sample changes as cards grouped by what the use
   await expect(page.getByText("mock/2283/logic")).toHaveCount(0);
   await expect(page.locator("body")).not.toContainText(/\bBench\b/);
   await expect(page.getByTestId("group-needs")).toContainText("Needs your decision");
+  // The group heading and each card's sentence say it once; no blurb between them, no label beside the bar.
+  await expect(page.getByTestId("group-needs")).not.toContainText("Nothing is proven wrong");
+  await expect(page.getByTestId("queue-card").first()).not.toContainText(/\breceipts\b/);
   await expect(page.getByTestId("group-blocked")).toHaveCount(0);
   const card2283 = cards.filter({ hasText: "ju26-issue-2283" });
   await expect(card2283.getByTestId("verdict-pill")).toHaveText("Needs sign-off");
@@ -91,7 +94,8 @@ test("change page shows receipts, collapsed hunches, not-checked list and log ex
   await expect(page.getByTestId("hunch")).toHaveCount(0);
   await page.getByTestId("hunches-toggle").click();
   await expect(page.getByTestId("hunch")).toHaveCount(2);
-  await expect(page.getByTestId("hunch").first()).toContainText("unverified hunch — no receipt");
+  // The list header says "unverified ... withheld" once; the rows do not repeat it.
+  await expect(page.getByTestId("hunch").first()).not.toContainText("unverified hunch");
 
   await expect(page.getByTestId("not-checked-list").locator("li")).toHaveCount(3);
   await expect(page.getByTestId("not-checked-list")).toContainText("ExecutionTests");
@@ -174,9 +178,9 @@ test("Impact step: blast radius for a modified member, only-new wording, and the
   // Glossary terms on the step.
   await page.getByTestId("term-blast").hover();
   await expect(page.getByRole("tooltip").filter({ hasText: "calls a function it modified or deleted" })).toBeVisible();
-  // The plain-words box and the receipt carry the same answer.
-  await expect(page.getByTestId("plain-impact")).toContainText("This change modifies 2 existing functions that 7 other places use.");
-  await expect(page.getByTestId("plain-impact").locator("a")).toHaveAttribute("href", "#impact");
+  // The step headline is the one place this sentence appears; the plain-words box does not repeat it.
+  await expect(page.getByTestId("plain-impact")).toHaveCount(0);
+  await expect(page.getByTestId("story-what-changed")).not.toContainText("7 other places use");
   await expect(page.getByTestId("plain-wrong")).toContainText("TypeCollector.IsOpenGenericType now behaves differently, and 4 other places rely on it.");
   const receiptLine = page.getByTestId("receipt-impact");
   await expect(receiptLine).toContainText("Impact on other features");
@@ -200,7 +204,7 @@ test("Impact step: blast radius for a modified member, only-new wording, and the
 test("SQL adapter change page shows the schema diff and row counts behind the block", async ({ page }) => {
   await page.goto("/change/sql-bad-down");
   await expect(page.getByTestId("verdict-pill").first()).toHaveText("Blocked");
-  await expect(page.getByTestId("verdict-headline")).toHaveText("Blocked: 1 defect proven by running the migration");
+  await expect(page.getByTestId("verdict-headline")).toHaveText("1 defect proven by running the migration");
   await expect(page.getByTestId("verdict-reason")).toHaveCount(0);
   await page.getByTestId("tech-toggle").click();
   await page.getByTestId("verdict-raw-toggle").click();
@@ -285,8 +289,11 @@ test("sign-off is refused on a blocked change, in the UI and the API", async ({ 
   await page.goto(`/change/${encodeURIComponent("mock/2283/logic")}`);
   await expect(page.getByTestId("sign-off")).toBeDisabled();
   await expect(page.getByTestId("sign-off")).toHaveText("Sign-off locked");
-  await expect(page.getByTestId("sign-off-refused")).toHaveText("Blocked: a proven defect must be fixed first");
-  await expect(page.getByTestId("sign-off-refused")).toHaveAttribute("title", /blocked \(A verified finding/);
+  await expect(page.getByTestId("sign-off")).toHaveAttribute("aria-label", "Blocked: a proven defect must be fixed first");
+  await expect(page.getByTestId("sign-off")).toHaveAttribute("title", /blocked \(A verified finding/);
+  // The decision sentence is the one visible reason; the locked button does not repeat it.
+  await expect(page.getByTestId("plain-decide")).toContainText("Blocked: it has to be fixed before anyone can approve it.");
+  await expect(page.getByTestId("decision-panel")).not.toContainText("a proven defect must be fixed first");
   const res = await page.request.post("/api/decisions/sign-off", { data: { change_id: "mock/2283/logic" } });
   expect(res.status()).toBe(409);
   expect((await res.json()).error).toContain("A verified finding: two edge tests");
@@ -382,7 +389,9 @@ test("sign-off writes a decision record", async ({ page }) => {
   await page.goto("/");
   const done = page.getByTestId("group-done");
   await expect(done).toContainText("Done");
-  await expect(done.getByTestId("queue-card").filter({ hasText: "ju26-issue-2283" })).toContainText(`signed off by ${HUMAN}`);
+  const doneCard = done.getByTestId("queue-card").filter({ hasText: "ju26-issue-2283" });
+  await expect(doneCard).toContainText(`Decided: ${HUMAN} signed this off on`);
+  await expect(doneCard).not.toContainText(`signed off by ${HUMAN}`);
   await expect(page.getByTestId("need-you")).toHaveText("Nothing needs you");
 });
 
@@ -400,6 +409,31 @@ test("machine strings never reach the default view: verdict reasons, lock reason
   await expect(page.getByTestId("context-markdown")).not.toContainText("<!--");
   await expect(page.getByTestId("context-markdown")).not.toContainText("seeded convention");
   await expect(page.getByTestId("context-markdown")).toContainText("their authors cannot act on them.");
+});
+
+test("context page renders the document with area chips and source citations, never raw tags", async ({ page }) => {
+  await page.goto("/context");
+  const doc = page.getByTestId("context-markdown");
+  // The page owns the title and the status line; the document body does not repeat them.
+  await expect(doc.getByRole("heading", { level: 1 })).toHaveCount(0);
+  await expect(doc).not.toContainText("Status:");
+  await expect(page.getByTestId("context-provenance")).toContainText("Bootstrapped from README.md");
+  await expect(doc.getByRole("heading", { name: "Deliberate conventions" })).toBeVisible();
+  // Every tagged bullet becomes chips + text + citation.
+  await expect(doc).not.toContainText("[area:");
+  await expect(doc).not.toContainText("(source:");
+  const notes = doc.getByTestId("context-note");
+  await expect(notes).toHaveCount(9);
+  const bait = notes.filter({ hasText: "their authors cannot act on them" });
+  await expect(bait.getByTestId("area-chip")).toHaveText(["analyzer", "generator"]);
+  await expect(bait.getByTestId("source-cite")).toHaveText("ledger Q-bait-1, answered by Anson");
+  await expect(bait.locator("strong")).toHaveText("referenced assemblies");
+  await expect(notes.filter({ hasText: "verified by regeneration" }).locator("code").first()).toHaveText("tests/**/Snapshots/*.verified.cs");
+  // GFM table and the empty decisions section still render as a document.
+  await expect(doc.getByRole("table")).toHaveCount(1);
+  await expect(page.getByTestId("context-no-decisions")).toHaveText("No decisions yet.");
+  // The ledger rows carry the same chips (newest first; the inline answer from an earlier test sits on top).
+  await expect(page.getByTestId("context-ledger").getByTestId("area-chip")).toHaveText(["source-generator/emit", "source-generator/analyzer"]);
 });
 
 test("context page renders markdown and confirms as the human", async ({ page }) => {
@@ -510,9 +544,13 @@ test("plain-words summary and product context on the change page; predates fallb
   await page.goto("/change/ju26-issue-2283");
   const summary = page.getByTestId("plain-summary");
   await expect(summary).toBeVisible();
-  await expect(summary.getByTestId("plain-purpose")).toContainText("This change is about: fix IndexOutOfRangeException on closed generic struct from referenced assembly.");
+  // The title above already says what the change is about; hunches are the footnote under Findings.
+  await expect(summary.getByTestId("plain-purpose")).toHaveCount(0);
+  await expect(summary).not.toContainText("This change is about");
   await expect(summary.getByTestId("plain-proved")).toContainText("We wrote 2 tests from the issue description alone. They failed before the change and pass after it");
   await expect(summary.getByTestId("plain-wrong")).toContainText("1 part of the new code is never tested");
+  await expect(summary.getByTestId("plain-wrong")).not.toContainText("suspicion");
+  await expect(page.getByTestId("story-proved")).toContainText("2 suspicions without proof are listed under technical details");
   await expect(summary.getByTestId("plain-unchecked")).toContainText("We did not check 3 things");
   // "sign-off writes a decision record" ran earlier in this serial file, so step 4 reports the decision.
   await expect(summary.getByTestId("plain-decide")).toHaveCount(0);
@@ -530,7 +568,7 @@ test("plain-words summary and product context on the change page; predates fallb
   await expect(page.getByRole("tooltip").filter({ hasText: "A problem with a receipt behind it" })).toBeVisible();
 
   // Product context from context.json, folded to one line; open it for the draft pill, nudge, entries, ledger badge and citation.
-  await expect(page.getByTestId("product-context-toggle")).toContainText("Used 2 notes about your product · 1 held back");
+  await expect(page.getByTestId("product-context-toggle")).toContainText("What it knew about your product: 2 notes used · 1 held back");
   await expect(page.getByTestId("run-context-status")).toHaveCount(0);
   await page.getByTestId("product-context-toggle").click();
   await expect(page.getByTestId("run-context-status")).toHaveText("draft");
@@ -545,6 +583,9 @@ test("plain-words summary and product context on the change page; predates fallb
   await page.getByTestId("context-entries-toggle").click();
   await expect(page.getByTestId("context-entry")).toHaveCount(2);
   await expect(page.getByTestId("context-entry-ledger")).toHaveCount(1);
+  // Entries use the same chip + citation rendering as the context page.
+  await expect(page.getByTestId("context-entries").getByTestId("area-chip").first()).toBeVisible();
+  await expect(page.getByTestId("context-entries").getByTestId("source-cite").first()).toBeVisible();
   await expect(page.getByTestId("context-predates")).toHaveCount(0);
 
   // A run without context.json says so instead of pretending.

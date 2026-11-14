@@ -29,7 +29,8 @@ function card(run: RunBundle, decision: Decision | undefined, pending: number): 
     status = decideSentence(r.verdict, { decision });
     action = { label: "See the record", href: changeHref, primary: false };
   } else if (r.verdict === "blocked") {
-    status = [`${humanizeVerdict(r.verdict, r.verdict_reason, { findings: r.findings, evidence: run.evidence }).headline}.`, impact, "It has to be fixed before anyone can approve it."].filter(Boolean).join(" ");
+    const headline = humanizeVerdict(r.verdict, r.verdict_reason, { findings: r.findings, evidence: run.evidence }).headline.replace(/^Blocked:\s*/, "");
+    status = [`${headline[0].toUpperCase()}${headline.slice(1)}.`, impact].filter(Boolean).join(" ");
     action = { label: "See why it's blocked", href: changeHref, primary: true };
     if (hasReadings) secondary = { label: "Two readings were built; see both", href: decisionHref };
   } else if (r.verdict === "decision-A-B") {
@@ -50,20 +51,17 @@ function card(run: RunBundle, decision: Decision | undefined, pending: number): 
     secondary,
     pending,
     receipts: { pass: rc.green, partial: rc.other, fail: rc.red },
-    decided: decision ? `${decision.choice === "sign-off" ? "signed off" : `merged ${decision.choice}`} by ${decision.who}` : undefined,
+    decided: !!decision,
   };
 }
 
-function Group({ title, blurb, cards, testId }: { title: string; blurb: string; cards: QueueCardData[]; testId: string }) {
+function Group({ title, cards, testId }: { title: string; cards: QueueCardData[]; testId: string }) {
   if (cards.length === 0) return null;
   return (
     <section className="space-y-3" data-testid={testId}>
-      <div>
-        <h2 className="text-base font-semibold tracking-tight">
-          {title} <span className="ml-1 font-mono text-xs font-normal text-muted-foreground tabular-nums">{cards.length}</span>
-        </h2>
-        <p className="text-sm text-muted-foreground">{blurb}</p>
-      </div>
+      <h2 className="text-base font-semibold tracking-tight">
+        {title} <span className="ml-1 font-mono text-xs font-normal text-muted-foreground tabular-nums">{cards.length}</span>
+      </h2>
       <StaggerList as="ul" className="grid gap-3">
         {cards.map((c) => (
           <QueueCard key={c.changeId} c={c} />
@@ -114,9 +112,9 @@ export default function QueuePage() {
         </div>
       )}
 
-      <Group title="Needs your decision" blurb="Nothing is proven wrong. Read the receipt, then sign off or send it back." cards={needs} testId="group-needs" />
-      <Group title="Blocked — waiting for a fix" blurb="A defect was proven. Nobody can approve these until it is fixed." cards={blocked} testId="group-blocked" />
-      <Group title="Done" blurb="Decided by a named person. The record says what was checked and what was not." cards={done} testId="group-done" />
+      <Group title="Needs your decision" cards={needs} testId="group-needs" />
+      <Group title="Blocked — waiting for a fix" cards={blocked} testId="group-blocked" />
+      <Group title="Done" cards={done} testId="group-done" />
 
       {cards.length > 0 && (
         <p className="text-sm text-muted-foreground">

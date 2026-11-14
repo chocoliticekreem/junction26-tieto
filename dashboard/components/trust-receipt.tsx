@@ -177,7 +177,6 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
       <div className="mt-3 flex items-end justify-between gap-3 border-t-2 border-ink/70 pt-3">
         <div className="min-w-0">
           <div className="text-[10px] tracking-[0.18em] uppercase text-muted-foreground">Verdict</div>
-          <div className="text-[10px] text-muted-foreground">{decision ? "decided by a named human" : "awaiting a named human"}</div>
           {decision && (
             <div className="mt-0.5 text-[10px] text-muted-foreground" title={decision.ts}>
               {decision.ts.slice(0, 16).replace("T", " ")}

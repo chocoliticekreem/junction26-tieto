@@ -286,8 +286,7 @@ export default function TrackRecordPage() {
             Practice runs: {practice.length || summary?.cold?.cases || 36} changes with planted bugs we know the answers to
           </h2>
           <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Each of the four real changes was copied nine times with a known bug planted in it (or none, as a control), and the labels were hidden from the reviewer. Catching the bug proves the
-            reviewer works; missing one shows exactly where not to trust it.
+            Each of the four real changes was copied nine times with a known bug planted in it (or none, as a control), and the labels were hidden from the reviewer.
           </p>
         </div>
 
@@ -421,9 +420,7 @@ export default function TrackRecordPage() {
             <Database className="size-4 text-muted-foreground" aria-hidden />
             Another kind of check: database migrations
           </h2>
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            The same receipt shape on a different kind of change. Each migration runs up and down on a throwaway database; the receipt says whether rows survived and whether it can be undone.
-          </p>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Each migration runs up and down on a throwaway database; the receipt says whether rows survived and whether it can be undone.</p>
         </div>
         {sqlRuns.length > 0 ? <RunRows runs={sqlRuns} testId="sql-row" /> : <EmptyState>No migration runs yet. See examples/make_sql_repo.sh.</EmptyState>}
       </section>

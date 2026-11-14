@@ -1,13 +1,22 @@
 import { Info } from "lucide-react";
-import { humanizeVerdict, type HumanizeCtx } from "@/lib/humanize";
+import { humanizeVerdict, verdictHeadline, type HumanizeCtx } from "@/lib/humanize";
 import type { VerdictKind } from "@/lib/types";
 import { Disclosure } from "./disclosure";
-import { VerdictPill } from "./pills";
+import { VerdictPill, verdictLabel } from "./pills";
 import { cn } from "@/lib/utils";
 
+/** The pill already names the verdict, so the headline keeps only what it adds: nothing, or the proof. */
+function beyondPill(verdict: VerdictKind, headline: string): string | null {
+  if (headline === verdictHeadline[verdict]) return null;
+  const prefix = `${verdictLabel[verdict]}: `;
+  if (!headline.startsWith(prefix)) return headline;
+  const rest = headline.slice(prefix.length);
+  return rest[0].toUpperCase() + rest.slice(1);
+}
+
 /**
- * The verdict in plain language: a headline, a short list of human reasons, and the pipeline's raw
- * reason one click away. Prose reasons (not a machine shape) are shown as-is.
+ * The verdict in plain language: the pill, what the headline adds beyond it, a short list of human
+ * reasons, and the pipeline's raw reason one click away. Prose reasons (not a machine shape) are shown as-is.
  */
 export function VerdictSummary({
   verdict,
@@ -26,13 +35,16 @@ export function VerdictSummary({
   hideRaw?: boolean;
 }) {
   const h = humanizeVerdict(verdict, reason, ctx);
+  const headline = beyondPill(verdict, h.headline);
   return (
     <div className={cn("min-w-0", className)} data-testid="verdict-summary">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <VerdictPill verdict={verdict} />
-        <span className={cn("font-medium tracking-tight", compact ? "text-sm" : "text-base")} data-testid="verdict-headline">
-          {h.headline}
-        </span>
+        {headline && (
+          <span className={cn("font-medium tracking-tight", compact ? "text-sm" : "text-base")} data-testid="verdict-headline">
+            {headline}
+          </span>
+        )}
       </div>
       {h.mapped ? (
         h.reasons.length > 0 && (

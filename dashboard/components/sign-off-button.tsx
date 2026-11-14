@@ -33,16 +33,20 @@ export function SignOffButton({
     );
   }
 
+  // The decision sentence beside this button already says why; the button keeps the reason as its tooltip and label.
   if (refusal) {
     return (
-      <div className="flex min-w-0 flex-col items-start gap-1.5" title={refusal}>
-        <Button disabled size="lg" variant="outline" className="cursor-not-allowed border-dashed text-muted-foreground opacity-100 hover:bg-transparent" data-testid="sign-off" aria-describedby="sign-off-refused">
-          <Lock data-icon="inline-start" /> Sign-off locked
-        </Button>
-        <span id="sign-off-refused" className="max-w-md text-sm text-muted-foreground [overflow-wrap:anywhere]" data-testid="sign-off-refused" title={refusal}>
-          {humanizeRefusal(verdict) ?? refusal}
-        </span>
-      </div>
+      <Button
+        disabled
+        size="lg"
+        variant="outline"
+        className="cursor-not-allowed border-dashed text-muted-foreground opacity-100 hover:bg-transparent"
+        data-testid="sign-off"
+        title={refusal}
+        aria-label={humanizeRefusal(verdict) ?? refusal}
+      >
+        <Lock data-icon="inline-start" /> Sign-off locked
+      </Button>
     );
   }
 

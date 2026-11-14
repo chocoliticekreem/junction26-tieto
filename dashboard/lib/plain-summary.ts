@@ -15,6 +15,8 @@ export interface PlainSentence {
 export interface PlainSummaryOpts {
   decision?: Decision;
   pendingQuestions?: number;
+  /** The page lists the hunches itself, so the "wrong" sentence leaves them out. */
+  hunchesElsewhere?: boolean;
 }
 
 function plural(n: number, one: string, many = `${one}s`): string {
@@ -244,7 +246,7 @@ export function plainSummary(run: RunBundle, opts: PlainSummaryOpts = {}): Plain
     { key: "purpose", text: purposeSentence(r.requirement_title), href: "#requirement" },
     ...impact,
     { key: "proved", text: provedSentence(run.evidence), href: provenLines(run.evidence).length ? "#proven" : "#receipts" },
-    { key: "wrong", text: wrongSentence(r.findings, r.hunches, run.evidence), href: "#findings" },
+    { key: "wrong", text: wrongSentence(r.findings, opts.hunchesElsewhere ? [] : r.hunches, run.evidence), href: "#findings" },
     { key: "unchecked", text: uncheckedSentence(r.not_checked), href: "#not-checked" },
     { key: "decide", text: decideSentence(r.verdict, opts), href: decideHref },
   ];

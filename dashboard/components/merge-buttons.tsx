@@ -4,7 +4,6 @@ import { GitMerge, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { humanizeVerdict } from "@/lib/humanize";
 import type { Decision, Interpretation } from "@/lib/types";
 
 export function MergeButtons({
@@ -13,16 +12,13 @@ export function MergeButtons({
   decision,
   interpretations,
   blocked = {},
-  blockedHuman = {},
 }: {
   changeId: string;
   human: string | null;
   decision?: Decision;
   interpretations: Interpretation[];
-  /** label -> verdict reason, for branches whose own run is blocked; those cannot be merged. */
+  /** label -> verdict reason, for branches whose own run is blocked; those cannot be merged. The side card says why. */
   blocked?: Record<string, string>;
-  /** label -> plain-language headline for the lock, computed with the side run's evidence. */
-  blockedHuman?: Record<string, string>;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<"A" | "B" | null>(null);
@@ -95,17 +91,6 @@ export function MergeButtons({
         </div>
         <span className="text-sm text-muted-foreground">{human ? `as ${human}` : "Pick your name in the header to decide"}</span>
       </div>
-      {Object.entries(blocked).map(([label, reason]) => {
-        const headline = blockedHuman[label] ?? humanizeVerdict("blocked", reason).headline;
-        return (
-          <p key={label} className="flex items-center gap-1.5 text-sm text-muted-foreground [overflow-wrap:anywhere]" data-testid={`merge-blocked-${label}`} title={`${label} cannot be merged: its own review is blocked (${reason}).`}>
-            <Lock className="size-3 shrink-0" aria-hidden />
-            <span>
-              <span className="font-medium text-foreground">{label}</span> locked — {headline.charAt(0).toLowerCase() + headline.slice(1)}
-            </span>
-          </p>
-        );
-      })}
       {error && (
         <p className="text-xs text-bad-foreground" data-testid="merge-error">
           {error}
