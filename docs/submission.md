@@ -43,4 +43,6 @@ Trust levels per code area rise after 5 correct verdicts in a row and reset afte
 - Video: to be recorded (max 2 minutes)
 
 ## Tech challenges genuinely used
-None. We do not run CI on CRACI, receipts do not run in Modal sandboxes, Codex was not used to build it, and Entire was not used. Ticking any of them would be untrue.
+- **Verda Compute Track (56).** Verda's Inference API (open-weight Kimi K3.1 Pro, hosted in Germany) is a second model provider behind the pipeline's single model interface (`LLM_PROVIDER=verda`). We re-ran the four Tieto reviews and the bench on it and report quality and cost next to Anthropic. Write-up: `docs/verda.md`. Post its link in Verda's Discord channel.
+
+Not ticked, because not used: CRACI (no CI runs on it), Modal, Codex, Entire.
