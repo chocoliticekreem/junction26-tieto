@@ -6,7 +6,7 @@ export interface ProvenLine {
   label: string;
 }
 
-const POSITIVE_KINDS: EvidenceKind[] = ["fail-before-pass-after", "new-api", "regeneration", "byte-diff", "migration-up-down", "row-preservation"];
+const POSITIVE_KINDS: EvidenceKind[] = ["fail-before-pass-after", "new-api", "regeneration", "byte-diff", "migration-up-down", "row-preservation", "behaviour-preserved"];
 
 function num(v: unknown): number | undefined {
   return typeof v === "number" ? v : undefined;
@@ -61,6 +61,11 @@ function describe(ev: Evidence): { text: string; count?: string } {
       if (columns !== undefined) return { text: "Column values preserved across the migration", count: `${columns} ${columns === 1 ? "column" : "columns"}` };
       const tables = len(d.row_counts);
       return { text: "No rows lost across the migration", count: tables !== undefined ? `${tables} ${tables === 1 ? "table" : "tables"}` : undefined };
+    }
+    case "behaviour-preserved": {
+      const member = typeof d.member === "string" ? d.member : ev.title.match(/Characterization: (\S+)/)?.[1];
+      const tests = Array.isArray(d.tests) ? d.tests.length : Array.isArray(d.test_names) ? d.test_names.length : undefined;
+      return { text: member ? `Old behaviour of ${member} still holds` : "Old behaviour still holds", count: tests !== undefined ? `${tests}/${tests} pinned tests pass` : undefined };
     }
     default:
       return { text: ev.title };

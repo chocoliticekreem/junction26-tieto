@@ -4,6 +4,15 @@ import type { Evidence, Finding } from "../lib/types";
 
 // Unit tests for the plain-language mapper. Shapes come from grep over runs/**/receipt.json and evidence.json.
 
+test("characterization titles and the behaviour-changed claim read as plain sentences", () => {
+  expect(humanizeTitle("Characterization: TypeCollector.CollectGeneric behaviour preserved (3/3 pinned tests pass on base and head)")).toEqual({ text: "Old behaviour of TypeCollector.CollectGeneric still holds", count: "3/3 pinned tests" });
+  expect(humanizeTitle("Characterization: TypeCollector.IsOpenGenericType behaviour changed (2/2 pinned tests pass on base, 1 fails on head)")).toEqual({ text: "Old behaviour of TypeCollector.IsOpenGenericType changed", count: "1/2 pinned tests fail" });
+  expect(humanizeClaim("behaviour of TypeCollector.IsOpenGenericType changed for 4 callers outside the change: pinned test X passes on base, fails on head")).toBe(
+    "Changes how TypeCollector.IsOpenGenericType behaves for 4 other places that rely on it.",
+  );
+  expect(humanizeClaim("behaviour of A.B changed for 1 caller outside the change")).toBe("Changes how A.B behaves for 1 other place that relies on it.");
+});
+
 const finding = (id: string, evidence_ids: string[]): Finding => ({
   id,
   lens: "requirement-tests",

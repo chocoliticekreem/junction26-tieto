@@ -1,9 +1,10 @@
-import { CircleCheck, CircleX, EyeOff, MessageSquareQuote, Target, UserCheck } from "lucide-react";
+import { CircleCheck, CircleX, EyeOff, MessageSquareQuote, Radar, Target, UserCheck } from "lucide-react";
 import type { PlainSentence } from "@/lib/plain-summary";
 import { cn } from "@/lib/utils";
 
 const icon: Record<PlainSentence["key"], React.ComponentType<{ className?: string }>> = {
   purpose: Target,
+  impact: Radar,
   proved: CircleCheck,
   wrong: CircleX,
   unchecked: EyeOff,
@@ -12,6 +13,7 @@ const icon: Record<PlainSentence["key"], React.ComponentType<{ className?: strin
 
 const tone: Record<PlainSentence["key"], string> = {
   purpose: "text-muted-foreground",
+  impact: "text-muted-foreground",
   proved: "text-ok-foreground",
   wrong: "text-bad-foreground",
   unchecked: "text-muted-foreground",
@@ -31,7 +33,12 @@ export function PlainSummary({ items, className, bare }: { items: PlainSentence[
       <ol className={cn("space-y-1.5", !bare && "mt-2")}>
         {items.map((s) => {
           const Icon = icon[s.key];
-          const t = s.key === "wrong" && s.text.startsWith("Nothing was proven wrong") ? "text-ok-foreground" : tone[s.key];
+          const t =
+            (s.key === "wrong" && s.text.startsWith("Nothing was proven wrong")) || (s.key === "impact" && /can't break other features/.test(s.text))
+              ? "text-ok-foreground"
+              : s.key === "impact" && /changed for/.test(s.text)
+                ? "text-bad-foreground"
+                : tone[s.key];
           return (
             <li key={s.key} className="flex items-start gap-2.5" data-testid={`plain-${s.key}`}>
               <Icon className={cn("mt-1 size-4 shrink-0", t)} aria-hidden />

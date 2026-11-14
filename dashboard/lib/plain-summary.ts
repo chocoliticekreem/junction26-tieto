@@ -2,11 +2,12 @@
 // receipt and its evidence. Pure, deterministic, no LLM. Every sentence anchors to the section that
 // holds the evidence it summarises.
 
+import { impactHeadline } from "./impact-summary";
 import { provenLines } from "./proven";
 import type { Decision, Evidence, Finding, NotChecked, RunBundle, VerdictKind } from "./types";
 
 export interface PlainSentence {
-  key: "purpose" | "proved" | "wrong" | "unchecked" | "decide";
+  key: "purpose" | "impact" | "proved" | "wrong" | "unchecked" | "decide";
   text: string;
   href: string;
 }
@@ -152,12 +153,17 @@ function describeWrong(findings: Finding[], evidence: Evidence[]): string[] {
     out.push(`${plural(n, "part")} of the new code ${n === 1 ? "is" : "are"} never tested: if someone broke ${n === 1 ? "it" : "them"}, no test would notice.`);
   }
 
+  for (const e of kinds.get("behaviour-changed") ?? []) {
+    const member = typeof e.details?.member === "string" ? e.details.member : undefined;
+    const places = num(e.details?.callers_outside_change);
+    out.push(`${member ? `${member} now behaves differently` : "An existing function now behaves differently"}${places !== undefined ? `, and ${plural(places, "other place")} ${places === 1 ? "relies" : "rely"} on it` : ""}.`);
+  }
   if (kinds.has("byte-diff")) out.push("Old saved data would read differently after this change.");
   if (kinds.has("regeneration")) out.push("The generated code no longer matches its templates.");
   if (kinds.has("migration-up-down")) out.push("The database change cannot be undone: rolling it back leaves the database different from before.");
   if (kinds.has("row-preservation")) out.push("Data would be lost: values come out different after the change.");
 
-  const known = new Set<Evidence["kind"]>(["fail-before-pass-after", "new-api", "existing-tests", "mutation", "byte-diff", "regeneration", "migration-up-down", "row-preservation"]);
+  const known = new Set<Evidence["kind"]>(["fail-before-pass-after", "new-api", "existing-tests", "mutation", "behaviour-changed", "byte-diff", "regeneration", "migration-up-down", "row-preservation"]);
   const other = findings.filter((f) => !(f.evidence_ids ?? []).some((id) => known.has(byId.get(id)?.kind as Evidence["kind"])));
   if (other.length) out.push(`${plural(other.length, "other problem")} ${other.length === 1 ? "was" : "were"} proven.`);
 
@@ -233,8 +239,10 @@ export function decideSentence(verdict: VerdictKind, opts: PlainSummaryOpts = {}
 export function plainSummary(run: RunBundle, opts: PlainSummaryOpts = {}): PlainSentence[] {
   const r = run.receipt;
   const decideHref = r.verdict === "decision-A-B" && !opts.decision ? `/decision/${encodeURIComponent(run.changeId)}` : "#trust-receipt";
+  const impact: PlainSentence[] = run.impact ? [{ key: "impact", text: impactHeadline(run.impact), href: "#impact" }] : [];
   return [
     { key: "purpose", text: purposeSentence(r.requirement_title), href: "#requirement" },
+    ...impact,
     { key: "proved", text: provedSentence(run.evidence), href: provenLines(run.evidence).length ? "#proven" : "#receipts" },
     { key: "wrong", text: wrongSentence(r.findings, r.hunches, run.evidence), href: "#findings" },
     { key: "unchecked", text: uncheckedSentence(r.not_checked), href: "#not-checked" },

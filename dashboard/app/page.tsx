@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { AB_SUFFIX, isSampleChange, isSqlChange, loadLatestRuns, pendingQuestions, readDecision, receiptCounts } from "@/lib/data";
 import { humanizeVerdict } from "@/lib/humanize";
+import { impactQueueClause } from "@/lib/impact-summary";
 import { decideSentence, wrongSentence } from "@/lib/plain-summary";
 import type { Decision, RunBundle } from "@/lib/types";
 import { StaggerList } from "@/components/motion";
@@ -20,6 +21,7 @@ function card(run: RunBundle, decision: Decision | undefined, pending: number): 
   const changeHref = `/change/${encodeURIComponent(run.changeId)}`;
   const decisionHref = `/decision/${encodeURIComponent(run.changeId)}`;
   const hasReadings = (r.interpretations?.length ?? 0) > 0;
+  const impact = run.impact ? impactQueueClause(run.impact) : undefined;
   let status: string;
   let action: QueueCardData["action"];
   let secondary: QueueCardData["secondary"];
@@ -27,7 +29,7 @@ function card(run: RunBundle, decision: Decision | undefined, pending: number): 
     status = decideSentence(r.verdict, { decision });
     action = { label: "See the record", href: changeHref, primary: false };
   } else if (r.verdict === "blocked") {
-    status = `${humanizeVerdict(r.verdict, r.verdict_reason, { findings: r.findings, evidence: run.evidence }).headline}. It has to be fixed before anyone can approve it.`;
+    status = [`${humanizeVerdict(r.verdict, r.verdict_reason, { findings: r.findings, evidence: run.evidence }).headline}.`, impact, "It has to be fixed before anyone can approve it."].filter(Boolean).join(" ");
     action = { label: "See why it's blocked", href: changeHref, primary: true };
     if (hasReadings) secondary = { label: "Two readings were built; see both", href: decisionHref };
   } else if (r.verdict === "decision-A-B") {
@@ -35,7 +37,7 @@ function card(run: RunBundle, decision: Decision | undefined, pending: number): 
     action = { label: "Choose A or B", href: decisionHref, primary: true };
     secondary = { label: "Read the receipt first", href: changeHref };
   } else {
-    status = `${firstSentence(wrongSentence(r.findings, r.hunches, run.evidence))} ${decideSentence(r.verdict)}`;
+    status = [firstSentence(wrongSentence(r.findings, r.hunches, run.evidence)), impact, decideSentence(r.verdict)].filter(Boolean).join(" ");
     action = { label: "Review and sign off", href: `${changeHref}`, primary: true };
   }
   return {

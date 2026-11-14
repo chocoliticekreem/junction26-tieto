@@ -4,6 +4,7 @@ import { CircleCheck, CircleMinus, CircleX, Repeat2 } from "lucide-react";
 import { motion, useReducedMotion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { humanizeTitle } from "@/lib/humanize";
+import { impactStatus } from "@/lib/impact-summary";
 import type { Decision, RunBundle } from "@/lib/types";
 import { ResultIcon, resultTone, resultWord, verdictLabel } from "./pills";
 import { SignedRing, Stamp } from "./stamp";
@@ -54,7 +55,8 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
   const reduce = useReducedMotion() ?? false;
   const byResult = (k: string) => run.evidence.filter((e) => e.result === k).length;
   const stamp = stampText(run, decision);
-  const lineCount = r.checked.length + 7;
+  const lineCount = r.checked.length + 8;
+  const impact = run.impact ? impactStatus(run.impact) : undefined;
   const firstStamp = useRef(stamp.text);
   const [celebrate, setCelebrate] = useState(false);
   useEffect(() => {
@@ -135,6 +137,25 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
             </span>
           }
           href="#technical"
+        />
+        <Line
+          index={next()}
+          reduce={reduce}
+          label="Impact on other features"
+          value={
+            impact ? (
+              <span className="inline-flex items-center gap-1 uppercase">
+                <ResultIcon result={impact.result} />
+                {resultWord[impact.result]}
+              </span>
+            ) : (
+              "—"
+            )
+          }
+          tone={impact ? resultTone[impact.result] : "text-muted-foreground"}
+          note={impact ? impact.note : "predates the impact check"}
+          href="#impact"
+          testId="receipt-impact"
         />
         <Line index={next()} reduce={reduce} label={<><Term k="finding">Findings</Term> with proof</>} value={r.findings.length} tone={r.findings.length ? "text-bad-foreground font-semibold" : undefined} href="#proved" />
         <Line index={next()} reduce={reduce} label={<><Term k="hunch">Hunches</Term> withheld</>} value={r.hunches.length} href="#technical" />

@@ -30,8 +30,9 @@ and are hidden from the lists; `/decision/<id>` reads them.
 ## Journey
 
 Three nav items, in order: **Your queue** (`/`) -> **Product context** (`/context`) -> **How we know it works**
-(`/track-record`). A change page is a single-column story with a sticky step strip (1 What changed · 2 What we proved ·
-3 What we didn't check · 4 Your decision) and the trust receipt beside it (after step 2 on mobile). Everything an
+(`/track-record`). A change page is a single-column story with a sticky step strip (1 What changed · 2 Impact on other
+features · 3 What we proved · 4 What we didn't check · 5 Your decision) and the trust receipt beside it (after step 3 on
+mobile). Everything an
 engineer might want (receipts, mutants, routing, requirement text, hunches, pipeline reason, copy-as-PR-comment) sits
 in one "Technical details" drawer at the bottom, closed by default. Pending questions appear on the queue card
 ("1 question for you") and inline in step 4 of the change page; `/questions` still works for old links.
@@ -51,6 +52,20 @@ in one "Technical details" drawer at the bottom, closed by default. Pending ques
   - `failing_tests`, `killing_tests`, `generated_files`, `files: string[]`
   - `mutant_ids: string[]` joined against `mutants.json`
   - `diff`, `byte_diff`, `api_diff: string` rendered as monospace blocks
+- `impact.json` (optional; `ImpactReport` in `lib/types.ts`) drives step 2 "Impact on other features", the `plain-impact`
+  sentence, the queue-card clause and the receipt line `Impact on other features`. Missing file = "This run predates the
+  impact check" and a `—` receipt line. `members[].kind` `modified`/`deleted` rows form the blast radius (sorted by
+  `callers_outside_change`, dots = callers with `in_change: false`, `tested` true/false/null = filled/hollow/grey);
+  `new` members collapse into one "New: …" line. `characterization[].member` must equal a `members[].name` and its
+  `evidence_id` an `Evidence.id`. Receipt line: FAIL when any characterization is `changed` (or `summary.behaviour_changes
+  > 0`), PASS when nothing outside the change is touched or every pinned behaviour held with full coverage, PARTIAL
+  otherwise (untested callers, `coverage_available: false`, an `invalid` pin, or a modified member with callers but no pin).
+  `method` containing `name-based` renders the footnote "Call sites found by name, not by full type analysis".
+- Evidence kinds `behaviour-preserved` / `behaviour-changed`: `details.member` names the function, `details.tests`
+  the pinned tests (rendered as a base/head table), `details.callers_outside_change` feeds the plain-words "wrong"
+  sentence. `behaviour-preserved` with `result: pass` is a Proven line ("Old behaviour of X still holds · N/N pinned tests
+  pass"). A `behaviour-changed` finding whose claim starts `behaviour of <member> changed for <N> callers outside the
+  change` renders as "Changes how <member> behaves for N other places that rely on it."
 - Pending questions = `questions.json` entries (from all latest runs) whose `id` has no `question_id` in
   `context/ledger.jsonl`. `Question.status` is not consulted.
 - `receipt.area_trust` (area -> 0..3) drives the inbox "Trust" column (min over areas). Absent = "—".
@@ -123,7 +138,9 @@ a context file, a ledger with one answer, and metrics. They validate against `mo
 copies them to `e2e/.tmp/` and creates a bare repo with `main`, `review/ju26-issue-2297/A` and `.../B`, so the
 Merge A test produces a real `--no-ff` commit authored by the named human. `e2e/screenshots.spec.ts` writes
 desktop (1440) and mobile (390) screenshots of every page to `e2e/screenshots/`. `e2e/receipt-markdown.spec.ts` unit-tests
-the PR-comment generator without a server; `e2e/humanize.spec.ts` unit-tests the plain-language mapper. `e2e/screenshots/real-*.png`
+the PR-comment generator without a server; `e2e/humanize.spec.ts` unit-tests the plain-language mapper; `e2e/impact-summary.spec.ts`
+unit-tests the impact sentences (only-new, preserved, changed, untested callers, coverage unavailable). `e2e/screenshots/impact-*.png`
+are element shots of step 2 on the two fixture variants. `e2e/screenshots/real-*.png`
 (and `real-*-dark.png`) are taken by hand against the repo's real `runs/` and `metrics/` (`npx next dev -p 3171` with the
 write folders pointed at scratch copies, then a Playwright script at 1440 and 390, light and dark).
 
