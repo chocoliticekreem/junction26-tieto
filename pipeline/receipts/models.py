@@ -193,6 +193,31 @@ class LedgerEntry(BaseModel):
     question_id: str = ""
 
 
+class ContextEntryUsed(BaseModel):
+    text: str
+    area: str
+    source: str  # the "(source: ...)" provenance, or "ledger: answered by <name>"
+    kind: Literal["context", "ledger"]
+
+
+class ContextCitation(BaseModel):
+    lens: str
+    claim: str  # the finding's own claim (for withdrawn / suppressed: the would-be finding)
+    entry: str  # text of the cited entries, "; "-joined
+    effect: Literal["withdrawn", "suppressed-unconfirmed", "cited"]
+
+
+class ContextUsed(BaseModel):
+    """context.json: the product context a review actually gave its lenses, and what it changed."""
+    status: Literal["draft", "confirmed"]
+    confirmed_by: str | None = None
+    areas: list[str]  # context tags looked up for this change
+    entries: list[ContextEntryUsed]  # in [L1].. order, exactly what the lenses were given
+    citations: list[ContextCitation] = []
+    readers_used_ledger: int = 0
+    note: str = ""
+
+
 # [7] Verdict + trust receipt ----------------------------------------------
 
 

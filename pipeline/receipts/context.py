@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from . import config, llm
-from .models import LedgerEntry
+from .models import ContextEntryUsed, LedgerEntry
 
 SECTIONS = ["Product", "Users", "Public contract", "Deliberate conventions", "Risk areas"]
 DECISIONS_HEADING = "Decisions (from answered questions)"
@@ -342,6 +342,26 @@ def is_confirmed() -> bool:
         return json.loads(path.read_text()).get("status") == "confirmed"
     except (OSError, ValueError, AttributeError):
         return False
+
+
+def confirmed_by() -> str | None:
+    """The named human in status.json when the context is confirmed, else None."""
+    if not is_confirmed():
+        return None
+    return json.loads((config.CONTEXT / "status.json").read_text()).get("confirmed_by")
+
+
+_SOURCE_RE = re.compile(r"^(.*) \(source: ([^()]*)\)$", re.S)
+
+
+def used_entry(e: dict) -> ContextEntryUsed:
+    """One review_ledger item as the dashboard shows it: plain text, area, provenance."""
+    if e.get("question"):
+        return ContextEntryUsed(text=f"Q: {e['question']} A: {e['answer']}", area=e["area"],
+                                source=f"ledger: answered by {e['answered_by']}", kind="ledger")
+    m = _SOURCE_RE.match(_strip_markers(e["text"]))
+    text, source = (m.group(1), m.group(2)) if m else (_strip_markers(e["text"]), "")
+    return ContextEntryUsed(text=text, area=e["area"], source=source, kind="context")
 
 
 def context_tags(areas: list[str]) -> list[str]:
