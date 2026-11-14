@@ -14,6 +14,18 @@ Waiting on it, in order (estimates from `--dry-run`, no API calls; see `notes/co
 
 What still works without it: the dashboard, every committed run, `MOCK_LLM=1` replay of the four Tieto reviews, the Jev router, and every deterministic receipt (builds, tests, mutation, byte diff, regeneration). Model steps without a key are listed under "not checked" in each receipt, never invented.
 
+## 1b. Verda: no model is enabled for the project behind VERDA_API_KEY — Sat 14 Nov
+The key works (`GET https://inference.verda.com/v1/models` returns 200), but the list is empty, and a 20-token chat call to either model returns `403 subscription_required` ("this project is not subscribed to model ... at service tier standard"). Refused requests are not billed. Enabling a model needs the Console (or a Cloud API token, which the agent does not have).
+
+**Unblock (1 minute):** console.verda.com, **Inference > Models**, click **Enable** on **Kimi K3.1 Pro** and on **DeepSeek V4.1 Flash 1017**, in the same project as the key in `.env.local`. Check with:
+
+```
+cd pipeline && uv run receipts estimate-verda   # free, offline projection
+curl -s https://inference.verda.com/v1/models -H "Authorization: Bearer $VERDA_API_KEY"   # should list both ids
+```
+
+Then run the commands in `docs/verda.md` ("Reproduce"). Every Verda call is capped by `VERDA_MAX_EUR` (default 40) in `work/verda-spend.json`.
+
 ## 2. Human-only steps (principle 4: a named human decides; the AI must not do these)
 1. `cd dashboard && npm install && npm run dev`, open http://localhost:3000, click **Change** (top right) and enter your name.
 2. **Context** tab: read `REVIEW_CONTEXT.md` (24 entries, status draft) and click **Confirm as <you>**. This writes `context/status.json`. Until then, ledger citations that suppress a finding are shown as hunches ("suppressed by unconfirmed context entry").
@@ -25,5 +37,5 @@ What still works without it: the dashboard, every committed run, `MOCK_LLM=1` re
 The global guard hook blocks any write to a file whose name starts with `.env`, including the example file. Create it yourself; it holds no secrets:
 
 ```
-printf 'ANTHROPIC_API_KEY=\nJEV_API_KEY=\nMOCK_LLM=0\nDOTNET=~/.dotnet/dotnet\n' > .env.example
+printf 'ANTHROPIC_API_KEY=\nJEV_API_KEY=\nVERDA_API_KEY=\nLLM_PROVIDER=anthropic\nMOCK_LLM=0\nDOTNET=~/.dotnet/dotnet\n' > .env.example
 ```

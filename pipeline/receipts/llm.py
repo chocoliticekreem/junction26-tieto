@@ -1,7 +1,9 @@
 """The single door to every LLM call, with record/replay fixtures.
 
 Every call is keyed by sha256(model, system, user, schema), plus the effort when a caller passes a
-`default_effort` and runs at a different one (so fixtures recorded at the default keep their keys).
+`default_effort` and runs at a different one (so fixtures recorded at the default keep their keys),
+plus the provider when it is not Anthropic (config.LLM_PROVIDER; the Verda backend is verda.py), so
+a Verda answer never replays as an Anthropic one or the other way round.
 A real call writes its response to fixtures/llm/<purpose>/<key>.json. With MOCK_LLM=1 the call is
 answered from that file only. Prompts must therefore be deterministic: never put timestamps, run
 ids or absolute temp paths in them.
@@ -47,20 +49,25 @@ class LLMResult:
     output_tokens: int
     ms: int
     from_fixture: bool
+    provider: str = "anthropic"
 
 
-def _key(model: str, system: str, user: str, schema: dict, effort: str | None = None) -> str:
+def _key(model: str, system: str, user: str, schema: dict, effort: str | None = None,
+         provider: str = "anthropic") -> str:
     parts: list = [model, system, user, schema]
     if effort is not None:
         parts.append({"effort": effort})
+    # Left out for Anthropic so every fixture recorded before the provider switch keeps its key.
+    if provider != "anthropic":
+        parts.append({"provider": provider})
     blob = json.dumps(parts, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(blob.encode()).hexdigest()[:24]
 
 
 def fixture_key(model: str, system: str, user: str, schema: dict, effort: str,
-                default_effort: str | None = None) -> str:
+                default_effort: str | None = None, provider: str | None = None) -> str:
     keyed = effort if default_effort is not None and effort != default_effort else None
-    return _key(model, system, user, schema, keyed)
+    return _key(model, system, user, schema, keyed, provider or config.LLM_PROVIDER)
 
 
 def _fixture_path(purpose: str, key: str):
@@ -159,7 +166,7 @@ def call_json(
     if path.exists():
         rec = json.loads(path.read_text())
         return LLMResult(rec["data"], model, rec.get("input_tokens", 0), rec.get("output_tokens", 0),
-                         rec.get("ms", 0), True)
+                         rec.get("ms", 0), True, rec.get("provider", "anthropic"))
     params = request_params(model, system, user, schema, effort, max_tokens)
     if config.LLM_MODE in ("collect", "replay"):
         reason = failed_reason(key)
@@ -171,6 +178,10 @@ def call_json(
         raise PendingLLM(f"queued for batch: {purpose}/{key}")
     if config.MOCK_LLM:
         raise LLMUnavailable(f"MOCK_LLM=1 and no fixture for {purpose}/{key}")
+    if config.LLM_PROVIDER == "verda":
+        from . import verda
+
+        return verda.call(purpose, key, model, system, user, schema, effort, max_tokens)
     if not config.ANTHROPIC_API_KEY:
         raise LLMUnavailable(f"ANTHROPIC_API_KEY not set and no fixture for {purpose}/{key}")
 
@@ -306,18 +317,28 @@ def run_batch(requests: dict[str, dict], client=None, poll_s: float = 30.0,
     return report
 
 
-# USD per million tokens (input, output), Anthropic first-party list prices; Jev per typesafe.ai.
+# USD per million tokens (input, output), Anthropic first-party list prices; Jev per typesafe.ai;
+# Verda per verda.com/inference (14 Nov 2026). That page shows Kimi K3.1 Pro at both $2/$10 and
+# $3/$15; the higher one is used so the spend guard never under-counts. Cached input (cheaper on
+# Verda) is billed here at the full input price: an upper bound.
 PRICES_PER_MTOK: dict[str, tuple[float, float]] = {
     "claude-opus-5-5": (4.0, 20.0),
     "claude-sonnet-5-5": (2.0, 10.0),
     "claude-haiku-4-5-20251001": (1.0, 5.0),
     "jev-latest": (0.042, 0.0),  # $42 per billion input tokens; output price not published
+    "kimi-k3-1-pro": (3.0, 15.0),
+    "deepseek-4-1-flash-1017": (0.15, 0.60),
 }
 
 
 def cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
     pin, pout = PRICES_PER_MTOK.get(model, (0.0, 0.0))
     return round((input_tokens * pin + output_tokens * pout) / 1_000_000, 6)
+
+
+def cost_eur(model: str, input_tokens: int, output_tokens: int) -> float:
+    """At config.VERDA_EUR_PER_USD (default parity, see config)."""
+    return round(cost_usd(model, input_tokens, output_tokens) * config.VERDA_EUR_PER_USD, 6)
 
 
 def replay_or_record(purpose: str, key_parts: list, fetch: Callable[[], dict]) -> tuple[dict, bool]:

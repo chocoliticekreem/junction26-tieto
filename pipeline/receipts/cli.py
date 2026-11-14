@@ -41,7 +41,13 @@ def main(argv: list[str] | None = None) -> int:
     br.add_argument("--dry-run", action="store_true",
                     help="collect round 1 and print the cost estimate; submit nothing")
 
-    sub.add_parser("metrics", help="aggregate runs/ into metrics/ T1-T7")
+    sub.add_parser("estimate-verda",
+                   help="project the Verda cost of the re-run plan from recorded Anthropic runs")
+
+    m = sub.add_parser("metrics", help="aggregate runs/ into metrics/ T1-T7")
+    m.add_argument("--provider", default="anthropic", choices=["anthropic", "verda"],
+                   help="verda: summarise runs/*@verda into metrics/verda/ and write "
+                        "metrics/provider-comparison.json")
     sub.add_parser("bootstrap-context", help="build context/REVIEW_CONTEXT.md draft from the repo")
 
     args = p.parse_args(argv)
@@ -74,7 +80,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "metrics":
         from .metrics import run_metrics
 
-        return run_metrics()
+        return run_metrics(args.provider)
+    if args.cmd == "estimate-verda":
+        import json
+
+        from .estimate import verda_plans
+
+        print(json.dumps(verda_plans(), indent=2))
+        return 0
     if args.cmd == "bootstrap-context":
         from .context import bootstrap
 

@@ -47,9 +47,43 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 JEV_API_KEY = os.environ.get("JEV_API_KEY", "")
 MOCK_LLM = os.environ.get("MOCK_LLM", "0") == "1"
 
-MODEL_DEEP = "claude-opus-5-5"  # requirement-tests, logic-edge
-MODEL_LENS = "claude-sonnet-5-5"  # other lenses
-MODEL_ROUTER = "claude-haiku-4-5-20251001"  # LLMRouter
+# "anthropic" (default) or "verda": which backend llm.call_json sends a fixture miss to.
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic")
+if LLM_PROVIDER not in ("anthropic", "verda"):
+    raise ValueError(f"LLM_PROVIDER={LLM_PROVIDER!r}: expected 'anthropic' or 'verda'")
+
+# Verda Inference (docs.verda.com/inference): OpenAI-compatible chat completions, EU-hosted.
+VERDA_API_KEY = os.environ.get("VERDA_API_KEY") or os.environ.get("VERDA_INFERENCE_API_KEY", "")
+VERDA_BASE_URL = (os.environ.get("VERDA_INFERENCE_BASE_URL")
+                  or "https://inference.verda.com").rstrip("/")
+VERDA_MODEL_DEEP = os.environ.get("VERDA_MODEL_DEEP") or "kimi-k3-1-pro"
+VERDA_MODEL_LENS = os.environ.get("VERDA_MODEL_LENS") or "deepseek-4-1-flash-1017"
+VERDA_MODEL_ROUTER = os.environ.get("VERDA_MODEL_ROUTER") or "deepseek-4-1-flash-1017"
+# Hard cap on real Verda spend, summed in VERDA_SPEND_FILE across every process and run.
+VERDA_MAX_EUR = float(os.environ.get("VERDA_MAX_EUR") or 40)
+# Verda lists prices in USD; credits are in EUR. 1.0 makes the guard count $1 as EUR 1, which
+# over-counts if the account is billed in USD and never under-counts.
+VERDA_EUR_PER_USD = float(os.environ.get("VERDA_EUR_PER_USD") or 1.0)
+VERDA_SPEND_FILE = Path(os.environ.get("VERDA_SPEND_FILE") or WORK / "verda-spend.json")
+
+_ANTHROPIC_MODELS = ("claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-4-5-20251001")
+_VERDA_MODELS = (VERDA_MODEL_DEEP, VERDA_MODEL_LENS, VERDA_MODEL_ROUTER)
+# (requirement-tests + logic-edge, other lenses + readers, LLMRouter)
+MODEL_DEEP, MODEL_LENS, MODEL_ROUTER = (
+    _VERDA_MODELS if LLM_PROVIDER == "verda" else _ANTHROPIC_MODELS)
+# Runs from a non-default provider go to runs/<change>@<provider>/, so both stay side by side.
+RUN_SUFFIX = "" if LLM_PROVIDER == "anthropic" else f"@{LLM_PROVIDER}"
+
+
+def run_id(change: str) -> str:
+    """Run folder id for `change` under the active provider. An A/B side keeps `__A` last
+    (ju26-issue-2297-r2@verda__A), so the dashboard finds it next to its parent."""
+    if not RUN_SUFFIX or RUN_SUFFIX in change:
+        return change
+    stem, sep, side = change.rpartition("__")
+    if sep and side in ("A", "B"):
+        return f"{stem}{RUN_SUFFIX}__{side}"
+    return change + RUN_SUFFIX
 
 QUESTION_BUDGET = 3
 MUTATION_RISK_THRESHOLD = 5
@@ -88,4 +122,7 @@ LENS_EFFORT = {**LENS_EFFORT_DEFAULT, **parse_lens_effort(os.environ.get("RECEIP
 LLM_MODE = os.environ.get("RECEIPTS_LLM_MODE", "")
 if LLM_MODE not in ("", "collect", "replay"):
     raise ValueError(f"RECEIPTS_LLM_MODE={LLM_MODE!r}: expected unset, 'collect' or 'replay'")
+if LLM_MODE == "collect" and LLM_PROVIDER == "verda":
+    raise ValueError("RECEIPTS_LLM_MODE=collect queues Anthropic batch requests; Verda Inference "
+                     "has no batch API (docs.verda.com/inference/faq)")
 BATCH_DIR = Path(os.environ.get("RECEIPTS_BATCH_DIR") or WORK / "batch")

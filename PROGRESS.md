@@ -51,7 +51,15 @@
 - Waiting on Anson: raise the API limit by about $20 and run the BLOCKED.md commands (final-pipeline bench, 2297 round 2); confirm the context; make the A/B merge by name; record the video.
 - Polish backlog: items 1 (Stryker), 3 (trust chart), 5 (PR comment export) and 6 (SQL adapter) are done. Item 2 is covered by the harness's reflection-based API diff. Item 4 (LLM narrative) needs the API.
 
+## Verda spend log (budget: €40 maximum)
+| When | What | Real spend | Running total |
+|---|---|---|---|
+| 11:30 | Provider built; `GET /v1/models` (empty list) and two 20-token chat probes returned `403 subscription_required` (not billed) | €0.00 | €0.00 |
+
+Projected spend once models are enabled (from recorded Anthropic token counts; re-estimated after the smoke review with `receipts estimate-verda`): cold bench 36 cases €15.06, warm mock-2283 €3.49, warm mock-2234 €2.62, 2297 round 2 €1.51, four Tieto changes €4.84; total about €27.52. A hard guard in code (`work/verda-spend.json`, `VERDA_MAX_EUR=40`) refuses any call that would pass the budget. Source of truth for real spend: `work/verda-spend.json`.
+
 ## Decisions
+- 11:16 Verda added to CHALLENGE.md by Anson: Verda Inference API (OpenAI-compatible, EU-hosted open-weight models) becomes a provider behind `llm.py`, selected by `LLM_PROVIDER=verda`; Anthropic stays the default. Verda runs use change ids suffixed `@verda` so both providers' runs sit side by side.
 - CHALLENGE.md (added by Anson) outranks SPEC.md on scope and judging. Added from it: MIT LICENSE, top-level README, docs/submission.md (pending numbers), self-check answered in PROGRESS.md with evidence, time to merge and escapes in measurement. No tech side challenge is genuinely used (no CRACI CI, no Modal, no Codex, no Entire), so none will be ticked.
 - `.env.example` blocked by the guard hook; logged in BLOCKED.md for Anson.
 - ExecutionTests project does not compile on SDK 8.0.402 (needs Roslyn 4.12); declared under not_checked, no SDK install (spec makes it optional).

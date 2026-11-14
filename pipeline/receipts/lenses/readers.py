@@ -118,6 +118,7 @@ class ReaderRun:
     input_tokens: int = 0
     output_tokens: int = 0
     cost_usd: float = 0.0
+    cost_eur: float = 0.0
     from_fixture: bool = False
 
 
@@ -142,6 +143,11 @@ class PanelResult:
         return round(sum(r.cost_usd for r in self.runs) + orient, 6)
 
     @property
+    def cost_eur(self) -> float:
+        orient = self.orientation.get("cost_eur", 0.0)
+        return round(sum(r.cost_eur for r in self.runs) + orient, 6)
+
+    @property
     def vote_text(self) -> str:
         return f"{self.votes} of {len(READERS)} independent readers found two readings"
 
@@ -152,7 +158,8 @@ class PanelResult:
             "readers": [{"reader": r.reader, "framing": dict(READERS)[r.reader], "status": r.status,
                          "detail": r.detail, "flagged": r.flagged, "output": r.data,
                          "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
-                         "cost_usd": r.cost_usd, "from_fixture": r.from_fixture}
+                         "cost_usd": r.cost_usd, "cost_eur": r.cost_eur,
+                         "from_fixture": r.from_fixture}
                         for r in self.runs],
             "vote": {"flagged": self.votes, "of": len(READERS), "ambiguity": self.ambiguity,
                      "text": self.vote_text},
@@ -160,7 +167,7 @@ class PanelResult:
                       "A": self.pair[0], "B": self.pair[1], "quote": self.quote}
                      if self.pair else None),
             "orientation": self.orientation,
-            "cost_usd": self.cost_usd,
+            "provider": config.LLM_PROVIDER, "cost_usd": self.cost_usd, "cost_eur": self.cost_eur,
         }
 
 
@@ -192,6 +199,7 @@ def _read_one(reader: str, framing: str, user: str) -> ReaderRun:
     run.input_tokens, run.output_tokens, run.from_fixture = (res.input_tokens, res.output_tokens,
                                                              res.from_fixture)
     run.cost_usd = llm.cost_usd(MODEL, res.input_tokens, res.output_tokens)
+    run.cost_eur = llm.cost_eur(MODEL, res.input_tokens, res.output_tokens)
     readings = [r for r in (res.data.get("readings") or [])
                 if isinstance(r, dict) and str(r.get("summary", "")).strip()]
     if not 1 <= len(readings) <= 3:
@@ -264,6 +272,7 @@ def orient(req_id: str, req_text: str, first: dict, second: dict, hunks: list[Hu
     return {"implements": res.data.get("implements", "unknown"), "why": res.data.get("why", ""),
             "input_tokens": res.input_tokens, "output_tokens": res.output_tokens,
             "cost_usd": llm.cost_usd(MODEL, res.input_tokens, res.output_tokens),
+            "cost_eur": llm.cost_eur(MODEL, res.input_tokens, res.output_tokens),
             "from_fixture": res.from_fixture}
 
 
