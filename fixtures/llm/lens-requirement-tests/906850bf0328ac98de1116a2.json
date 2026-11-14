@@ -1,0 +1,70 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The security fallback for types that are not explicitly approved as hash-collision resistant now returns EqualityComparer<T>.Default instead of throwing. An untrusted payload can therefore populate a hash-based collection using a custom key type with colliding or attacker-controlled hashes, regressing the stated hash-collision protection. This runtime security change is also unrelated to the requested source-generation feature.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add or run a MessagePack runtime security test that deserializes an untrusted hash-based collection whose key type is not on the hash-resistant whitelist and whose equality comparer produces colliding hashes. The base behavior should throw TypeAccessException at this fallback; the head behavior proceeds with EqualityComparer<T>.Default, demonstrating the regression."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MessagePack attributes already present on the referenced data type are not honored. With no surrogate, the collector unconditionally calls CreateContractlessMembers and never inspects MessagePackObjectAttribute, KeyAttribute, or IgnoreMemberAttribute on T. Thus a [MessagePackObject] type with integer keys and ignored members is emitted as a name-keyed contractless map including those ignored members, contrary to the acceptance criteria.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:91",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedMessagePackFormatterReceiptTests.MessagePackAttributesOnReferencedTypeAreHonored. It compiles a referenced ProjectA type with [MessagePackObject], [Key(0)], and [IgnoreMember], then requires the generated formatter to use array-key serialization and omit the ignored member. The current contractless map implementation fails those assertions."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The required bodyless declaration form is not supported. Generation is only registered for ClassDeclarationSyntax nodes, while a declaration such as 'partial class MyObjectFormatter : IMessagePackFormatter<ProjectA.MyObject>;' is rejected by the supported C# syntax with missing-body compiler errors. The implementation and documentation only support an empty '{ }' body, despite the acceptance criterion explicitly allowing the semicolon form.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:32",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedMessagePackFormatterReceiptTests.BodylessPartialFormatterClassIsSupported. Its ProjectB input uses exactly the required semicolon-terminated partial formatter declaration and asserts error-free generation and compilation; it fails with compiler syntax/body errors under the current implementation."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedMessagePackFormatterReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedMessagePackFormatterReceiptTests\n{\n    [Fact]\n    public async Task FormatterIsGeneratedForAttributeFreeTypeInReferencedAssembly()\n    {\n        const string projectASource = \"\"\"\n            #nullable enable\n            namespace ProjectA;\n\n            public class MyObject\n            {\n                public int Id { get; set; }\n\n                public string? Name { get; set; }\n            }\n            \"\"\";\n\n        string formatter = await GenerateFormatterSourceAsync(projectASource, includeMessagePackInProjectA: false);\n\n        formatter.Should().Contain(\"partial class MyObjectFormatter\");\n        formatter.Should().Contain(\".Id\");\n        formatter.Should().Contain(\".Name\");\n    }\n\n    [Fact]\n    public async Task MessagePackAttributesOnReferencedTypeAreHonored()\n    {\n        const string projectASource = \"\"\"\n            #nullable enable\n            using MessagePack;\n\n            namespace ProjectA;\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int Id { get; set; }\n\n                [IgnoreMember]\n                public int Ignored { get; set; }\n            }\n            \"\"\";\n\n        string formatter = await GenerateFormatterSourceAsync(projectASource, includeMessagePackInProjectA: true);\n\n        formatter.Should().Contain(\"WriteArrayHeader\");\n        formatter.Should().NotContain(\"WriteMapHeader\");\n        formatter.Should().Contain(\".Id\");\n        formatter.Should().NotContain(\".Ignored\");\n    }\n\n    [Fact]\n    public async Task BodylessPartialFormatterClassIsSupported()\n    {\n        const string projectASource = \"\"\"\n            namespace ProjectA;\n\n            public class MyObject\n            {\n                public int Id { get; set; }\n            }\n            \"\"\";\n\n        string formatter = await GenerateFormatterSourceAsync(projectASource, includeMessagePackInProjectA: false, bodyless: true);\n\n        formatter.Should().Contain(\"partial class MyObjectFormatter\");\n        formatter.Should().Contain(\".Id\");\n    }\n\n    private static async Task<string> GenerateFormatterSourceAsync(string projectASource, bool includeMessagePackInProjectA, bool bodyless = false)\n    {\n        ImmutableArray<MetadataReference> frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        ImmutableArray<MetadataReference> projectAReferences = frameworkReferences;\n        if (includeMessagePackInProjectA)\n        {\n            projectAReferences = projectAReferences.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        }\n\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);\n        var projectA = CSharpCompilation.Create(\n            \"ProjectA\",\n            new[] { CSharpSyntaxTree.ParseText(projectASource, parseOptions) },\n            projectAReferences,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using var projectAImage = new MemoryStream();\n        var projectAEmit = projectA.Emit(projectAImage);\n        projectAEmit.Success.Should().BeTrue(string.Join(Environment.NewLine, projectAEmit.Diagnostics));\n        MetadataReference projectAReference = MetadataReference.CreateFromImage(projectAImage.ToArray());\n\n        string formatterBody = bodyless ? \";\" : \"{ }\";\n        string projectBSource = $$\"\"\"\n            #nullable enable\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            [GeneratedMessagePackFormatter]\n            public partial class MyObjectFormatter : IMessagePackFormatter<ProjectA.MyObject> {{formatterBody}}\n\n            [GeneratedMessagePackResolver]\n            public partial class ReceiptResolver { }\n            \"\"\";\n\n        ImmutableArray<MetadataReference> projectBReferences = frameworkReferences\n            .AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n            .Add(projectAReference);\n        var projectB = CSharpCompilation.Create(\n            \"ProjectB\",\n            new[] { CSharpSyntaxTree.ParseText(projectBSource, parseOptions) },\n            projectBReferences,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(projectB, out Compilation outputCompilation, out ImmutableArray<Diagnostic> generatorDiagnostics);\n        Diagnostic[] errors = generatorDiagnostics\n            .Concat(outputCompilation.GetDiagnostics())\n            .Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)\n            .ToArray();\n        errors.Should().BeEmpty(string.Join(Environment.NewLine, errors.Select(error => error.ToString())));\n\n        string[] formatterSources = driver.GetRunResult().Results\n            .SelectMany(result => result.GeneratedSources)\n            .Select(source => source.SourceText.ToString())\n            .Where(text => text.Contains(\"partial class MyObjectFormatter\", StringComparison.Ordinal))\n            .ToArray();\n        formatterSources.Should().ContainSingle();\n        return formatterSources[0];\n    }\n}\n",
+        "test_names": [
+          "FormatterIsGeneratedForAttributeFreeTypeInReferencedAssembly",
+          "MessagePackAttributesOnReferencedTypeAreHonored",
+          "BodylessPartialFormatterClassIsSupported"
+        ],
+        "expects": "new-api"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Use the surrogate design implemented here: an attribute-free T defaults to contractless public-member serialization, and the optional SurrogateType property supplies [Key]/[IgnoreMember] metadata through compile-time name-and-type matching. Keep the surrogate collector, diagnostics, public property, and documentation, while also making the path honor MessagePack attributes already carried by T."
+      },
+      {
+        "label": "B",
+        "summary": "Do not add a surrogate API as part of the minimum feature. Generate contractlessly when T has no serialization attributes, and read non-default keys and membership directly from T using DataContract/DataMember and MessagePack attributes (or recognized user-defined copies of those attributes). The SurrogateType property and surrogate-specific collector branch can then be removed in favor of attribute-aware member collection on T."
+      }
+    ]
+  },
+  "input_tokens": 13980,
+  "output_tokens": 10500,
+  "ms": 156712,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.19944
+}

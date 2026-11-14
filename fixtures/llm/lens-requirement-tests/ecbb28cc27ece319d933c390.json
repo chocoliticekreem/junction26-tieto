@@ -1,0 +1,31 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests\n{\n    [Fact]\n    public async Task AnalyzerReportsMissingKeyWhenSourceGenerationIsSuppressed()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public partial class MyObject\n            {\n                public int {|MsgPack004:Value|} { get; set; }\n            }\n            \"\"\";\n\n        await RunAnalyzerTestAsync(source);\n    }\n\n    [Fact]\n    public async Task AnalyzerReportsMissingKeyWhenSourceGenerationIsNotSuppressed()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public partial class MyObject\n            {\n                public int {|MsgPack004:Value|} { get; set; }\n            }\n            \"\"\";\n\n        await RunAnalyzerTestAsync(source);\n    }\n\n    [Fact]\n    public async Task DuplicateKeysDoNotCrashAnalysisWhenSourceGenerationIsSuppressed()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public partial class MyObject\n            {\n                [Key(0)]\n                public int First { get; set; }\n\n                [Key(0)]\n                public int Second { get; set; }\n            }\n            \"\"\";\n\n        Compilation compilation = await CreateCompilationAsync(source);\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out ImmutableArray<Diagnostic> diagnostics);\n\n        diagnostics.Should().NotContain(\n            diagnostic => diagnostic.Id == \"CS8785\",\n            \"a generator failure prevents the suppressed type from being analysed\");\n    }\n\n    [Fact]\n    public async Task SuppressedTypeDoesNotProduceGeneratedSources()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n            \"\"\";\n\n        Compilation compilation = await CreateCompilationAsync(source);\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out ImmutableArray<Diagnostic> diagnostics);\n\n        diagnostics.Should().NotContain(diagnostic => diagnostic.Id == \"CS8785\");\n        GeneratorRunResult result = driver.GetRunResult().Results.Single();\n        result.GeneratedSources.Should().BeEmpty(\"source generation was explicitly suppressed\");\n    }\n\n    private static async Task RunAnalyzerTestAsync(string source)\n    {\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(source);\n        await test.RunAsync();\n    }\n\n    private static async Task<Compilation> CreateCompilationAsync(string source)\n    {\n        ImmutableArray<MetadataReference> frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        ImmutableArray<MetadataReference> references = frameworkReferences.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        return CSharpCompilation.Create(\n            \"SuppressSourceGenerationReceipts\",\n            new[] { CSharpSyntaxTree.ParseText(source) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n    }\n}\n",
+        "test_names": [
+          "AnalyzerReportsMissingKeyWhenSourceGenerationIsSuppressed",
+          "AnalyzerReportsMissingKeyWhenSourceGenerationIsNotSuppressed",
+          "DuplicateKeysDoNotCrashAnalysisWhenSourceGenerationIsSuppressed",
+          "SuppressedTypeDoesNotProduceGeneratedSources"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 5109,
+  "output_tokens": 8434,
+  "ms": 97789,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.141837
+}

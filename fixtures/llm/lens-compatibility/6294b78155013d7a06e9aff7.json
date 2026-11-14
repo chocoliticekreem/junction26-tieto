@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "MessagePack attributes on the formatted type are never inspected: whenever SurrogateType is null, the collector unconditionally builds an ordinal-name, string-key contractless model. Consequently, a [MessagePackObject] type with integer [Key] annotations gets a different string-key map instead of the required attributed wire format.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:87",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a generator execution test for an external type declared as [MessagePackObject] public class Payload { [Key(0)] public int Value { get; set; } } and a [GeneratedMessagePackFormatter] partial formatter without SurrogateType. Generate its formatter and serialize Payload { Value = 42 }; assert the output is the integer-key array representation required by [Key(0)], rather than a map containing the string \"Value\". The current implementation produces the map."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The public-member predicate is inverted for fields: it accepts only public readonly fields and rejects ordinary public mutable fields. Mutable fields are silently omitted from the generated contract, while readonly fields can be selected despite not being writable.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:277",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a formatter for an external class with `public int Mutable;` and serialize an instance with Mutable = 42. Assert that the generated string-key map contains \"Mutable\" and that deserialization restores it. The current filter excludes this field; also compile a case containing `public readonly int ReadOnly;` to expose the opposite, invalid selection."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9781,
+  "output_tokens": 2643,
+  "ms": 36033,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.068988
+}

@@ -1,6 +1,8 @@
 # Blocked items for Anson
 
 ## 1. Anthropic API usage limit reached (blocks every new model call) — Sat 14 Nov ~09:10
+**Resolved 23:15:** limit raised; bench re-run on the final pipeline (cold 36 + warm 2283/2234, $15.12, see PROGRESS.md). 2297 round 2 was reviewed on Verda only (docs/verda.md).
+
 Every Anthropic call now returns HTTP 400: "You have reached your specified API usage limits. You will regain access on 2026-12-01 at 00:00 UTC." *Specified* means a spend limit set on the account, not an outage. Spend in this run: the full $100 limit (three bench passes about $55, real reviews recorded twice about $17, A/B variants about $8, prompt iteration and router comparison the rest).
 
 **Unblock (2 minutes):** console.anthropic.com, then Settings, then Limits. Raise the monthly spend limit by **about $20** (bench runs now go through the Message Batches API at half price; PR #29). No code change; the pipeline reads the key from the local env file as before.
@@ -15,6 +17,8 @@ Waiting on it, in order (estimates from `--dry-run`, no API calls; see `notes/co
 What still works without it: the dashboard, every committed run, `MOCK_LLM=1` replay of the four Tieto reviews, the Jev router, and every deterministic receipt (builds, tests, mutation, byte diff, regeneration). Model steps without a key are listed under "not checked" in each receipt, never invented.
 
 ## 1b. Verda: no model is enabled for the project behind VERDA_API_KEY — Sat 14 Nov
+**Resolved:** Kimi K3.1 Pro enabled; DeepSeek V4.1 Flash stays closed to new projects. All Verda runs used Kimi (€25.00 of €40, docs/verda.md).
+
 The key works (`GET https://inference.verda.com/v1/models` returns 200), but the list is empty, and a 20-token chat call to either model returns `403 subscription_required` ("this project is not subscribed to model ... at service tier standard"). Refused requests are not billed. Enabling a model needs the Console (or a Cloud API token, which the agent does not have).
 
 **Unblock (1 minute):** console.verda.com, **Inference > Models**, click **Enable** on **Kimi K3.1 Pro** and on **DeepSeek V4.1 Flash 1017**, in the same project as the key in `.env.local`. Check with:

@@ -1,0 +1,121 @@
+{
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "votes_needed": 2,
+  "pair_match_threshold": 0.25,
+  "ledger_answers": 14,
+  "readers": [
+    {
+      "reader": "maintainer",
+      "framing": "a maintainer of the library who has to implement this requirement and wants to know exactly what code to write",
+      "status": "ok",
+      "detail": "",
+      "flagged": true,
+      "output": {
+        "readings": [
+          {
+            "summary": "Guard the unguarded DeclaringSyntaxReferences[0] accesses (use FirstOrDefault and fall back to Location.None or a null-safe location) so generator and analyzer no longer throw, while still generating/analyzing the closed generic struct as before.",
+            "code_difference": "Keeps the closed-generic branch calling GetObjectInfo on metadata symbols; only fixes location lookups to be null-safe, so diagnostics still get reported (with no location) and a formatter for Item<int> may still be generated in the consuming assembly."
+          },
+          {
+            "summary": "Avoid analyzing or generating for closed generic types from referenced assemblies at all (skip GetObjectInfo or diagnostics for metadata symbols), relying on the defining assembly.",
+            "code_difference": "Adds an early return or skip in CollectGeneric for types without syntax, so no formatter is generated for Item<int> in app and no diagnostics are produced for it, rather than only making location lookups null-safe."
+          }
+        ],
+        "materially_different": true,
+        "quote": "Diagnostics that need a source location do not crash when the offending symbol has no declaring syntax (metadata symbol)."
+      },
+      "input_tokens": 4475,
+      "output_tokens": 391,
+      "cost_usd": 0.01286,
+      "cost_eur": 0.01286,
+      "from_fixture": true
+    },
+    {
+      "reader": "issue-author",
+      "framing": "the person who filed this issue, later checking whether what shipped is what they asked for",
+      "status": "ok",
+      "detail": "",
+      "flagged": true,
+      "output": {
+        "readings": [
+          {
+            "summary": "Fix the crashes by making location lookups null-safe (FirstOrDefault/Location.None) for metadata symbols so the generator and analyzer complete without throwing and a resolver is generated, with the closed generic struct still processed as before.",
+            "code_difference": "Replaces unguarded DeclaringSyntaxReferences[0] with a safe lookup falling back to Location.None, keeping GetObjectInfo running on the metadata closed generic struct and including it in generation."
+          },
+          {
+            "summary": "Avoid the crash by not running GetObjectInfo (and its diagnostics) on closed generic types from referenced assemblies, treating them as externally provided, so no formatter is generated for them in the consuming assembly.",
+            "code_difference": "Adds a check in CollectGeneric to skip or short-circuit for metadata symbols instead of fixing the location lookups, so no formatter or diagnostics are produced for Item<int>."
+          }
+        ],
+        "materially_different": true,
+        "quote": "Expected: a clean build, with a generated resolver in `app`."
+      },
+      "input_tokens": 4470,
+      "output_tokens": 352,
+      "cost_usd": 0.01246,
+      "cost_eur": 0.01246,
+      "from_fixture": true
+    },
+    {
+      "reader": "qa-engineer",
+      "framing": "a QA engineer who has to write acceptance tests for this requirement before any code exists",
+      "status": "ok",
+      "detail": "",
+      "flagged": false,
+      "output": {
+        "readings": [
+          {
+            "summary": "Minimal crash fix: make location-dependent diagnostic paths null-safe for metadata symbols (e.g. FirstOrDefault / Location.None) so the generator and analyzer no longer throw and the resolver is generated for app.",
+            "code_difference": "Only guards the DeclaringSyntaxReferences[0] accesses; GetObjectInfo still runs on the referenced closed generic struct and diagnostics may be reported with no/None location."
+          },
+          {
+            "summary": "Avoid analyzing metadata-only closed generic types: skip or short-circuit GetObjectInfo/diagnostics for types with no declaring syntax in CollectGeneric, so no diagnostics are produced for them.",
+            "code_difference": "Changes CollectGeneric control flow to bypass GetObjectInfo for referenced-assembly generic structs rather than only making location lookups safe; diagnostics for such types are never evaluated."
+          }
+        ],
+        "materially_different": false,
+        "quote": ""
+      },
+      "input_tokens": 4472,
+      "output_tokens": 328,
+      "cost_usd": 0.012224,
+      "cost_eur": 0.012224,
+      "from_fixture": true
+    }
+  ],
+  "vote": {
+    "flagged": 2,
+    "of": 3,
+    "ambiguity": true,
+    "text": "2 of 3 independent readers found two readings"
+  },
+  "pair": {
+    "from_reader": "maintainer",
+    "support": {
+      "maintainer": 1,
+      "issue-author": 1
+    },
+    "A": {
+      "summary": "Guard the unguarded DeclaringSyntaxReferences[0] accesses (use FirstOrDefault and fall back to Location.None or a null-safe location) so generator and analyzer no longer throw, while still generating/analyzing the closed generic struct as before.",
+      "code_difference": "Keeps the closed-generic branch calling GetObjectInfo on metadata symbols; only fixes location lookups to be null-safe, so diagnostics still get reported (with no location) and a formatter for Item<int> may still be generated in the consuming assembly."
+    },
+    "B": {
+      "summary": "Avoid analyzing or generating for closed generic types from referenced assemblies at all (skip GetObjectInfo or diagnostics for metadata symbols), relying on the defining assembly.",
+      "code_difference": "Adds an early return or skip in CollectGeneric for types without syntax, so no formatter is generated for Item<int> in app and no diagnostics are produced for it, rather than only making location lookups null-safe."
+    },
+    "quote": "Diagnostics that need a source location do not crash when the offending symbol has no declaring syntax (metadata symbol)"
+  },
+  "orientation": {
+    "implements": "first",
+    "why": "The diff leaves CollectGeneric calling GetObjectInfo on metadata symbols and only makes the DeclaringSyntaxReferences lookups null-safe (GetPropertyIdentifierLocation, FirstOrDefault) and drops location-less diagnostics, with tests asserting the resolver is still generated, rather than skipping such types.",
+    "input_tokens": 8790,
+    "output_tokens": 130,
+    "cost_usd": 0.01888,
+    "cost_eur": 0.01888,
+    "from_fixture": true
+  },
+  "provider": "anthropic",
+  "cost_usd": 0.056424,
+  "cost_eur": 0.056424
+}

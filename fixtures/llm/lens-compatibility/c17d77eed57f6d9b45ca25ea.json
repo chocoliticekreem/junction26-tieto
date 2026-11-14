@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new wrapper around reportAnalyzerDiagnostic silently drops every diagnostic whose location is not in a syntax tree of the current compilation. Diagnostics created with a null location (Location.None) were previously reported and are now filtered out. Examples include MemberNeedsKey, now built with FirstOrDefault()?.GetSyntax().GetLocation(), and any other diagnostic created without a location. Users who rely on these analyzer diagnostics, including warnings-as-errors, could stop seeing them. This is wider than the crash fix.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing analyzer tests (MsgPack003/004/005/006/007/008/009/010/011/012/013/014/015/016/017/018 suites) with the head build. Add a case where a diagnostic is raised with a Location.None or a location from another tree, and assert whether it is still reported compared with base."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The two guards `contractAttr is not null && !formattedType.DeclaringSyntaxReferences.IsEmpty` skip the derived-Key-attribute / MemberNeedsKey branch whenever the type has no syntax. This only avoids the crash. For a metadata type the diagnostic no longer fires, which is consistent with L8. However, the guard tests formattedType, not item. For a partial type or a type spread across trees, behaviour is unchanged. Members inherited from a metadata base class into a source-declared type now still enter this branch, and item.DeclaringSyntaxReferences is empty there. The MemberNeedsKey location becomes null, and the wrapper then drops the diagnostic. That is a silent change in reporting.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:915",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] class in source derives from a metadata base class with a public property lacking [Key]. Compare the MsgPack004 diagnostics reported on base and on head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7466,
+  "output_tokens": 781,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

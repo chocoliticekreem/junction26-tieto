@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early return in CollectGeneric uses `type.OriginalDefinition.DeclaringSyntaxReferences.IsEmpty` to decide that a generic type comes from a referenced assembly. That only holds for PE/metadata references. When `Lib` is referenced as a CompilationReference, which is how project-to-project references appear in the IDE, `Item<T>` still has syntax references. The guard then does not fire, and the closed-generic path runs `GetObjectInfo` on a type from another compilation. The result is that the IDE and the command-line build collect and generate different things for the same project (and possibly an AD0001 in the IDE). The check should compare `type.ContainingAssembly` with `compilation.Assembly`.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.MetadataVsCompilationReferenceGenericStructTests.GeneratedOutputIsSameForImageAndCompilationReference. It compiles Lib once and runs MessagePackGenerator over App with Lib as an emitted image reference and then as a CompilationReference. It asserts there is no generator exception and that the generated sources are identical."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`ReportIfLocatedInCompilation` now silently drops every diagnostic whose location is not in a tree of this compilation. Consider a `[MessagePackObject]` class declared in source that inherits from a base class in a referenced assembly, where the base has a public member with no [Key]. The MemberNeedsKey (MsgPack004) diagnostic for the inherited member gets location null (from `FirstOrDefault()`) and is discarded. The user's own source type then gets no error, even though the base type may not be a MessagePackObject in its own assembly, so nothing reports it there either (contrary to the remark). Falling back to the formatted type's identifier location would keep the error. The same filter also drops any diagnostic deliberately created with Location.None.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1452",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a Lib containing `public class Base { public int X { get; set; } }` to an image reference. In App, declare `[MessagePackObject] public class Derived : Base { [Key(0)] public int Y { get; set; } }`. Run the analyzer and assert that some MsgPack004 is reported in App. On head, no diagnostic is reported."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataVsCompilationReferenceGenericStructTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.IO;\nusing System.Linq;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MetadataVsCompilationReferenceGenericStructTests\n{\n    private const string LibSource = \"\"\"\n        using MessagePack;\n        namespace Lib\n        {\n            [MessagePackObject]\n            public struct Item<T>\n            {\n                [Key(0)]\n                public string Key;\n            }\n        }\n        \"\"\";\n\n    private const string AppSource = \"\"\"\n        using MessagePack;\n        using Lib;\n        namespace App\n        {\n            [MessagePackObject]\n            public sealed class Cmd\n            {\n                [Key(0)]\n                public string Scope;\n\n                [Key(1)]\n                public Item<int> Member;\n            }\n\n            [GeneratedMessagePackResolver]\n            partial class MyResolver\n            {\n            }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task GeneratedOutputIsSameForImageAndCompilationReference()\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> baseRefs = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        CSharpParseOptions parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(LibSource, parseOptions) },\n            baseRefs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using MemoryStream ms = new MemoryStream();\n        var emit = lib.Emit(ms);\n        Assert.True(emit.Success, string.Join(Environment.NewLine, emit.Diagnostics));\n        MetadataReference imageRef = MetadataReference.CreateFromImage(ms.ToArray());\n        MetadataReference compilationRef = lib.ToMetadataReference();\n\n        string[] fromImage = Run(baseRefs, imageRef, parseOptions);\n        string[] fromCompilation = Run(baseRefs, compilationRef, parseOptions);\n\n        Assert.Equal(fromImage, fromCompilation);\n    }\n\n    private static string[] Run(List<MetadataReference> baseRefs, MetadataReference libRef, CSharpParseOptions parseOptions)\n    {\n        List<MetadataReference> refs = new List<MetadataReference>(baseRefs) { libRef };\n        CSharpCompilation app = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(AppSource, parseOptions) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGenerators(app);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n        GeneratorRunResult gen = Assert.Single(result.Results);\n        Assert.Null(gen.Exception);\n        return gen.GeneratedSources\n            .OrderBy(s => s.HintName, StringComparer.Ordinal)\n            .Select(s => s.HintName + \"\\n\" + s.SourceText.ToString())\n            .ToArray();\n    }\n}\n",
+        "test_names": [
+          "GeneratedOutputIsSameForImageAndCompilationReference"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10008,
+  "output_tokens": 6909,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01Dbg3xnSVbJt6wK1KGzecTi"
+}

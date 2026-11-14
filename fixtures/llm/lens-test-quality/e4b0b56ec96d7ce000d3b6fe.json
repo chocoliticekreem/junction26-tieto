@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The MemberNeedsKey fix (DeclaringSyntaxReferences[0] -> FirstOrDefault()) has no test that reaches it. The new tests use members that all carry [Key], so the MemberNeedsKey branch never runs. Reverting this line to [0] would not fail any test. A metadata struct with a public member lacking [Key] is the missing case.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 delete-statement: item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation() -> item.DeclaringSyntaxReferences[0].GetSyntax().GetLocation(); expected to survive because no test uses a metadata type with a keyless public member"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The BothStringAndIntKeyAreNull path now uses GetPropertyIdentifierLocation, but no test covers it. Both new tests give every property a valid [Key(n)], so intKey/stringKey are never both null. The helper's null/metadata behavior is unverified, and reverting it would go unnoticed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 delete-statement: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no test hits the both-keys-null branch on a metadata property"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ReportIfLocatedInCompilation filter wrapper has no test that proves it matters or that it does not over-suppress. Removing the wrapper (restoring `this.reportDiagnostic = reportAnalyzerDiagnostic`) or inverting the ContainsSyntaxTree condition would not fail the new tests, because the tests expect zero diagnostics and no source-located diagnostic is expected. Nothing asserts that real diagnostics for source types in the compilation are still reported, for example a MsgPack004 on a source type, which a negated condition would drop.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443 negate-condition: diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree) -> !(...); expected to survive because the new tests only assert zero diagnostics, and existing analyzer tests are not part of this change"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The metadata-reference tests may not reproduce the bug on base. In the struct test, the closed generic goes through the crash branch only if the member is validated, and the first test's CSharp7_3 setup differs from the repro. Without proof that a base-built generator fails these tests, they may pass on base. The tests also do not assert that a formatter for the member type is produced or skipped, and the ledger leaves that open.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:499",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run ClosedGenericStruct_FromMetadataReference and ClosedGenericRecordStruct_FromMetadataReference against the base-built TypeCollector; both must fail with AD0001/CS8785, otherwise they do not reproduce the bug"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "TestBehaviors.SkipGeneratedSourcesCheck disables the snapshot verification in the analyzer/generator Test run. Generated output is only checked by a separate hint-name Contains assertion, so a resolver that is generated but empty or wrong (for example one missing the Cmd formatter) would still pass.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:588",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests with the check enabled and compare the resolver content for the metadata case against expected output"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 11630,
+  "output_tokens": 1657,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

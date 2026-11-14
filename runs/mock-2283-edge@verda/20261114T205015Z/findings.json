@@ -1,0 +1,104 @@
+[
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The new GetPropertyIdentifierLocation helper still indexes DeclaringSyntaxReferences[0], so the BothStringAndIntKeyAreNull path continues to throw IndexOutOfRangeException for a property on a metadata symbol. For example, a referenced generic struct with [Key(null)] on a property, consumed as Item<int> by a source [MessagePackObject], still makes the analyzer throw instead of dropping the metadata diagnostic; the helper's documentation and return contract are also contradicted by its implementation.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Compile a Lib assembly containing [MessagePackObject] generic struct Item<T> with a [Key(null)] property, reference its metadata image from an app containing [MessagePackObject] Cmd with an Item<int> keyed member, and run MessagePackGenerator plus all MessagePack analyzers. On head, MsgPack00xMessagePackAnalyzer throws AD0001/IndexOutOfRangeException at GetPropertyIdentifierLocation instead of completing cleanly."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "The new GetPropertyIdentifierLocation helper still indexes DeclaringSyntaxReferences[0] unconditionally, so the BothStringAndIntKeyAreNull path can still throw IndexOutOfRangeException for a property on a metadata-only closed generic struct. This leaves one of the generator/analyzer crash paths required by the acceptance criteria unfixed, and the helper's documentation incorrectly claims it returns null for metadata declarations.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Create a referenced lib project containing [MessagePackObject] public partial struct Item<T> with a property annotated [Key(null)], then an app project containing a [MessagePackObject] type with a public Item<int> property annotated [Key(0)]. Build app and assert no CS8785 or AD0001 occurs and that GeneratedMessagePackResolver is emitted. The metadata Item<int>.Value property reaches BothStringAndIntKeyAreNull with an empty DeclaringSyntaxReferences collection."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "GetPropertyIdentifierLocation still directly indexes DeclaringSyntaxReferences[0], despite its documentation saying metadata properties return null. The BothStringAndIntKeyAreNull path can therefore still throw IndexOutOfRangeException for a closed generic struct from a referenced assembly, leaving the CS8785/AD0001 crash unfixed for that diagnostic case.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add a metadata-reference test based on ClosedGenericStruct_FromMetadataReference where the referenced generic struct has a property with [Key(null)], then use that closed struct as a member. Run both the analyzer and generator and assert no AD0001/CS8785-equivalent exception; the current helper indexes an empty DeclaringSyntaxReferences collection."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The added metadata-reference tests do not exercise the BothStringAndIntKeyAreNull diagnostic path changed at line 985. That path calls GetPropertyIdentifierLocation, whose implementation still indexes DeclaringSyntaxReferences[0], so a metadata property with [Key(null)] will still throw IndexOutOfRangeException despite all three new tests passing.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1432",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add a metadata-reference case whose generic struct contains a property annotated [Key(null)], then use MyGenericStruct<int> from the usage compilation and run the generator and analyzer. The current code should throw at GetPropertyIdentifierLocation; replacing [0] with FirstOrDefault()? and relying on ReportIfLocatedInCompilation should make the case pass without CS8785 or AD0001."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-2",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L8] area=analyzer, generator: Types that come from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly. In `TypeCollector.CollectCore`, after the custom-formatter, enum and generic checks, a non-generic type whose symbol is metadata-only exits with a bare `if (type.Locations[0].IsInMetadata) { return; }` (TypeCollector.cs:367-370), so no MsgPack003/004/005 diagnostic and no generated formatter appear for it. The defining assembly owns validating and formatting its own types (rationale inferred: the code has no comment). A missing diagnostic or formatter for such a type is not a defect. (source: src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367) (would-be finding: Filtering out diagnostics whose locations belong to referenced assemblies, and documenting that their defining projects report member problems, matches the recorded product decision rather than introducing a diagnostic-coverage defect.)",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L8] Types from referenced assemblies are deliberately not analysed by the consuming compilation; the defining assembly owns validation, so missing MsgPack003/004/005 diagnostics for those types are not defects."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m6",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects logical-operator at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (diagnostic.Location.IsInSource || this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-suite-only-TypeCollector",
+    "lens": "test-quality",
+    "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239, 985, 1434, 1448; the existing suite does",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:239 negate-condition: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> this.reportDiagnostic = reportAnalyzerDiagnostic is not null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic);; TypeCollector.cs:239 delete-statement: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> (statement deleted); TypeCollector.cs:985 delete-statement: this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull, GetPropertyIdentifierLocation(item), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name)); -> (statement deleted); TypeCollector.cs:1434 off-by-one: private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => ((PropertyDeclarationSyntax)property.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); -> private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => ((PropertyDeclarationSyntax)property.DeclaringSyntaxReferences[1].GetSyntax()).Identifier.GetLocation();; TypeCollector.cs:1448 delete-statement: report(diagnostic); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

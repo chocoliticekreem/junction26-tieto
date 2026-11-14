@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth is raised from 500 to 5000, a tenfold weakening of the recursion/depth limit that protects against stack overflow when deserializing untrusted data. This is unrelated to the requirement (a compile-time generator/analyzer crash fix). Ledger L9 records a deliberate stack depth limit of 500, and L18 records no preference on a related change, so nothing records approval of this one.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Deserialize a payload nested 600-5000 levels deep (e.g. nested single-element arrays) with MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData). On base it throws InsufficientExecutionStackException; on head it is accepted. Also assert UntrustedData.MaximumObjectGraphDepth == 500. Deep nesting of custom formatters on a small-stack thread can overflow the stack."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "ReportIfLocatedInCompilation silently drops every diagnostic whose location is not in a syntax tree of the compilation, so the wrapper now covers all reportDiagnostic calls in TypeCollector. Diagnostics that were previously reported with Location.None or a null location, including security-relevant configuration warnings, are now suppressed, with no test or documented rationale. For example, Diagnostic.Create with a null location yields Location.None, for which IsInSource is false, so those diagnostics vanish rather than being reported. Only diagnostics for types declared in the compiling assembly should be silenced. Silently suppressing the rest is a broader change than the crash fix requires.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run analyzer tests for a [MessagePackObject] type in the compiling assembly that inherits a public member without [Key] from a base in a referenced assembly (MsgPack004). Compare reported diagnostics on base vs head. Also check any existing diagnostic whose location is None. Head drops them."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 8990,
+  "output_tokens": 811,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

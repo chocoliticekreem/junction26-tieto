@@ -1,0 +1,48 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "For SuppressSourceGeneration types, a member with a [Key]-derived attribute now hits `continue` before any further processing, in both the field and property loops. Its member type is never collected, so MsgPack003 (unserializable member type) can no longer be reported for it. This contradicts the criterion that the analyzer still reports its MsgPack0xx rules for suppressed types, and the README hunk's claim that member types are validated.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Declare `class MyKey : KeyAttribute { public MyKey() : base(0) {} }` and `[MessagePackObject(SuppressSourceGeneration = true)] public class T { [MyKey] public NonSerializable X { get; set; } }`, where NonSerializable is a plain class without [MessagePackObject]. Run all analyzers via compilation.WithAnalyzers(...). Expect MsgPack003 on head; it is absent."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys and the ContainsKey guards on intMembers/stringMembers are unconditional; they also apply when SuppressSourceGeneration is unset. A type with duplicate keys now gets a generated formatter that silently drops the second member, where it previously threw. A mixed-kind member is now skipped instead of being added to the other map. This changes behaviour for the non-suppressed path, which the requirement says must not change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1028",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests, and add a non-suppressed [MessagePackObject] type with two [Key(0)] members plus a [GeneratedMessagePackResolver]. Compare base output (CS8785/AD0001) with head output (a formatter missing one member), and confirm that MsgPack005 is still reported on head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Reflection;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests(ITestOutputHelper logger)\n{\n    [Fact]\n    public async Task Suppressed_MissingKey_ReportsMsgPack004()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                public int B { get; set; }\n            }\n            \"\"\";\n        ImmutableArray<Microsoft.CodeAnalysis.Diagnostic> diagnostics = await this.GetAnalyzerDiagnosticsAsync(source);\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack004\");\n    }\n\n    [Fact]\n    public async Task Suppressed_DuplicateKeys_ReportsMsgPack005WithoutAnalyzerCrash()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                [Key(0)]\n                public int B { get; set; }\n            }\n            \"\"\";\n        ImmutableArray<Microsoft.CodeAnalysis.Diagnostic> diagnostics = await this.GetAnalyzerDiagnosticsAsync(source);\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack005\");\n    }\n\n    [Fact]\n    public async Task NotSuppressed_MissingKey_StillReportsMsgPack004()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                public int B { get; set; }\n            }\n            \"\"\";\n        ImmutableArray<Microsoft.CodeAnalysis.Diagnostic> diagnostics = await this.GetAnalyzerDiagnosticsAsync(source);\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack004\");\n    }\n\n    private static ImmutableArray<DiagnosticAnalyzer> GetAnalyzers()\n    {\n        Assembly assembly = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly;\n        return assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic, null, Type.EmptyTypes, null) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t, true)!)\n            .ToImmutableArray();\n    }\n\n    private async Task<ImmutableArray<Microsoft.CodeAnalysis.Diagnostic>> GetAnalyzerDiagnosticsAsync(string source)\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = new(framework);\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsSuppressTest\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = GetAnalyzers();\n        Assert.NotEmpty(analyzers);\n\n        ImmutableArray<Microsoft.CodeAnalysis.Diagnostic> diagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n        foreach (Microsoft.CodeAnalysis.Diagnostic d in diagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        return diagnostics;\n    }\n}\n",
+        "test_names": [
+          "Suppressed_MissingKey_ReportsMsgPack004",
+          "Suppressed_DuplicateKeys_ReportsMsgPack005WithoutAnalyzerCrash",
+          "NotSuppressed_MissingKey_StillReportsMsgPack004"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 9954,
+  "output_tokens": 8728,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

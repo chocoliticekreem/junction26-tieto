@@ -1,0 +1,214 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The change does not implement the core fix: no hunk enables analysis of types marked SuppressSourceGeneration = true. The TypeCollector edits only change mixed-key and duplicate-key handling, while the README newly promises continued validation. Consequently, a suppressed type with a public member lacking [Key] or [IgnoreMember] still lacks the required MsgPack004 diagnostic.",
+    "location": "README.md:1626",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerTests.SuppressedTypeStillReportsMsgPack004. It compiles a [MessagePackObject(SuppressSourceGeneration = true)] type with an unannotated public property and expects MsgPack004; it fails on base and also fails on head if suppression still disables analysis."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "DepthStep now permits one level beyond MaximumObjectGraphDepth. DepthStep increments reader.Depth after this guard, so with a configured maximum of 1 the first call leaves Depth at 1 and the second call now also succeeds (1 > 1 is false), leaving Depth at 2; only the third call throws. This also means a maximum of int.MaxValue can no longer reject at the boundary before Depth is incremented, potentially overflowing it.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:233",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Create security = MessagePackSecurity.TrustedData.WithMaximumObjectGraphDepth(1) and a MessagePackReader. Call security.DepthStep(ref reader) twice. The second call must throw InsufficientExecutionStackException: it does on base with >=, but does not on head with >."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "DepthStep now permits input at exactly MaximumObjectGraphDepth to descend one level farther before throwing, weakening the existing depth limit and changing behavior for all users even though this requirement only permits fixing analyzer behavior under SuppressSourceGeneration.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:233",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run the same nested-msgpack DepthStep boundary test against base and head with MaximumObjectGraphDepth set to a small value such as 2: base throws when reader.Depth equals the limit, while head does not throw until reader.Depth exceeds it; also verify the normal SuppressSourceGeneration=false configuration is used so this unrelated behavior change is demonstrated."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "security-1",
+    "lens": "security",
+    "claim": "DepthStep now permits reader.Depth == MaximumObjectGraphDepth and throws only on the next step, so nested untrusted input can exceed the configured maximum object-graph depth by one level. This weakens the depth guard intended to prevent stack exhaustion during recursive deserialization.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:233",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add a MessagePackSecurity test with a small MaximumObjectGraphDepth that drives reader.Depth through successive DepthStep calls. Assert that reaching the configured maximum is accepted and the next attempted nesting level throws; the changed > check allows one additional call, so an exact-boundary test fails against the head code. Also run it with UntrustedData to verify the security limit itself."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "Treating MsgPack017 as source-generation-only suppresses a warning that also describes runtime deserialization behavior. Ledger entry L6 says an init property initializer's default is replaced by the type's default value on deserialization, while this change explicitly routes suppressed types through the dynamic resolver; the new test nevertheless requires no MsgPack017 diagnostic for such a property.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:157",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run an analyzer test for [MessagePackObject(SuppressSourceGeneration = true)] containing [Key] public string Prop { get; init; } = \"some default\"; MsgPack017 should be reported as described by [L6]. Also round-trip that type through MessagePackSerializerOptions.Standard with a non-default initializer value and observe whether deserialization replaces it, confirming that opting out of generation does not make the warning irrelevant."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-2",
+    "lens": "product-context",
+    "claim": "The unrelated DepthStep comparison change weakens the recorded stack-depth limit by one level: reader.Depth == MaximumObjectGraphDepth no longer throws, so processing can continue beyond the configured maximum before a later check throws.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:233",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Set MaximumObjectGraphDepth to a small value such as 2 and drive DepthStep with reader.Depth exactly 2. The established limit in [L9] requires rejecting that boundary as before; the changed '>' check instead permits it. Verify depth 2 and depth 3 explicitly to detect the off-by-one."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The depth-limit comparison change has no test coverage. None of the added tests exercises MessagePackSecurity.DepthStep at exactly MaximumObjectGraphDepth, so restoring the original off-by-one behavior would leave all added tests passing.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:233",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack/MessagePackSecurity.cs:233 off-by-one: reader.Depth > this.MaximumObjectGraphDepth -> reader.Depth >= this.MaximumObjectGraphDepth; expected to survive because the diff contains no depth-boundary test asserting whether DepthStep throws when reader.Depth equals MaximumObjectGraphDepth."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m8",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects remove-guard at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (!intMembers.ContainsKey(member.IntKey)) -> if (true)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m10",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects negate-condition at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (!stringMembers.ContainsKey(member.StringKey)) -> if (!(!stringMembers.ContainsKey(member.StringKey)))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m11",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects remove-guard at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (!stringMembers.ContainsKey(member.StringKey)) -> if (true)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m12",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects delete-statement at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1181",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1181",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "stringMembers.Add(member.StringKey, (member, item.Type)); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m13",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects negate-condition at src/MessagePack/MessagePackSecurity.cs:233",
+    "location": "src/MessagePack/MessagePackSecurity.cs:233",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (reader.Depth > this.MaximumObjectGraphDepth) -> if (!(reader.Depth > this.MaximumObjectGraphDepth))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m14",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects remove-guard at src/MessagePack/MessagePackSecurity.cs:233",
+    "location": "src/MessagePack/MessagePackSecurity.cs:233",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (reader.Depth > this.MaximumObjectGraphDepth) -> if (false)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-suite-only-TypeCollector",
+    "lens": "test-quality",
+    "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163, 1165; the existing suite does",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:1163 negate-condition: if (!intMembers.ContainsKey(member.IntKey)) -> if (!(!intMembers.ContainsKey(member.IntKey))); TypeCollector.cs:1165 delete-statement: intMembers.Add(member.IntKey, (member, item.Type)); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

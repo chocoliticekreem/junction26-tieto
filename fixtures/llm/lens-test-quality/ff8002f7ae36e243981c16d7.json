@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The mixed-key regression test covers only a suppressed type, so it does not exercise the parallel non-suppressed collection path. Removing the new `continue` in that path would restore the invalid-key processing without failing any added test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148 delete-statement: `continue; // The key kind does not match the other members; the diagnostic is reported, so skip this member.` -> deleted statement; expected to survive because MixedKeyKindsAreReportedWithoutAnalyzerFailure uses SuppressSourceGeneration = true and no added test mixes integer and string keys on an ordinary [MessagePackObject] type."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No added test exercises duplicate string keys on a non-suppressed type, leaving the duplicate-key protection in the parallel generated-type path untested. Deleting this guard would again permit a duplicate dictionary insertion without being detected by the change's tests.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179 remove-guard: `if (!stringMembers.ContainsKey(member.StringKey))` -> unconditional `stringMembers.Add(member.StringKey, (member, item.Type));`; expected to survive because DuplicateKeysAreReportedWithoutAnalyzerFailureForGeneratedTypes uses only duplicate integer keys, while the duplicate-string test sets SuppressSourceGeneration = true."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5073,
+  "output_tokens": 1391,
+  "ms": 18106,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.036084
+}

@@ -1,0 +1,56 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Ledger L11 says types from referenced assemblies are deliberately not analysed and get no formatter from the compiling assembly. This change generates formatters for such types, but only through the explicit opt-in [GeneratedMessagePackFormatter] on a user-declared partial class. TypeCollector's metadata-only early return is untouched, so the deliberate default is preserved.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] TypeCollector.CollectCore returns early for metadata-only types, so no diagnostic or formatter appears for them without opt-in. The new collector is a separate opt-in path and leaves this behaviour unchanged."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new attribute and MsgPack019-022 diagnostics are documented, listed in AnalyzerReleases.Unshipped.md, and added to doc/analyzers/index.md, which satisfies the convention for new diagnostics. However, the new public attribute may need a PublicAPI.Unshipped.txt entry for MessagePack.Annotations (GeneratedMessagePackFormatterAttribute and its SurrogateType property). No such change appears in the diff.",
+        "location": "src/MessagePack.Annotations/Attributes.cs:142",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check whether MessagePack.Annotations tracks a PublicAPI.Unshipped.txt, and if so whether it lists GeneratedMessagePackFormatterAttribute and SurrogateType."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "The requirement says that if T carries MessagePack attributes, they are honoured. The change ignores any attributes on T. It uses contractless mode, or a surrogate if one is named. Should attributes on T (such as [Key], [DataContract], [MessagePackObject]) be honoured when present?",
+        "options": [
+          "Yes: honour attributes on T and fall back to contractless only when none are present",
+          "No: contractless or surrogate only, and document that attributes on T are ignored"
+        ],
+        "why_it_matters": "If attributes must be honoured, the change fails an acceptance criterion and the collector needs to read keys from T. If ignoring them is intended, the README and attribute docs should state it explicitly.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Contractless by default, plus an optional SurrogateType property on the attribute that supplies keys through [Key]/[IgnoreMember] on a surrogate class. Attributes on T are not read."
+      },
+      {
+        "label": "B",
+        "summary": "Contractless only, with no SurrogateType. If T has [Key], [DataContract] or [MessagePackObject] attributes, the collector honours them, and otherwise it falls back to contractless over public members."
+      }
+    ]
+  },
+  "input_tokens": 28642,
+  "output_tokens": 1026,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

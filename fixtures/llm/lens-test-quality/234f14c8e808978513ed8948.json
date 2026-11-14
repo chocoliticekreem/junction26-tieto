@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The tests only inspect files whose names start with \"Formatters.\". The resolver (GeneratedMessagePackResolver) and any other generated type are never checked. The requirement says all generated code, and the test comment claims every emitted formatter is covered. If the resolver is meant to be in scope, removing or never adding the attribute there would go unnoticed. The change also adds no attribute to the resolver template.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:127",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Extend the test to include non-Formatters.* generated trees (resolver) and assert the attribute. Expect failure, since the resolver template is unchanged in the diff."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The first test asserts only that each file contains the attribute somewhere and that there are at least 4 files. A file with several formatters (for example nested types) is not checked per class, so deleting the attribute from one template while another formatter in the same file keeps it would survive. The count threshold of 4 is also weak. EnumTemplate, UnionTemplate, StringKey and Formatter may all be covered by separate files, but nothing ties each template to its own file.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:62",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/UnionTemplate.cs:30 delete-statement: remove the ExcludeFromCodeCoverage line from the Write string -> expected to fail the test, but verify that the union file is among those enumerated. If the union formatter is not emitted under a Formatters.* path, the mutant survives."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The guard condition `#if !NETSTANDARD2_0 && !NETFRAMEWORK` is checked only as a literal string. No test compiles the generated code against a netstandard2.0 or net472 target, or against a modern one, so the requirement that the generated code compiles on every target is unverified. The guard could be mutated to `#if NETSTANDARD2_0` and the second test would still pass if Guard were changed in step. Note that the Guard constant is duplicated in the test rather than derived.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:15",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "EnumTemplate.cs:27 negate-condition: `#if !NETSTANDARD2_0 && !NETFRAMEWORK` -> `#if NETSTANDARD2_0`. The tests fail only on literal mismatch. A compile test with NETSTANDARD2_0 defined or undefined would catch it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change from \"{\" to \"{\\r\\n\" for nesting types with constraints alters generated output, but no test in the diff targets it. The new tests use no nested generic types with constraints. It is only covered indirectly through snapshots.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TransformUtilities.cs:58 swap-boolean/delete-statement: revert `{\\r\\n` -> `{`. Only the snapshot tests for nested generic constrained types would kill it. The new tests would not."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9167,
+  "output_tokens": 1250,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

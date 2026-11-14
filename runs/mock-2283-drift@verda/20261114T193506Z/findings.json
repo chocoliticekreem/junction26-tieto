@@ -1,0 +1,154 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The new metadata guard returns for every closed generic type, not just generic value types. Closed generic classes from referenced assemblies previously reached the closed-generic GetObjectInfo path without crashing; they now exit before collection, removing their formatter from the consuming compilation's generated output. This changes the explicitly required 'closed generic classes keep working as before' behaviour and can leave the consuming resolver unable to supply the previously generated Item<int> formatter.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Compile the repro library with `public partial class Item<T>` and a valid [Key(0)] property, then compile the app with Cmd.Member of type Item<int> and run MessagePackGenerator on base and head. Compare the generated formatter/resolver sources: base contains the collected Lib.Item<int> formatter and registration, while this guard on head bypasses that collection. The regression test should require the head output to retain the same Item<int> formatter and resolver registration as base."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The new property-location helper also returns null for source-declared positional record properties, whose declaration syntax is a ParameterSyntax rather than a PropertyDeclarationSyntax. For `[MessagePackObject] partial record R([property: Key(null)] string Value)`, `BothStringAndIntKeyAreNull` is therefore created with `Location.None` and then discarded by `ReportIfLocatedInCompilation`, silently losing the analyzer error for an invalid key even though the property is in the current compilation.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1439",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.PositionalRecordNullKeyDiagnosticReceiptTests.NullKeyOnPositionalRecordPropertyIsStillDiagnosed. It analyzes a source positional record with `[property: Key(null)]` and requires a diagnostic whose ID is `MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull.Id`; on head the helper supplies no source location and the new reporting filter drops it."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The unkeyed-member regression test does not exercise the metadata-safe MemberNeedsKey diagnostic change. The new early return skips every metadata-defined generic type before member collection, so restoring the original DeclaringSyntaxReferences[0] indexing would leave all three new tests passing.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1083",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1083 remove-guard: item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation() -> item.DeclaringSyntaxReferences[0].GetSyntax().GetLocation(); expected to survive because ClosedGenericStruct_FromMetadataReference_UnkeyedMember and the other metadata generic cases return at the new DeclaringSyntaxReferences.IsEmpty guard before reaching the MemberNeedsKey diagnostic."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-1",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L8] area=analyzer, generator: Types that come from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly. In `TypeCollector.CollectCore`, after the custom-formatter, enum and generic checks, a non-generic type whose symbol is metadata-only exits with a bare `if (type.Locations[0].IsInMetadata) { return; }` (TypeCollector.cs:367-370), so no MsgPack003/004/005 diagnostic and no generated formatter appear for it. The defining assembly owns validating and formatting its own types (rationale inferred: the code has no comment). A missing diagnostic or formatter for such a type is not a defect. (source: src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367) (would-be finding: Skipping closed generic types with metadata-only original definitions means the consuming assembly does not analyze their members or generate a formatter for them; this matches the recorded product convention. The defining assembly owns those types, while the consuming assembly still generates its resolver for its own annotated types.)",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L8] Types from a referenced assembly are deliberately not analysed and receive no formatter from the compiling assembly; missing diagnostics or a formatter for such a type is not a defect. The new metadata-only guard and the accompanying README and MsgPack004 documentation implement that convention."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m4",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects remove-guard at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (type.OriginalDefinition.DeclaringSyntaxReferences.IsEmpty) -> if (false)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m6",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects linq-first at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1083",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1083",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": ": Diagnostic.Create(MsgPack00xMessagePackAnalyzer.MemberNeedsKey, item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation(), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name); -> : Diagnostic.Create(MsgPack00xMessagePackAnalyzer.MemberNeedsKey, item.DeclaringSyntaxReferences.First()?.GetSyntax().GetLocation(), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name);"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m7",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects linq-first at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1440",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1440",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation(); -> private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.First()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation();"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m8",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects logical-operator at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1452",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1452",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (diagnostic.Location.IsInSource || this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m10",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects remove-guard at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1452",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1452",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (true)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-suite-only-TypeCollector",
+    "lens": "test-quality",
+    "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239, 991, 1452, 1454; the existing suite does",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:239 negate-condition: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> this.reportDiagnostic = reportAnalyzerDiagnostic is not null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic);; TypeCollector.cs:239 delete-statement: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> (statement deleted); TypeCollector.cs:991 delete-statement: this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull, GetPropertyIdentifierLocation(item), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name)); -> (statement deleted); TypeCollector.cs:1452 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (!(diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))); TypeCollector.cs:1454 delete-statement: report(diagnostic); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "MessagePackSecurity.DepthStep changed from `reader.Depth >= MaximumObjectGraphDepth` to `>`, which allows one more nesting level than MaximumObjectGraphDepth. This loosens the depth/stack-overflow protection for untrusted data (and the 500 trusted-data stack limit in L9) by an off-by-one. It is unrelated to the analyzer / SuppressSourceGeneration requirement.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Set MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(N) and deserialize a payload nested exactly N levels (e.g. N nested single-element arrays). Base throws InsufficientExecutionStackException; head succeeds. Also run the existing MessagePackSecurityTests depth tests, which assert the boundary, to see them fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In TypeCollector, a mixed int/string key member is now skipped via `continue` and duplicate keys are silently dropped via ContainsKey guards. Generation proceeds for malformed types instead of failing, so the formatter silently omits members. The generated deserializer then ignores data for those members. This also changes behavior beyond the stated requirement, and it matters when SuppressSourceGeneration is not set.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests with a type that has duplicate [Key(0)] members or mixed int/string keys. Compare the generated formatter at base and head to see whether members are omitted, and confirm MsgPack006/MsgPack005 diagnostics are still reported."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5312,
+  "output_tokens": 677,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01Dbg3xnSVbJt6wK1KGzecTi"
+}

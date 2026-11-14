@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Four new Error-severity diagnostics (MsgPack019-022) are added to SupportedDiagnostics. They only fire for classes carrying the new attribute, so existing users are unaffected. However, the analyzer registers no code path that reports them. They are reported only from the generator via RegisterSourceOutput. Any existing user class that already defines its own type named GeneratedMessagePackFormatterAttribute is not matched, since the match is by fully qualified name in the MessagePack namespace. Low compatibility risk, but the diagnostic IDs are new and need AnalyzerReleases.Unshipped.md entries, which are not in the diff, so the RS2000 release-tracking warning would fire in the generator's own build.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that AnalyzerReleases.Unshipped.md lists MsgPack019-MsgPack022. The diff touches no such file, so the RS2008/RS2000 release tracking analyzer would warn."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities.cs filter excludes attributed formatters from the hand-written formatter list only when the attribute matches by display string. For existing users, nothing changes. However, the template now emits 'partial class' with no accessibility for user-declared formatters, and the collected ObjectSerializationInfo is registered in the generated resolver. The resolver will instantiate the formatter via 'new Formatter()'. If the user's partial class is public, has a constructor, or is nested, the generated resolver references it without checks. If the class is declared private or nested private, the generated resolver cannot access it, producing compile errors in the user's project.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with a private nested [GeneratedMessagePackFormatter] partial class in a namespace/type. Regenerate and compile the resolver output. Check that the resolver compiles."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless members are ordered by ordinal name and read-only or get-only members are silently dropped. The wire format therefore depends on member names. Adding a member to T in Project A changes the int-key positions and the string keys, which is fine for string keys. The model also sets isIntKey=false, so string-key maps are used. However, in surrogate mode with all-int keys, IntKey comes from the surrogate while members that lack a Key are silently skipped, rather than being treated as errors the way MsgPack004 treats [MessagePackObject] types. This is a design choice rather than a break for existing users.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:159",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Serialize a type with a get-only property and a read-write property via the generated formatter. Assert that the get-only property is absent from the map."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18228,
+  "output_tokens": 1106,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01Dbg3xnSVbJt6wK1KGzecTi"
+}

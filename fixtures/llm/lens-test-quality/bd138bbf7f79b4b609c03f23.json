@@ -1,0 +1,94 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The generator-side tests only exercise diagnostics. No snapshot or generated-output test covers the generated formatter source for the contractless or surrogate cases, so the template change is only checked indirectly by the execution tests.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests. Confirm no snapshot is produced for a [GeneratedMessagePackFormatter] class (grep the Tests project for generated-output assertions)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `IsUserDeclaredFormatter ? \"partial class\" : \"internal sealed class\"` branch in both templates is exercised only by the ExecutionTests. Those tests do not check that the generated class is partial. A mutant swapping the two branches would fail compilation, so it is probably caught. Mutating the Equals line in ObjectSerializationInfo (`IsUserDeclaredFormatter == other.IsUserDeclaredFormatter`) has no test, because incremental-cache equality is never asserted.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:168",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:168 delete-statement: remove `&& IsUserDeclaredFormatter == other.IsUserDeclaredFormatter`; expected to survive because no test compares models for equality or checks incremental caching."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The no-parameterless-constructor guard (NoDeserializingConstructor) and the inaccessible-type check in GeneratedFormatterCollector.Collect have no test. A class with only a parameterized constructor, or a non-public formatted type, is never exercised.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:73",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:73 remove-guard: delete the `isClass && !...InstanceConstructors.Any(...)` check; expected to survive because no test in GeneratedMessagePackFormatterTests or ExecutionTests uses a class without a public parameterless constructor."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate path has no tests for duplicate keys (KeysMustBeUnique), a surrogate member missing [Key] (MemberNeedsKey), or a non-public target member. The only string-key surrogate test is the mixed-key test, which asserts MsgPack005 and says nothing about string-key output. A mutant on `intKey: members.Count` for string keys, or on the keys-unique check, would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:157",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:157 remove-guard: delete the `if (!seenKeys.Add(key))` block; expected to survive because no test uses duplicate surrogate keys. The execution surrogate uses only int keys, so the string-key surrogate branch is uncovered."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode ignores existing MessagePack attributes on T, such as [DataContract], [MessagePackObject], [Key] and [IgnoreMember]. The requirement says they should be honoured. No test covers a T that carries attributes.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:88",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an external or in-compilation type with [IgnoreMember] and [Key] members, formatted via a bare [GeneratedMessagePackFormatter]. Assert that the keys are honoured. The current code would serialize by name, so the test would fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless test does not cover public fields, base-class members, or private and protected members. The GetInstanceMembers dedupe-by-name and base-walk logic is unverified, and so is the private-members-excluded requirement. A mutant on `IsPublicReadWrite` (for example, allowing a private setter) would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:231",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:231 negate-condition: change `property.SetMethod is { DeclaredAccessibility: Accessibility.Public }` to not require Public; expected to survive because ExternalPerson/Point/Widget have only public get/set properties and no private-setter member."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generator test project has no happy-path test that the diagnostics do not fire for valid input. The MapMode execution project excludes the new execution tests, so the generated-formatter path is not run under force-map mode.",
+        "location": "tests/MessagePack.SourceGenerator.MapModeExecutionTests/MessagePack.SourceGenerator.MapModeExecutionTests.csproj:14",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "The csproj Exclude pattern removes GeneratedFormatterForExternalTypes*.cs from MapModeExecutionTests, so no force-map-mode coverage exists."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The filter in GeneratorUtilities that skips [GeneratedMessagePackFormatter] classes from hand-written formatter registration is covered only indirectly. The resolver test asserts the formatter type registered, but not that it is registered exactly once. A removal of the filter might yield duplicate registration, which the tests may not detect.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: delete the `!symbol.GetAttributes().Any(...)` clause; check whether the ExecutionTests fail. They may still pass."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25094,
+  "output_tokens": 2274,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

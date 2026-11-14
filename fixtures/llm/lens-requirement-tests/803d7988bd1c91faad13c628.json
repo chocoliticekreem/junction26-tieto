@@ -1,0 +1,59 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change documents that analyzers still validate suppressed types but does not implement a path that restores analyzer diagnostics when SuppressSourceGeneration is true. The TypeCollector edits only alter member collection and duplicate-key handling, so the reported MsgPack004 diagnostic remains absent for a suppressed type and the primary requirement is unmet.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerTests.SuppressedTypeStillGetsMsgPack004. It supplies a suppressed MessagePackObject with a public member lacking Key and IgnoreMember and expects MsgPack004; it fails while analyzer validation remains suppressed."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The string-key insertion guard is inverted: Add is attempted only when the key is already present. Consequently, previously absent string-keyed members are never collected, while a duplicate key reaches Dictionary.Add and throws instead of following the intended guarded path. Unset/false behavior therefore changes and string-keyed contracts can lose generated serialization members or crash generation.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationControlTests.StringKeyedContractStillGeneratesMembersWhenNotSuppressed. The ordinary, unsuppressed contract has unique string keys and the test requires both keys in generated source; the inverted guard omits them. A second variant using the same string key on both members would also demonstrate the ArgumentException from the unguarded effective Add."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests\n{\n    [Fact]\n    public async Task SuppressedTypeStillGetsMsgPack004()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                public int {|MsgPack004:Value|} { get; set; }\n            }\n            \"\"\";\n\n        await RunAnalyzerTestAsync(source);\n    }\n\n    [Theory]\n    [InlineData(\"\")]\n    [InlineData(\"(SuppressSourceGeneration = false)\")]\n    public async Task UnsetOrFalseStillGetsMsgPack004(string attributeArguments)\n    {\n        string source = $$\"\"\"\n            using MessagePack;\n\n            [MessagePackObject{{attributeArguments}}]\n            public partial class MyObject\n            {\n                public int {|MsgPack004:Value|} { get; set; }\n            }\n            \"\"\";\n\n        await RunAnalyzerTestAsync(source);\n    }\n\n    [Fact]\n    public async Task SuppressedTypeDoesNotGetGeneratedFormatter()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n            \"\"\";\n\n        var compilation = await CreateCompilationAsync(source);\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);\n\n        var formatterSources = driver.GetRunResult().Results\n            .SelectMany(result => result.GeneratedSources)\n            .Where(generated => generated.SourceText.ToString().Contains(\"MyObject\", StringComparison.Ordinal))\n            .Where(generated => generated.SourceText.ToString().Contains(\"IFormatter\", StringComparison.Ordinal));\n        formatterSources.Should().BeEmpty(\"a type that suppresses source generation must rely on runtime serialization rather than a generated formatter\");\n    }\n\n    private static async Task RunAnalyzerTestAsync(string source)\n    {\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(source);\n        await test.RunAsync();\n    }\n\n    private static async Task<CSharpCompilation> CreateCompilationAsync(string source)\n    {\n        var references = (await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None))\n            .AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        return CSharpCompilation.Create(\n            \"SuppressSourceGenerationReceipts\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp7_3)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n    }\n}\n",
+        "test_names": [
+          "SuppressedTypeStillGetsMsgPack004",
+          "UnsetOrFalseStillGetsMsgPack004",
+          "SuppressedTypeDoesNotGetGeneratedFormatter"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationControlTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationControlTests\n{\n    [Fact]\n    public async Task StringKeyedContractStillGeneratesMembersWhenNotSuppressed()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public partial class MyObject\n            {\n                [Key(\"name\")]\n                public string Name { get; set; } = \"\";\n\n                [Key(\"age\")]\n                public int Age { get; set; }\n            }\n            \"\"\";\n\n        var references = (await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None))\n            .AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        var compilation = CSharpCompilation.Create(\n            \"UnsuppressedControlReceipt\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp7_3)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);\n\n        string generated = string.Join(\n            \"\\n\",\n            driver.GetRunResult().Results.SelectMany(result => result.GeneratedSources).Select(generatedSource => generatedSource.SourceText.ToString()));\n        generated.Should().Contain(\"\\\"name\\\"\", \"behavior with source generation enabled must not change\");\n        generated.Should().Contain(\"\\\"age\\\"\", \"behavior with source generation enabled must not change\");\n    }\n}\n",
+        "test_names": [
+          "StringKeyedContractStillGeneratesMembersWhenNotSuppressed"
+        ],
+        "expects": "fail-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 10548,
+  "output_tokens": 15164,
+  "ms": 193363,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": true,
+  "cost_eur": 0.259104
+}

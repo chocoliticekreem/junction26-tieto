@@ -1,0 +1,176 @@
+{
+  "change_id": "mock-2283-security@verda",
+  "requirement_id": "REQ-2283",
+  "requirement_title": "Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly",
+  "requirement_text": "# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]` type has a member whose type is a closed generic value type defined in a referenced assembly.\n\nBecause the generator then \"will not contribute to the output\", the compiling assembly silently ends up with no generated resolver at all. It is only a warning, so a normal build looks fine, but trimmed and NativeAOT apps fail at runtime.\n\nRepro: two projects. `lib`:\n\n```csharp\nusing MessagePack;\nnamespace Lib;\n\n[MessagePackObject]\npublic partial record struct Item<T>([property: Key(0)] string Key);\n```\n\n`app`, with a `ProjectReference` to `lib`:\n\n```csharp\nusing MessagePack; using Lib;\nnamespace App;\n\n[MessagePackObject]\npublic sealed partial record Cmd([property: Key(0)] string Scope)\n{\n    [Key(1)] public Item<int> Member { get; init; }\n}\n```\n\nThen `dotnet build` on `app`.\n\nExpected: a clean build, with a generated resolver in `app`.\n\nActual:\n\n```\nCSC : warning CS8785: Generator 'MessagePackGenerator' failed to generate source. It will not\ncontribute to the output and compilation errors may occur as a result. Exception was of type\n'IndexOutOfRangeException' with message 'Index was outside the bounds of the array.'.\nCSC : warning AD0001: Analyzer 'MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer'\nthrew an exception of type 'System.IndexOutOfRangeException' with message 'Index was outside the\nbounds of the array.'.\n```\n\n`app.dll` contains no `GeneratedMessagePackResolver`. Version used: MessagePack 3.1.8.\n\nWhat triggers it (`Item` declared in `lib`, `Cmd` in `app`):\n\n| `Item` declared as | result |\n|---|---|\n| `record struct Item<T>` | crash |\n| `struct Item<T>` | crash |\n| `struct Item` | ok |\n| `record struct Item` | ok |\n| `class Item<T>` | ok |\n| `record class Item<T>` | ok |\n\nIt needs all three of: generic, value type, from a referenced assembly. Moving the identical `Item<T>` declaration into `app` makes the crash disappear.\n\nReporter's analysis: `CollectGeneric` line 661 is the closed-generic branch that calls `GetObjectInfo` directly, so `GetObjectInfo` runs against a type that has no syntax. Several diagnostic paths inside it index `DeclaringSyntaxReferences[0]` directly (lines 735, 1009, 1101) instead of using `FirstOrDefault()` like the neighbouring `GetIdentifierLocation` / `GetLocation` / `GetParameterListLocation` helpers. That collection is empty for a metadata symbol. The reporter did not narrow down which of the three fires.\n\nWorkaround: `[MessagePackFormatter(typeof(ItemFormatter<>))]` on the generic value type short-circuits `CollectCore` before `GetObjectInfo` is reached.\n\n## Acceptance criteria\n\n- Building `app` from the repro produces no CS8785 warning. (derived)\n- Building `app` from the repro produces no AD0001 warning from `MsgPack00xMessagePackAnalyzer`. (derived)\n- `app.dll` contains a `GeneratedMessagePackResolver` (a generated resolver exists). (derived)\n- The generator and analyzer do not throw on a closed generic struct or record struct declared in a referenced assembly.\n- Closed generic classes, non-generic structs and types declared in the same assembly keep working as before (the \"ok\" rows in the table). (derived)\n- Diagnostics that need a source location do not crash when the offending symbol has no declaring syntax (metadata symbol). (derived)\n\n## Notes from discussion\n\nNo comments on the issue. The reporter points at `DeclaringSyntaxReferences[0]` being indexed unguarded at TypeCollector.cs lines 735, 1009 and 1101, and notes the neighbouring helpers use `FirstOrDefault()`. Possibly related: #2092 (CS8785 from the v3 generator, different inner exception, no repro).",
+  "run_ts": "20261114T192905Z",
+  "head_sha": "d2ccb9b5df61004e349546b177c556072800ec3a",
+  "verdict": "needs-sign-off",
+  "verdict_reason": "max routed risk 8 >= 5; not every receipt is green (mutation); risky area touched: security; area trust below 3: security=1; no AI lens ran",
+  "risk": 8,
+  "areas": [
+    "security",
+    "tests",
+    "type-collector"
+  ],
+  "area_trust": {
+    "security": 1,
+    "tests": 3,
+    "type-collector": 3
+  },
+  "checked": [
+    {
+      "what": "Build base (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-base",
+      "result": "pass"
+    },
+    {
+      "what": "Build head (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on head: 170/170 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on base: 167/167 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-base",
+      "result": "pass"
+    },
+    {
+      "what": "Mutation: 3 killed by the change's tests, 4 caught only by the existing suite, 2 survive the full suite, 0 compile errors, 0 timeouts (9 mutants on TypeCollector.cs)",
+      "by": "mutation",
+      "evidence_id": "mutation",
+      "result": "partial"
+    },
+    {
+      "what": "Compatibility bytes: 0/124 cases differ, 0 base payloads fail to read on head, public API +0/-0",
+      "by": "byte-diff",
+      "evidence_id": "compat-bytes",
+      "result": "pass"
+    },
+    {
+      "what": "routed 9 hunks across 5 files",
+      "by": "rule+jev (auto)",
+      "evidence_id": "",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "mutation-survivor-m5",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects linq-first at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation(); -> private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.First()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation();"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m6",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects logical-operator at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (diagnostic.Location.IsInSource || this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-suite-only-TypeCollector",
+      "lens": "test-quality",
+      "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239, 985, 1448; the existing suite does",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "TypeCollector.cs:239 negate-condition: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> this.reportDiagnostic = reportAnalyzerDiagnostic is not null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic);; TypeCollector.cs:239 delete-statement: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> (statement deleted); TypeCollector.cs:985 delete-statement: this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull, GetPropertyIdentifierLocation(item), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name)); -> (statement deleted); TypeCollector.cs:1448 delete-statement: report(diagnostic); -> (statement deleted)"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "hunches": [],
+  "refused": [],
+  "not_checked": [
+    {
+      "what": "requirement-tests lens",
+      "why": "unavailable: Verda connection error (lens-requirement-tests): Server disconnected without sending a response."
+    },
+    {
+      "what": "logic-edge lens",
+      "why": "unavailable: Verda connection error (lens-logic-edge): Server disconnected without sending a response."
+    },
+    {
+      "what": "compatibility lens",
+      "why": "unavailable: Verda connection error (lens-compatibility): Server disconnected without sending a response."
+    },
+    {
+      "what": "security lens",
+      "why": "unavailable: Verda connection error (lens-security): Server disconnected without sending a response."
+    },
+    {
+      "what": "product-context lens",
+      "why": "unavailable: Verda connection error (lens-product-context): Server disconnected without sending a response."
+    },
+    {
+      "what": "test-quality lens",
+      "why": "unavailable: Verda connection error (lens-test-quality): Server disconnected without sending a response."
+    },
+    {
+      "what": "requirement tests (fail on base, pass on head)",
+      "why": "no requirement-derived tests were generated and executed"
+    },
+    {
+      "what": "tests/MessagePack.Tests and other runtime test suites",
+      "why": "not built or run in the sandbox; only the source generator test project is in scope"
+    },
+    {
+      "what": "NativeAOT, Unity and non-net8.0 target frameworks",
+      "why": "the sandbox builds and tests net8.0 only"
+    }
+  ],
+  "residual_risk": "This change touches 5 files (0 generated) in security, tests, type-collector; the highest routed risk is 8/10. 2 file(s) were routed for deep review, 3 for light review and 0 to the regeneration check. The existing source generator tests ran on head: 170 of 170 passed, 0 failed. It touches risky areas (security), so a human must sign off. 9 thing(s) were not checked, including requirement-tests lens; logic-edge lens; compatibility lens. By signing off, the signer accepts any defect that only those unchecked paths would have revealed.",
+  "routing": {
+    "README.md": "light",
+    "doc/analyzers/MsgPack004.md": "light",
+    "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs": "deep",
+    "src/MessagePack/MessagePackSecurity.cs": "deep",
+    "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs": "light"
+  },
+  "counts": {
+    "source": 2,
+    "test": 1,
+    "docs": 2,
+    "generated": 0,
+    "template": 0,
+    "total": 5,
+    "not_generated": 5
+  },
+  "questions": [],
+  "interpretations": [],
+  "narrative": "",
+  "mock_llm": false
+}

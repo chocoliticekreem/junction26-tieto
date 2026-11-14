@@ -1,0 +1,84 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "IsPublicReadWrite treats a public field as writable only if it is readonly (`field.IsReadOnly && !field.IsConst`). That is almost certainly inverted. Ordinary mutable public fields are skipped, and readonly fields are included and then assigned in generated code, which would not compile. No test has a public field on a formatted type, so nothing would notice.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:271",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:271 negate-condition: field.IsReadOnly -> !field.IsReadOnly; expected to survive because every External* test type uses only auto-properties and no test has a public field. Add a type with `public int F;` to prove it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless tests never check that the generated output actually uses the intended ordering and keys. Members are sorted with OrderBy(Name, Ordinal), but the tests only check a round trip, the 0x82 map header and JSON contents. Removing the OrderBy, or swapping intKey and stringKey, would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:131",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:131 delete-statement: remove .OrderBy(m => m.Name, StringComparer.Ordinal); expected to survive because tests assert neither order nor exact bytes and JSON checks use Contains."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Generated-output diagnostics are tested only in part. There are no snapshot or regeneration tests of the emitted partial class. In particular, the template change `partial class` vs `internal sealed class` is covered only indirectly through ExecutionTests. Nothing checks that nested or namespaced user formatters, or the `IsUserDeclaredFormatter` branch in either template, produce valid output. The Equals change for IsUserDeclaredFormatter also has no test.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "ObjectSerializationInfo.cs:168 delete-statement: remove `&& IsUserDeclaredFormatter == other.IsUserDeclaredFormatter`; expected to survive because no test compares two infos differing only in this flag."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The diagnostic tests do not cover important rejection branches. Missing: a class data type with no accessible parameterless constructor (NoDeserializingConstructor), duplicate surrogate keys (KeysMustBeUnique), a surrogate member lacking [Key] (MemberNeedsKey), an inaccessible type, a generic type, and a formatter implementing multiple IMessagePackFormatter<T> interfaces. Deleting any of these guards would pass the tests.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:75",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:75 remove-guard: delete the `isClass && !InstanceConstructors.Any(...)` block; expected to survive because no test uses a type without a parameterless constructor."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The SurrogateKeysMustNotMixStringAndInt test expects MsgPack005 at the Name member. The code under test reports DoNotMixStringAndIntKeys in the new collector, and that diagnostic fires only if the descriptor id is MsgPack005. The test also leaves the surrogate's own compile state with no other expected diagnostics. Meanwhile, no test covers the opposite case, where all keys are the same kind and nothing is reported.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs:200",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that DoNotMixStringAndIntKeys == MsgPack005 and add a positive test with consistent surrogate keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratedFormatterAttribute filter in GeneratorUtilities, which excludes attributed formatters from hand-written registration, is covered only by GeneratedFormattersAreRegisteredInGeneratedResolver. That test would also pass if the same formatter were registered twice. No test would catch duplicate registration or the guard being removed.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: delete the `!symbol.GetAttributes().Any(...)` clause; expected to survive or fail only through duplicate-registration compile errors, which no dedicated test checks."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate mode with string keys is untested in execution tests (the only surrogate uses int keys). The branch `CreateMember(target, intKey: members.Count, stringKey: (string)key)` and the `isIntKey=false` path are unexercised. Also the int-key gap behavior (keys 3 and 7) is checked only by array length 8, not by slot placement.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:176",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:176 swap-boolean: stringKey: (string)key -> target.Name; expected to survive because no test uses a string-key surrogate."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25095,
+  "output_tokens": 2115,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

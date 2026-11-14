@@ -1,0 +1,57 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "In the string-key branch of the second member loop (field/property pass), the guard is inverted: `if (stringMembers.ContainsKey(...)) Add(...)` instead of `!ContainsKey`. Members are never added when the key is new, and a duplicate key triggers Add, which throws ArgumentException. This is the analyzer-crash path the change is meant to fix, and it also drops all string-keyed members from the collected type info.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run a test with a [MessagePackObject] type that has two members with [Key(\"a\")], covering this second loop (the field/property pass). Also check that a type with unique string keys gets all its members. The inverted condition throws on the duplicate and silently drops the unique members."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README states the analyzer does not report MsgPack011, MsgPack016 or MsgPack017 for suppressed types, but the shown hunks contain no analyzer code that gates those diagnostics on SuppressSourceGeneration. The only tests are a negative test and the Execution tests. The documented behaviour is therefore unverified by the diff, and the real fix for the reported bug may live outside the shown scope.",
+        "location": "README.md:1620",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check where MsgPack011/016/017 are reported and whether they are gated on SuppressSourceGeneration. Then run SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed against the base and head builds."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new tests only check the Foo type with duplicate keys and mixed keys, and the string-key duplicate test does not distinguish the inverted-guard bug. The test for the second loop (members without a constructor) is missing, so the mutation of the guard on that line is not killed.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:99",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Mutate the `stringMembers.ContainsKey` guard at TypeCollector.cs:1179 and run SuppressSourceGenerationAnalyzerTests. If the suite passes, the mutant survives."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "For types with SuppressSourceGeneration = true, should the analyzer report the generation-only diagnostics (MsgPack011 partial class, MsgPack016, MsgPack017)?",
+        "options": [
+          "No, skip them because no formatter is generated (as documented in the README)",
+          "Yes, report all diagnostics as in 3.1.0 or for generated types"
+        ],
+        "why_it_matters": "If the answer is no, the README and the negative test are correct. If the answer is yes, the docs and test assert behaviour that diverges from the 'matches 3.1.0' acceptance criterion and the code must change.",
+        "area": "docs",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 9307,
+  "output_tokens": 1099,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

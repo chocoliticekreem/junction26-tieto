@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early `if (suppressSourceGeneration is true) return null;` sits before every validation step in GetObjectInfo. The analyzer shares this TypeCollector path, so a `[MessagePackObject(SuppressSourceGeneration = true)]` type now gets no MsgPack003/004/005/etc. diagnostics at all. The requirement (and ledger L17) asks for the reverse: validation diagnostics must still be reported, and only the generation-specific ones (MsgPack011/016/017) are skipped. Example input: `[MessagePackObject(SuppressSourceGeneration = true)] public class Suppressed { public int SuppressedValue { get; set; } }` should produce MsgPack004 but produces nothing on head.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:714",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerReceiptTests.SuppressedTypeStillReportsMsgPack004. It runs all DiagnosticAnalyzers from the generator assembly over a non-suppressed control type and a SuppressSourceGeneration=true type, each with a public member that lacks [Key]. It asserts MsgPack004 on both; on head the suppressed one is missing."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `ContainsKey` guards silently drop the second member when two members share the same int or string key, and no diagnostic is reported for it. For a non-suppressed type with `[Key(0)] public int A` and `[Key(0)] public int B`, the generated formatter serializes only A. B round-trips as default with no compile-time error, whereas the dynamic resolver rejects duplicate keys at run time. The analyzer crash is turned into silent data loss instead of a reported error.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1029",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generator test with `[MessagePackObject] public class Dup { [Key(0)] public int A {get;set;} [Key(0)] public int B {get;set;} }`. Assert that some error diagnostic is reported, or that the generated formatter contains both A and B. On head neither holds: no diagnostic is reported and the formatter only references A."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerReceiptTests\n{\n    private const string Source = \"\"\"\n        using MessagePack;\n\n        namespace Sample\n        {\n            [MessagePackObject]\n            public class Control\n            {\n                public int ControlValue { get; set; }\n            }\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class Suppressed\n            {\n                public int SuppressedValue { get; set; }\n            }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task SuppressedTypeStillReportsMsgPack004()\n    {\n        var framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = new List<MetadataReference>(framework);\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        var tree = CSharpSyntaxTree.ParseText(Source, new CSharpParseOptions(LanguageVersion.Latest));\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsSuppressed\",\n            new[] { tree },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        var analyzers = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n        Assert.NotEmpty(analyzers);\n\n        var diagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n\n        int suppressedStart = Source.IndexOf(\"SuppressSourceGeneration = true\", StringComparison.Ordinal);\n        Assert.True(suppressedStart > 0);\n\n        // Sanity: the non-suppressed control type gets MsgPack004, proving the harness runs the analyzer.\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack004\" && d.Location.IsInSource && d.Location.SourceSpan.Start < suppressedStart);\n\n        // Requirement: with SuppressSourceGeneration = true the analyzer must still report MsgPack004.\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack004\" && d.Location.IsInSource && d.Location.SourceSpan.Start > suppressedStart);\n    }\n}\n",
+        "test_names": [
+          "SuppressedTypeStillReportsMsgPack004"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10240,
+  "output_tokens": 6047,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_016ZTRtoFx12DniTJbHDKck6"
+}

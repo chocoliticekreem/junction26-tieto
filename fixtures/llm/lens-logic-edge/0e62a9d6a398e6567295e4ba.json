@@ -1,0 +1,48 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The public-field eligibility check is inverted: `public int Value;` is excluded from contractless and surrogate generation, while `public readonly int ReadOnly;` is included and then modelled as writable. Consequently mutable public fields silently lose their serialized data, and readonly fields can make the generated formatter fail compilation with an assignment-to-readonly-field error.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:284",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterCollectorReceiptTests.ContractlessGeneration_IncludesMutableFieldsAndSkipsReadOnlyFields. It generates a formatter for a type containing both a public mutable field and a public readonly field, requires successful compilation, and checks that only the mutable field appears in the formatter."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "When SurrogateType is null, the collector unconditionally builds contractless string-key members and never examines attributes on T. For a referenced type marked [MessagePackObject] whose Value property has [Key(0)] and whose Ignored property has [IgnoreMember], the generated formatter uses string-key map serialization and includes Ignored instead of honouring the declared integer-key array contract. This violates the requirement that MessagePack attributes on T be honoured.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:91",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterCollectorReceiptTests.MessagePackAttributesOnReferencedType_AreHonoured. It compiles ProjectA with [MessagePackObject], [Key(0)], and [IgnoreMember], references its metadata from ProjectB, generates the annotated formatter, and requires WriteArrayHeader and omission of Ignored."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterCollectorReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic sealed class GeneratedFormatterCollectorReceiptTests\n{\n    [Fact]\n    public async Task ContractlessGeneration_IncludesMutableFieldsAndSkipsReadOnlyFields()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            public class MyObject\n            {\n                public int Value;\n                public readonly int ReadOnly;\n            }\n\n            [GeneratedMessagePackFormatter]\n            public partial class MyObjectFormatter : IMessagePackFormatter<MyObject> { }\n            \"\"\";\n\n        GeneratedResult result = await GenerateAsync(source);\n        AssertNoCompilationErrors(result.Compilation);\n        string formatter = GetFormatterSource(result, \"MyObjectFormatter\");\n        formatter.Should().Contain(\"Value\");\n        formatter.Should().NotContain(\"ReadOnly\");\n    }\n\n    [Fact]\n    public async Task MessagePackAttributesOnReferencedType_AreHonoured()\n    {\n        const string projectASource = \"\"\"\n            using MessagePack;\n\n            namespace ProjectA;\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int Value { get; set; }\n\n                [IgnoreMember]\n                public int Ignored { get; set; }\n            }\n            \"\"\";\n        MetadataReference projectA = await CompileToMetadataReferenceAsync(projectASource, \"ProjectA\");\n        const string projectBSource = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            [GeneratedMessagePackFormatter]\n            public partial class MyObjectFormatter : IMessagePackFormatter<ProjectA.MyObject> { }\n            \"\"\";\n\n        GeneratedResult result = await GenerateAsync(projectBSource, projectA);\n        AssertNoCompilationErrors(result.Compilation);\n        string formatter = GetFormatterSource(result, \"MyObjectFormatter\");\n        formatter.Should().Contain(\"WriteArrayHeader\");\n        formatter.Should().NotContain(\"Ignored\");\n    }\n\n    private static async Task<MetadataReference> CompileToMetadataReferenceAsync(string source, string assemblyName)\n    {\n        var references = (await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None))\n            .Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n            .ToList();\n        CSharpCompilation compilation = CreateCompilation(source, assemblyName, references);\n        AssertNoCompilationErrors(compilation);\n        using MemoryStream stream = new();\n        var emit = compilation.Emit(stream);\n        emit.Success.Should().BeTrue(string.Join(Environment.NewLine, emit.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error)));\n        return MetadataReference.CreateFromImage(stream.ToArray());\n    }\n\n    private static async Task<GeneratedResult> GenerateAsync(string source, MetadataReference? additionalReference = null)\n    {\n        var references = (await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None))\n            .Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n            .ToList();\n        if (additionalReference is not null)\n        {\n            references.Add(additionalReference);\n        }\n\n        CSharpCompilation compilation = CreateCompilation(source, \"ProjectB\", references);\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out _);\n        return new GeneratedResult(output, driver);\n    }\n\n    private static CSharpCompilation CreateCompilation(string source, string assemblyName, IEnumerable<MetadataReference> references)\n    {\n        return CSharpCompilation.Create(\n            assemblyName,\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));\n    }\n\n    private static string GetFormatterSource(GeneratedResult result, string formatterName)\n    {\n        return result.Driver.GetRunResult().Results\n            .SelectMany(r => r.GeneratedSources)\n            .Single(s => s.SourceText.ToString().Contains($\"partial class {formatterName}\"))\n            .SourceText.ToString();\n    }\n\n    private static void AssertNoCompilationErrors(Compilation compilation)\n    {\n        string errors = string.Join(Environment.NewLine, compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));\n        errors.Should().BeEmpty();\n    }\n\n    private sealed record GeneratedResult(Compilation Compilation, GeneratorDriver Driver);\n}\n",
+        "test_names": [
+          "ContractlessGeneration_IncludesMutableFieldsAndSkipsReadOnlyFields",
+          "MessagePackAttributesOnReferencedType_AreHonoured"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 22700,
+  "output_tokens": 18345,
+  "ms": 233511,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": true,
+  "cost_eur": 0.343275
+}

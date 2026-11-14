@@ -218,4 +218,4 @@ def test_comparison_shape(tmp_path):
     assert table["columns"][:4] == ["change_id", "kind", "verdict_anthropic", "verdict_verda"]
     assert [r[0] for r in table["rows"]] == ["overall: Tieto changes (0 with both)",
                                              "overall: bench cold (0 with both)"]
-    assert "PR #11" in table["note"] and "final pipeline" in table["note"]
+    assert "final pipeline" in table["note"] and "compare models only" in table["note"]

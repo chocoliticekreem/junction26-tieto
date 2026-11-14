@@ -266,12 +266,12 @@ export default function TrackRecordPage() {
           </div>
           <div className="text-xs text-muted-foreground" data-testid="provenance">
             <p>
-              Measured on {summary?.cold?.cases ?? "—"} practice runs, pipeline as of PR #11, 14 Nov 2026. &ldquo;Warm&rdquo; answers came from a simulated human (a script that knows the
+              Measured on {summary?.cold?.cases ?? "—"} practice runs, final pipeline, 14 Nov 2026. &ldquo;Warm&rdquo; answers came from a simulated human (a script that knows the
               planted answers), not a person.
             </p>
             <Disclosure label="Limits" testId="provenance-toggle">
               <p className="max-w-3xl leading-5">
-                The warm run is incomplete: the API usage limit hit, so {excluded || 11} cases ran without lenses and are excluded, not counted as misses. Planted defects are a proxy for
+                The warm run covers the 2283 and 2234 issues only (18 cases), to stay inside the spend cap{excluded ? `; ${excluded} runs without every lens are excluded, not counted as misses` : ""}. Planted defects are a proxy for
                 reverts and incidents. Tile definitions are in each tile’s tooltip. Full limits: <span className="font-mono">metrics/README.md</span>.
               </p>
             </Disclosure>

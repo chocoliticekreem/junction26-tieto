@@ -1,0 +1,55 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "DepthStep changed from `>=` to `>`, allowing one extra nesting level (depth MaximumObjectGraphDepth+1) before InsufficientExecutionStackException. Users' existing depth limit now accepts payloads that were previously rejected, which loosens a security limit and is unrelated to the SuppressSourceGeneration requirement. Edge-of-limit payloads change behavior without opt-in.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Set MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(N), deserialize a payload nested exactly N+1 levels (e.g., N+1 nested single-element arrays into object[]). Base throws InsufficientExecutionStackException; head succeeds. Also check existing depth-limit tests (e.g., MessagePackSecurityTests) for an off-by-one failure."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In TypeCollector, a member whose key kind mismatches (mixing string and int keys) is now skipped via `continue` after reporting MsgPack005. Previously it fell through and was added to the members lists. The generated formatter for such types now omits that member, changing generated output. The type is already in error, so users who suppress the diagnostic could see changed output or lose members. This is not tied to the SuppressSourceGeneration requirement.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run generator snapshot tests with a [MessagePackObject] type mixing [Key(0)] and [Key(\"a\")] members. Diff generated formatter output between base and head, and confirm whether the members are dropped."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Duplicate int/string keys are now silently deduplicated, with the first member kept, instead of throwing ArgumentException from Dictionary.Add. The generator/analyzer output for types with duplicate keys changes. The formatter is generated with only the first member, and the later one is dropped from output. If the duplicate-key diagnostic (MsgPack006) does not fire in all paths, a user's build previously failed and now silently produces a lossy formatter.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator on a type with two members sharing [Key(1)] (and a string-key variant), with and without SuppressSourceGeneration. Compare the diagnostics and generated formatter at base vs head to confirm MsgPack006 still fires and what is emitted."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "Is the DepthStep `>=` to `>` change in MessagePackSecurity intentional as part of this fix?",
+        "options": [
+          "Yes, it fixes an off-by-one against documented MaximumObjectGraphDepth semantics",
+          "No, it is unrelated and should be reverted"
+        ],
+        "why_it_matters": "If unintentional, it is a silent loosening of a security limit and breaking (high). If intentional and documented, it is a behavior fix and the finding downgrades.",
+        "area": "security",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 5327,
+  "output_tokens": 1169,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01Dbg3xnSVbJt6wK1KGzecTi"
+}

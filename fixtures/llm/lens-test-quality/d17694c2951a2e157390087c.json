@@ -1,0 +1,47 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The metadata-location fix for BothStringAndIntKeyAreNull is not exercised. All three new metadata fixtures either have valid keys or reach MemberNeedsKey, so restoring the unguarded DeclaringSyntaxReferences[0] access on this path would still crash without any new test noticing.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 remove-guard: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because none of the added metadata fixtures has a member with a null key, so none reaches BothStringAndIntKeyAreNull. Add a closed generic metadata struct member using [Key(null)] and assert that analysis completes without AD0001/CS8785."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new diagnostic filter is tested only for dropping metadata diagnostics, not for retaining diagnostics located in the current compilation. Negating its condition would suppress every reported diagnostic while all added tests continued to pass.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (!(diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))); expected to survive because every added analyzer assertion expects zero diagnostics. Add a positive control with an unkeyed member declared in usageSource and require MsgPack004/MemberNeedsKey."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The MessagePackPrimitives writer change has no test coverage in this change. In particular, no added test pins UInt32 values from 128 through 255 to the one-byte UInt8 representation, despite the deleted branch changing them to UInt16 encoding.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:477",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack/MessagePackPrimitives.Writers.cs:477 off-by-one: case <= ushort.MaxValue -> case <= byte.MaxValue; expected to survive because none of the changed tests invokes MessagePackPrimitives or checks serialized bytes. Add writer tests asserting exact output bytes for UInt32 values 127, 128, 255, 256, and 65535."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 6318,
+  "output_tokens": 2530,
+  "ms": 28918,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.056904
+}

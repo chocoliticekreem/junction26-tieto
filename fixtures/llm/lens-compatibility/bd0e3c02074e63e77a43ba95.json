@@ -1,0 +1,35 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new reportDiagnostic wrapper drops every diagnostic whose location is not an in-source location of this compilation, which includes Location.None. Previously such diagnostics were reported. Diagnostics created with a null or None location, such as MsgPack004 for a type whose inherited member comes from a referenced assembly, or diagnostics built from GetIdentifierLocation/GetLocation helpers that return null, are now silently suppressed. The same applies to locations in another compilation's syntax tree, for example partial declarations or base types from a project reference with source. Users who relied on these warnings or errors will stop seeing them. That is a behaviour change beyond the crash fix, although it may be an acceptable one.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] class in the compiling assembly derives from a base class in a referenced assembly, and the base has a public member without [Key]. Run it against base and head. Compare whether MsgPack004 is reported (base reports with Location.None or the identifier; head drops it if the location is not in the compilation). Also check the MsgPack003/005 cases that use null locations."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should diagnostics with no source location in the compiling assembly (Location.None, metadata or other-compilation locations) be suppressed, or still be reported, for example anchored on the consuming type's identifier?",
+        "options": [
+          "Suppress them, since the defining assembly owns them",
+          "Keep reporting them, anchored on the consuming type's identifier"
+        ],
+        "why_it_matters": "If suppressing is intended, the filter is acceptable. If they must still be reported, the filter is a silent diagnostic regression, because a user who previously got MsgPack004 or similar would no longer see it.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 8667,
+  "output_tokens": 673,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

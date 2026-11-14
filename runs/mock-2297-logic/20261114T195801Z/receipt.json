@@ -1,0 +1,654 @@
+{
+  "change_id": "mock-2297-logic",
+  "requirement_id": "REQ-2297",
+  "requirement_title": "Add ExcludeFromCodeCoverage attribute to generated code.",
+  "requirement_text": "# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numbers, especially on large projects with a lot of generated code.\n\nSolution requested: \"I would like all generated code to be decorated with ExcludeFromCodeCoverage attribute.  I do not feel like a setting is needed, but setting would be fine to have too.\"\n\nAlternatives considered by the author: none; \"it is close to impossible to write good coverage for generated code as it covers many edge cases.\"\n\n## Acceptance criteria\n\n- All generated code is decorated with `ExcludeFromCodeCoverage`.\n- No new setting or option is required to get the attribute. (\"I do not feel like a setting is needed\")\n- An opt-out setting would be acceptable but is optional. (\"setting would be fine to have too\")\n- The generated code still compiles on every supported target framework (the attribute must exist there or be conditionally emitted). (derived)\n- Existing verified generator snapshots are updated to include the attribute. (derived)\n\n## Notes from discussion\n\n- b-kurczynski-dl suggests a coverage-tool workaround instead: exclude `obj\\\\.*\\.g\\.cs$` in the `dotnet-coverage` settings XML.\n- armadavalor offers a PR: add `[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]` (and possibly `GeneratedCode`) to the types emitted by the templates under `src/MessagePack.SourceGenerator/Transforms/` (formatters, string-key formatters, enum/union formatters, resolvers), update the verified snapshots, no setting. Asks AArnott whether he would accept it or prefer to point users at coverage-tool configuration. No maintainer reply in the thread.\n- Ambiguity driver: scope (all generated types vs formatters only) and setting (unconditional vs opt-out) are both open.",
+  "run_ts": "20261114T195801Z",
+  "head_sha": "fb84a361e78cae6db90694d3a3f595e45e11a450",
+  "verdict": "blocked",
+  "verdict_reason": "verified high finding(s) backed by receipts: requirement-tests-1, logic-edge-1, logic-edge-2",
+  "risk": 7,
+  "areas": [
+    "codegen-templates",
+    "tests"
+  ],
+  "area_trust": {
+    "codegen-templates": 1,
+    "tests": 3
+  },
+  "checked": [
+    {
+      "what": "Build base (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-base",
+      "result": "pass"
+    },
+    {
+      "what": "Build head (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on head: 160/169 passed, 9 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-head",
+      "result": "fail"
+    },
+    {
+      "what": "Existing SourceGenerator tests on base: 167/167 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-base",
+      "result": "pass"
+    },
+    {
+      "what": "Receipts/ReqExcludeFromCodeCoverageTests.cs: requirement test fails on base (2/2), passes on head (2/2)",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-1",
+      "result": "pass"
+    },
+    {
+      "what": "Receipts/ReqExcludeFromCodeCoverageGapTests.cs: edge-case test fails on head: 2/2 failed",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-2",
+      "result": "fail"
+    },
+    {
+      "what": "Receipts/ExcludeFromCodeCoverageEdgeCaseTests.cs: edge-case test fails on head: 4/4 failed",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-3",
+      "result": "fail"
+    },
+    {
+      "what": "Regeneration: 192/222 generated files verified by 89 passing snapshot tests on head; 9 head test(s) fail",
+      "by": "regeneration",
+      "evidence_id": "regeneration",
+      "result": "fail"
+    },
+    {
+      "what": "routed 423 hunks across 237 files",
+      "by": "rule+jev (auto)",
+      "evidence_id": "",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "requirement-tests-1",
+      "lens": "requirement-tests",
+      "claim": "The enum formatter template has its preprocessor guard inverted: `#if NETSTANDARD2_0 || NETFRAMEWORK`, while every other template uses `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. On modern targets (net6/net8 and others), generated enum formatters are not decorated with ExcludeFromCodeCoverage. The attribute appears only on the targets the change itself treats as unsupported. This breaks the acceptance criterion that all generated code is decorated.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run Receipts.GeneratedTests.ReqExcludeFromCodeCoverageGapTests.EnumFormatter_IsExcludedFromCodeCoverage_OnModernTarget. It compiles generated code against net8.0 with no NETSTANDARD2_0/NETFRAMEWORK symbols and asserts that the MyEnum formatter symbol carries ExcludeFromCodeCoverageAttribute. It fails on head. The same applies to EnumTemplate.cs:27."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-2"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "requirement-tests-2",
+      "lens": "requirement-tests",
+      "claim": "No generated type gets the attribute when the consuming project targets netstandard2.0 or .NET Framework. System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute exists in .NET Framework 4.0+ and netstandard2.0, with class targets allowed. The derived criterion only permits conditional emission where the attribute does not exist, so this exclusion leaves the requirement unmet for those (common) targets.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run Receipts.GeneratedTests.ReqExcludeFromCodeCoverageGapTests.Formatters_AreExcludedFromCodeCoverage_WhenTargetingNetStandard20. It defines the NETSTANDARD2_0 preprocessor symbol and asserts that the IntKeyed/StringKeyed formatters and the resolver carry the attribute. It fails on head. The same guard appears in StringKeyFormatterTemplate.tt, UnionTemplate.tt, ResolverTemplate.tt and CompositeResolverTemplate.tt."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-2"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-1",
+      "lens": "logic-edge",
+      "claim": "EnumTemplate uses the inverted guard `#if NETSTANDARD2_0 || NETFRAMEWORK`, while every other template uses `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. As a result, generated enum formatters get no `[ExcludeFromCodeCoverage]` on modern targets (net6/net8, where neither symbol is defined). They get the attribute only on the targets that the rest of the change excludes. Enum formatters are therefore never covered on the same TFMs as the other generated types, and on modern TFMs they are never covered at all.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run ExcludeFromCodeCoverageEdgeCaseTests.EnumFormatter_HasAttribute_OnModernTarget: it runs the generator with preprocessor symbols NET8_0;NETCOREAPP and checks whether the IMessagePackFormatter<MyEnum> class carries ExcludeFromCodeCoverageAttribute. On head the attribute is absent and the test fails."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-3"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-2",
+      "lens": "logic-edge",
+      "claim": "The attribute is emitted unconditionally on the user-declared `partial class` resolver, in both the generated-resolver and composite-resolver templates. `ExcludeFromCodeCoverageAttribute` has AllowMultiple=false. A user whose own resolver declaration (`[GeneratedMessagePackResolver] [ExcludeFromCodeCoverage] partial class MyResolver {}`) already carries the attribute now gets CS0579 (duplicate attribute) in generated code. Code that compiled on base breaks on head.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run ExcludeFromCodeCoverageEdgeCaseTests.ResolverAlreadyExcludedByUser_StillCompiles: it runs the generator on a resolver partial that already has [ExcludeFromCodeCoverage] and asserts the output compilation has no errors. On head it reports CS0579. The same defect applies to CompositeResolverTemplate.tt:7."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-3"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-3",
+      "lens": "logic-edge",
+      "claim": "The guard `!NETSTANDARD2_0 && !NETFRAMEWORK` drops the attribute for netstandard2.0 and all .NET Framework consumers, yet `System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute` exists there: it is in .NET Framework 4.0+ and netstandard2.0 and is valid on classes. Generated formatters and resolvers in those projects stay counted in coverage. This misses the 'all generated code is decorated' criterion even though no conditional emission was needed for those targets.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run ExcludeFromCodeCoverageEdgeCaseTests.ObjectFormatter_HasAttribute_OnLegacyTargets with NETFRAMEWORK and with NETSTANDARD2_0 defined. The IMessagePackFormatter<MyObject> class lacks ExcludeFromCodeCoverageAttribute on head."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-3"
+      ],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "hunches": [
+    {
+      "id": "requirement-tests-4",
+      "lens": "requirement-tests",
+      "claim": "The resolver attribute is now emitted unconditionally on the generated partial resolver class, and ExcludeFromCodeCoverageAttribute has AllowMultiple=false. A user who already put [ExcludeFromCodeCoverage] on their `[GeneratedMessagePackResolver] partial class` (an obvious workaround for this very issue) now gets CS0579 (duplicate attribute), and the build breaks on upgrade. With no opt-out setting there is no way around it other than removing the user's attribute.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Use a VerifyCS.Test with TestBehaviors.SkipGeneratedSourcesCheck and a source containing `[System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage][GeneratedMessagePackResolver] partial class MyResolver {}` plus one [MessagePackObject] type. It passes on base and reports CS0579 on head (net8.0 references). The same applies to CompositeResolverTemplate.tt:7."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-1",
+      "lens": "compatibility",
+      "claim": "The preprocessor condition in EnumTemplate is inverted relative to every other template. The attribute is emitted only when NETSTANDARD2_0 or NETFRAMEWORK is defined, which are exactly the targets where the attribute is assumed unavailable. Enum formatters therefore get no exclusion on modern targets, so the requirement is unmet for them. On netstandard2.0/net472 the attribute is emitted, which may fail to compile there if ExcludeFromCodeCoverage is absent; it exists in netstandard2.0 and net40+, so it is probably fine on those targets. The result is an inconsistent and incorrect guard.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Rerun the generator snapshot tests. Build a net8.0 enum sample and a netstandard2.0 enum sample, and confirm the generated enum formatter lacks the attribute on net8.0 (the #if NETSTANDARD2_0 || NETFRAMEWORK branch is excluded). Compare against the guard on the other formatters, which use #if !NETSTANDARD2_0 && !NETFRAMEWORK."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-2",
+      "lens": "compatibility",
+      "claim": "The attribute is excluded on NETSTANDARD2_0/NETFRAMEWORK, where System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute does exist (netstandard2.0, net472). Generated code in those projects therefore remains covered, so 'all generated code is decorated' is not met on those targets. The guard also hardcodes symbols, so it misses other targets such as netstandard2.1 and net462, which could behave differently.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Compile a generated formatter in a netstandard2.0 and a net472 project with the guard removed. If it builds, the conditional exclusion is unnecessary and the requirement is unmet on those targets."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": true
+    },
+    {
+      "id": "compatibility-3",
+      "lens": "compatibility",
+      "claim": "The change to nesting-type emission alters whitespace in generated output when constraints exist ('{' becomes '{\\r\\n'). This changes the checked-in or snapshotted generated text for nested generic types with constraints, which is unrelated to the requirement. Users who snapshot generated output will see the diff.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Rerun the snapshot tests for nested generic types with constraints and diff the generated output between base and head."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-4",
+      "lens": "compatibility",
+      "claim": "The #if directive is emitted after a '/// <summary>' doc comment in the ResolverTemplate. The doc comment still precedes the attribute, so it should attach correctly. However, in CompositeResolverTemplate and the formatter templates, '#if' must start at the start of a line. The emitted text begins after a previous Write that may not end with a newline in some paths, e.g. where EmitNestingTypesAndNamespaces ends a line without a trailing newline.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Generate formatters for a nested non-generic type without constraints and one with constraints. Confirm that '#if' starts on its own line and that the output compiles."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-1",
+      "lens": "product-context",
+      "claim": "EnumTemplate guard is inverted relative to all other templates: it uses `#if NETSTANDARD2_0 || NETFRAMEWORK`, so the attribute is emitted only on targets where it is unavailable (compile error on netstandard2.0/net framework) and omitted on modern targets. This fails the requirement that all generated code is decorated and still compiles on every target.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run CodeCoverageExclusionTests.AllGeneratedTypesAreExcludedFromCodeCoverage and ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable; the enum formatter text will not contain the guard `#if !NETSTANDARD2_0 && !NETFRAMEWORK` and the unguarded-count assertion fails. Also compile generated enum formatter with NETSTANDARD2_0 defined."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-2",
+      "lens": "product-context",
+      "claim": "EnumTemplate.cs mirrors the inverted guard `#if NETSTANDARD2_0 || NETFRAMEWORK`, so the generated enum formatter is not excluded from coverage on modern targets.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Rerun generator snapshot tests and inspect enum formatter snapshots: attribute appears under the inverted guard instead of `!NETSTANDARD2_0 && !NETFRAMEWORK`."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-3",
+      "lens": "product-context",
+      "claim": "The tests' first assertion checks only that the attribute string appears somewhere in the file, and the guard test counts only the two guarded forms. Neither catches the inverted enum guard unless the enum formatter is among generated files; the assertion wording does not verify the guard condition polarity for the enum case, so test coverage of this defect is weak.",
+      "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:73",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "Mutate the guard in the other templates to `#if NETSTANDARD2_0 || NETFRAMEWORK`; check that the tests fail. The enum template already has this mutation and should be caught by ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-4",
+      "lens": "product-context",
+      "claim": "The guard is based on the preprocessor symbols NETSTANDARD2_0/NETFRAMEWORK, which is a guess about target availability. Netstandard2.1 and netcoreapp targets are covered, but the attribute is also unavailable on older targets like netstandard1.x. Also the TransformUtilities change from `{` to `{\\r\\n` alters output for all nested-type constraints, which is unrelated formatting churn.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Rerun snapshot tests and diff nested-type-with-constraint snapshots to confirm only whitespace changes."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-1",
+      "lens": "test-quality",
+      "claim": "EnumTemplate has the guard inverted: it emits ExcludeFromCodeCoverage only on NETSTANDARD2_0 || NETFRAMEWORK, where the attribute is unavailable, so it can break compilation there and enum formatters are not excluded on modern targets. Neither new test notices, because both only look for the attribute text and an exact guard string, and the enum guard string differs from the one asserted.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8 negate-condition: #if NETSTANDARD2_0 || NETFRAMEWORK -> #if !NETSTANDARD2_0 && !NETFRAMEWORK. The enum guard in the diff is inverted relative to every other template. Run CodeCoverageExclusionTests.ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable: it should FAIL on the current head, because attributeCount != guardedCount for the enum file. If it passes, the test is too weak."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-2",
+      "lens": "test-quality",
+      "claim": "The tests only check that generated text contains the attribute string and that each occurrence is wrapped in the exact guard string. They do not compile the generated output under a netstandard2.0 or net framework reference set, so the 'still compiles on every target' criterion is untested. They also cannot tell whether the guard polarity is right, only that it matches the literal string.",
+      "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:73",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Add a test that compiles the generator output with a netstandard2.0 reference set and NETSTANDARD2_0 defined, asserting no CS0246 or CS0234 diagnostics. Then run it against the head build."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-3",
+      "lens": "test-quality",
+      "claim": "The test source contains no generic, nested or private-nested types, and the generated formatters for such types go through the nesting wrapper whose brace emission changed in TransformUtilities (\"{\" -> \"{\\r\\n\"). Nothing in the new tests exercises that change. Only the snapshots cover it, and only if a nested or constrained case exists.",
+      "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: revert \"{\\r\\n\" -> \"{\" in the anyConstraints branch; expected to survive in CodeCoverageExclusionTests because TestSource has no generic type with constraints. Only snapshot regeneration might catch it."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-4",
+      "lens": "test-quality",
+      "claim": "The assertion generated.Count >= 5 and the 'contains the attribute' check can be satisfied by a single type's attribute in a file. The helper nested classes (FormatterCache, GetFormatterHelper) are not individually verified. If one of the two guarded occurrences in the resolver were removed, the contains check would still pass.",
+      "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:68",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48 delete-statement: remove the attribute on GetFormatterHelper; expected to survive the CodeCoverageExclusionTests because the resolver file still contains the attribute on the class and on FormatterCache, so both tests pass."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "requirement-tests-3",
+      "lens": "requirement-tests",
+      "claim": "The README states the attribute is 'only emitted for targets where it is available (not netstandard2.0 or .NET Framework)'. That is factually wrong: the attribute is available on both. The README also says 'all generated formatters' are decorated, which the inverted enum guard contradicts.",
+      "location": "README.md:1640",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "Compare the netstandard2.0 / net472 reference assemblies, which contain System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute, and EnumTemplate.tt:8, where the guard is inverted."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "refused": [
+    {
+      "what": "Which reading of REQ-2297 is intended (A or B)",
+      "why": "3 of 3 independent readers found two readings: A: Unconditionally add [ExcludeFromCodeCoverage] to every type the source generator emits (formatters, enum/union formatters, resolvers, string-key formatters, etc.), with no setting; B: Add the attribute to all generated types by default, plus provide an opt-out setting (e.g. MSBuild property or MessagePackKnownFormatter/GeneratorOptions flag) to disable it; the requirement says: 'I would like all generated code to be decorated with ExcludeFromCodeCoverage attribute. I do not feel like a setting is needed, but setting would be fine to have too'."
+    }
+  ],
+  "not_checked": [
+    {
+      "what": "mutation testing",
+      "why": "19 source hunk(s) routed at risk >= 5, but none has an added line the mutation operators apply to"
+    },
+    {
+      "what": "generated formatter bytes (source generator output, base vs head)",
+      "why": "generated formatter bytes not compared: the harness exercises runtime resolvers, not source-generated formatters"
+    },
+    {
+      "what": "compatibility byte diff (base vs head serialized bytes)",
+      "why": "compatibility-relevant hunks changed, but none in src/MessagePack or src/MessagePack.Annotations; the harness only compares the runtime library"
+    },
+    {
+      "what": "A/B review branches",
+      "why": "--no-ab: the two readings are recorded, but branches A and B were not built or reviewed in this run"
+    },
+    {
+      "what": "tests/MessagePack.Tests and other runtime test suites",
+      "why": "not built or run in the sandbox; only the source generator test project is in scope"
+    },
+    {
+      "what": "NativeAOT, Unity and non-net8.0 target frameworks",
+      "why": "the sandbox builds and tests net8.0 only"
+    }
+  ],
+  "residual_risk": "This change touches 237 files (222 generated) in codegen-templates, tests; the highest routed risk is 7/10. 14 file(s) were routed for deep review, 1 for light review and 222 to the regeneration check. The existing source generator tests ran on head: 160 of 169 passed, 9 failed. 14 unverified hunch(es) remain without an executed receipt. It touches risky areas (codegen-templates), so a human must sign off. 6 thing(s) were not checked, including mutation testing; generated formatter bytes (source generator output, base vs head); compatibility byte diff (base vs head serialized bytes). By signing off, the signer accepts any defect that only those unchecked paths would have revealed. The change is blocked; signing off is not offered until the blocker is fixed.",
+  "routing": {
+    "README.md": "light",
+    "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.cs": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.tt": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/UnionTemplate.cs": "deep",
+    "src/MessagePack.SourceGenerator/Transforms/UnionTemplate.tt": "deep",
+    "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs": "deep",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/AdditionalAllowTypes/Formatters.MessagePack.GeneratedMessagePackResolver.TypeWithAutoGeneratedFormatterFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/AdditionalAllowTypes/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/AdditionalFormatterTypes/DefiningProject.MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/AdditionalFormatterTypes/TestProject.Formatters.MessagePack.GeneratedMessagePackResolver.TypeWithAutoGeneratedFormatterFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/AdditionalFormatterTypes/TestProject.MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/AdditionalFormatterTypes_RedundantAttribute/Formatters.MessagePack.GeneratedMessagePackResolver.TypeWithAutoGeneratedFormatterFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/AdditionalFormatterTypes_RedundantAttribute/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Array2DJaggedProperty/Formatters.MessagePack.GeneratedMessagePackResolver.ContainerObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Array2DJaggedProperty/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/ArrayTypedProperty/Formatters.MessagePack.GeneratedMessagePackResolver.ContainerObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/ArrayTypedProperty/Formatters.MessagePack.GeneratedMessagePackResolver.SubObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/ArrayTypedProperty/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CanGenerateMessagePackFormatterAttr/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.BarFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CanGenerateMessagePackFormatterAttr/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CompositeResolver_MixedResolverTypes/MyResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CompositeResolver_Nested/MyResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterForGenericWithConstraints/Formatters.MessagePack.GeneratedMessagePackResolver.SampleObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterForGenericWithConstraints/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterViaAttributeOnField(False)/Formatters.MessagePack.GeneratedMessagePackResolver.HasFieldWithCustomFormatterAttributeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterViaAttributeOnField(False)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterViaAttributeOnField(True)/Formatters.MessagePack.GeneratedMessagePackResolver.HasFieldWithCustomFormatterAttributeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterViaAttributeOnField(True)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterViaAttributeOnProperty(False)/Formatters.MessagePack.GeneratedMessagePackResolver.HasPropertyWithCustomFormatterAttributeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterViaAttributeOnProperty(False)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterViaAttributeOnProperty(True)/Formatters.MessagePack.GeneratedMessagePackResolver.HasPropertyWithCustomFormatterAttributeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterViaAttributeOnProperty(True)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterWithSingletonPattern/Formatters.MessagePack.GeneratedMessagePackResolver.GFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/CustomFormatterWithSingletonPattern/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/DeserializingConstructorParameterMemberTypeAssignability_Incompatible/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/DeserializingConstructorParameterMemberTypeAssignability_MemberAssignsToParamType/Formatters.MessagePack.GeneratedMessagePackResolver.AFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/DeserializingConstructorParameterMemberTypeAssignability_MemberAssignsToParamType/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EmbeddedTypes/Formatters.MessagePack.GeneratedMessagePackResolver.AFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EmbeddedTypes/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(Namespace, False)/Formatters.MessagePack.GeneratedMessagePackResolver.MyTestNamespace.MyEnumFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(Namespace, False)/Formatters.MessagePack.GeneratedMessagePackResolver.MyTestNamespace.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(Namespace, False)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(Namespace, True)/Formatters.MessagePack.GeneratedMessagePackResolver.MyTestNamespace.MyEnumFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(Namespace, True)/Formatters.MessagePack.GeneratedMessagePackResolver.MyTestNamespace.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(Namespace, True)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(NestingClass, False)/Formatters.MessagePack.GeneratedMessagePackResolver.ContainingClass.MyEnumFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(NestingClass, False)/Formatters.MessagePack.GeneratedMessagePackResolver.ContainingClass.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(NestingClass, False)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(NestingClass, True)/Formatters.MessagePack.GeneratedMessagePackResolver.ContainingClass.MyEnumFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(NestingClass, True)/Formatters.MessagePack.GeneratedMessagePackResolver.ContainingClass.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(NestingClass, True)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(None, False)/Formatters.MessagePack.GeneratedMessagePackResolver.MyEnumFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(None, False)/Formatters.MessagePack.GeneratedMessagePackResolver.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(None, False)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(None, True)/Formatters.MessagePack.GeneratedMessagePackResolver.MyEnumFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(None, True)/Formatters.MessagePack.GeneratedMessagePackResolver.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter(None, True)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.NS1.MyEnumFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.NS2.MyEnumFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/EnumFormatter_CollidingTypeNames/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers(class)/Formatters.MyObject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers(class)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers(record struct)/Formatters.MyObject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers(record struct)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers(record)/Formatters.MyObject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers(record)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers(struct)/Formatters.MyObject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers(struct)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers_MapMode/Formatters.MyObject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers_MapMode/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers_WithNamespace/Formatters.A.MyObject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/FormatterForClassWithPrivateMembers_WithNamespace/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericCustomFormatter/Formatters.SampleObject.SampleObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericCustomFormatter/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericDataTypeWithPrivateMember/Formatters.HasPrivateSerializedMemberAndIsGenericNamed`1.HasPrivateSerializedMemberAndIsGenericNamedFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericDataTypeWithPrivateMember/Formatters.HasPrivateSerializedMemberAndIsGenericOrdinal`1.HasPrivateSerializedMemberAndIsGenericOrdinalFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericDataTypeWithPrivateMember/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericType/Formatters.MessagePack.GeneratedMessagePackResolver.ContainerObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericType/Formatters.MessagePack.GeneratedMessagePackResolver.MyGenericTypeFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericType/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericTypeArg/Formatters.MessagePack.GeneratedMessagePackResolver.GenericClassFormatter`2.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericTypeArg/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericType_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericType_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.NS1.MyTypeFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericType_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.NS2.MyTypeFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericType_CollidingTypeNames/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericWithConstraintsThatReferenceTypeParameter/Formatters.MessagePack.GeneratedMessagePackResolver.GenericConstrainedClassIntKeyFormatter`2.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericWithConstraintsThatReferenceTypeParameter/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfT1T2Formatter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`2.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfT1T2Formatter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfT1T2Formatter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObjectNestedFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfT1T2Formatter/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfTFormatter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfTFormatter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfTFormatter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObjectNestedFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfTFormatter/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfTFormatter_FormatterOnly/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfTFormatter_FormatterOnly/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfTFormatter_WithKnownTypes/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfTFormatter_WithKnownTypes/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObject2Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfTFormatter_WithKnownTypes/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsOfTFormatter_WithKnownTypes/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsUnionFormatter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.WrapperFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsUnionFormatter/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsUnionFormatter_Nested/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsUnionFormatter_Nested/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyInnerGenericObjectFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsUnionFormatter_Nested/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.WrapperFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/GenericsUnionFormatter_Nested/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Constraints_Multiple/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`4.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Constraints_Multiple/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Constraints_NullableReferenceType/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`4.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Constraints_NullableReferenceType/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Constraints_ReferenceType_Nullable/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`2.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Constraints_ReferenceType_Nullable/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Constraints_Struct/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Constraints_Struct/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Constraints_Type/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Constraints_Type/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Defined_In_ReferencedProject/DefiningProject.Formatters.TempProject.MyResolver.TempProject.MyGenericObjectFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Defined_In_ReferencedProject/DefiningProject.TempProject.MyResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Defined_In_ReferencedProject/TestProject.Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Defined_In_ReferencedProject/TestProject.Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Defined_In_ReferencedProject/TestProject.Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObjectNestedFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/Generics_Defined_In_ReferencedProject/TestProject.MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/ImplicitFormatterTypes/Formatters.MessagePack.GeneratedMessagePackResolver.TypeWithAutoGeneratedFormatterFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/ImplicitFormatterTypes/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/InterfaceUnionUsedWithNullableRefAnnotation/Formatters.MessagePack.GeneratedMessagePackResolver.IMyTypeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/InterfaceUnionUsedWithNullableRefAnnotation/Formatters.MessagePack.GeneratedMessagePackResolver.UnionContainerFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/InterfaceUnionUsedWithNullableRefAnnotation/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/MixType_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/MixType_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.NS1.MyTypeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/MixType_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.NS2.MyTypeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/MixType_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.NS3.MyTypeFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/MixType_CollidingTypeNames/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/MultipleFunctionalCustomFormattersForType_MultiFormatter/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/MultipleFunctionalCustomFormattersForType_OnlyOneNonExcluded/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedGenericTypes/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyGenericObjectFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedGenericTypes/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyInnerGenericObjectFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedGenericTypes/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObject2Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedGenericTypes/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedGenericTypes/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.WrapperFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedGenericTypes/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedMessagePackObjects/Formatters.MessagePack.GeneratedMessagePackResolver.A.B.CFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedMessagePackObjects/Formatters.MessagePack.GeneratedMessagePackResolver.A.BFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedMessagePackObjects/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedMessagePackObjects_Array/Formatters.MessagePack.GeneratedMessagePackResolver.A.B.CFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedMessagePackObjects_Array/Formatters.MessagePack.GeneratedMessagePackResolver.A.BFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NestedMessagePackObjects_Array/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NoFieldWithCustomFormatterCollected/Formatters.MessagePack.GeneratedMessagePackResolver.TestFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NoFieldWithCustomFormatterCollected/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NoPrivateAccessNeeded/Formatters.MessagePack.GeneratedMessagePackResolver.Test3Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NoPrivateAccessNeeded/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NoPrivateMemberCollected/Formatters.MessagePack.GeneratedMessagePackResolver.TestFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NoPrivateMemberCollected/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NonDefaultDeserializingConstructor_Private/Formatters.A.AFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NonDefaultDeserializingConstructor_Private/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NonGenericType_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NonGenericType_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.NS1.MyTypeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NonGenericType_CollidingTypeNames/Formatters.MessagePack.GeneratedMessagePackResolver.NS2.MyTypeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NonGenericType_CollidingTypeNames/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NullableFormatter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyEnumFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NullableFormatter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/NullableFormatter/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/OpenGenericFormatter/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyDefaultValue/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyDefaultValue/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyIgnore/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyIgnore/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyMixed/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyMixed/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyWithParameterizedConstructor/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyWithParameterizedConstructor/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyWithParameterizedConstructorDefaultValue/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyWithParameterizedConstructorDefaultValue/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyWithParameterizedConstructorPartially/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterOnlyWithParameterizedConstructorPartially/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetter/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithDefaultValue/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithDefaultValue/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithDefaultValueInputPartially/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithDefaultValueInputPartially/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithParameterizedConstructor/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithParameterizedConstructor/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithParameterizedConstructorAndDefaultValue/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithParameterizedConstructorAndDefaultValue/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithParameterizedConstructorDoNotUseSetter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithParameterizedConstructorDoNotUseSetter/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithParameterizedConstructorPartially/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/PropertiesGetterSetterWithParameterizedConstructorPartially/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/RecordWithPrimaryConstructor/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/RecordWithPrimaryConstructor/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/RecordWithWithInitOnlyProps/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/RecordWithWithInitOnlyProps/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/RecursiveGenerics_Direct/Formatters.MessagePack.GeneratedMessagePackResolver.AFormatter`1.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/RecursiveGenerics_Direct/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/SimplifiedNameForKeywordsAndSyntaxSugar/Formatters.MessagePack.GeneratedMessagePackResolver.SampleObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/SimplifiedNameForKeywordsAndSyntaxSugar/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/SpecifyFormatterFromStockSet/Formatters.MessagePack.GeneratedMessagePackResolver.GFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/SpecifyFormatterFromStockSet/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/SystemCollectionsObjectModelCollection/Formatters.MessagePack.GeneratedMessagePackResolver.AFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/SystemCollectionsObjectModelCollection/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/SystemMemoryTypes/Formatters.MessagePack.GeneratedMessagePackResolver.AFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/SystemMemoryTypes/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/TwoTypes(False)/Formatters.MessagePack.GeneratedMessagePackResolver.Object1Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/TwoTypes(False)/Formatters.MessagePack.GeneratedMessagePackResolver.Object2Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/TwoTypes(False)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/TwoTypes(True)/Formatters.MessagePack.GeneratedMessagePackResolver.Object1Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/TwoTypes(True)/Formatters.MessagePack.GeneratedMessagePackResolver.Object2Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/TwoTypes(True)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(Namespace)/Formatters.MessagePack.GeneratedMessagePackResolver.MyTestNamespace.Derived1Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(Namespace)/Formatters.MessagePack.GeneratedMessagePackResolver.MyTestNamespace.Derived2Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(Namespace)/Formatters.MessagePack.GeneratedMessagePackResolver.MyTestNamespace.IMyTypeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(Namespace)/Formatters.MessagePack.GeneratedMessagePackResolver.MyTestNamespace.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(Namespace)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(NestingClass)/Formatters.MessagePack.GeneratedMessagePackResolver.ContainingClass.Derived1Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(NestingClass)/Formatters.MessagePack.GeneratedMessagePackResolver.ContainingClass.Derived2Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(NestingClass)/Formatters.MessagePack.GeneratedMessagePackResolver.ContainingClass.IMyTypeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(NestingClass)/Formatters.MessagePack.GeneratedMessagePackResolver.ContainingClass.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(NestingClass)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(None)/Formatters.MessagePack.GeneratedMessagePackResolver.Derived1Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(None)/Formatters.MessagePack.GeneratedMessagePackResolver.Derived2Formatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(None)/Formatters.MessagePack.GeneratedMessagePackResolver.IMyTypeFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(None)/Formatters.MessagePack.GeneratedMessagePackResolver.MyMessagePackObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/UnionFormatter(None)/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/WellKnownGenericsFormatter/Formatters.MessagePack.GeneratedMessagePackResolver.TempProject.MyObjectFormatter.g.cs": "regeneration",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/WellKnownGenericsFormatter/MessagePack.GeneratedMessagePackResolver.g.cs": "regeneration"
+  },
+  "counts": {
+    "source": 7,
+    "test": 1,
+    "docs": 1,
+    "generated": 222,
+    "template": 6,
+    "total": 237,
+    "not_generated": 15
+  },
+  "questions": [
+    "q-mock-2297-logic-product-context-1",
+    "q-mock-2297-logic-compatibility-1"
+  ],
+  "interpretations": [
+    {
+      "label": "A",
+      "summary": "Unconditionally add [ExcludeFromCodeCoverage] to every type the source generator emits (formatters, enum/union formatters, resolvers, string-key formatters, etc.), with no setting. Code: Edit all templates under Transforms/ to emit the attribute on every generated type, always, with no MSBuild property or option; update all snapshots.",
+      "branch": ""
+    },
+    {
+      "label": "B",
+      "summary": "Add the attribute to all generated types by default, plus provide an opt-out setting (e.g. MSBuild property or MessagePackKnownFormatter/GeneratorOptions flag) to disable it. Code: Adds a new public configuration option, reads it in the generator, and conditionally emits the attribute in templates; the other reading adds no option.",
+      "branch": ""
+    }
+  ],
+  "narrative": "",
+  "mock_llm": false
+}

@@ -1,0 +1,47 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "MessagePack attributes on the formatted type are ignored. With no surrogate, Collect always calls CreateContractlessMembers, which includes every public read-write member under name-based string keys without inspecting MessagePackObject, Key, or IgnoreMember. A referenced type annotated with [Key(0)] and [IgnoreMember] therefore gets the wrong wire format, directly violating the acceptance criterion that MessagePack attributes on T be honoured.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:117",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile ProjectA.MyObject into a metadata reference with [MessagePackObject], [Key(0)] on Value, and [IgnoreMember] on Ignored. Generate a [GeneratedMessagePackFormatter] class in Project B and inspect the emitted partial formatter: it should use ReadArrayHeader for the integer-key contract and should not access Ignored. On head it instead emits a string-key formatter containing both members."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The fallback for key types without an explicitly registered hash-resistant comparer now returns EqualityComparer<T>.Default instead of throwing. Untrusted hash-based collection deserialization consequently accepts arbitrary custom key types with potentially collision-prone hashes, enabling the hash-collision denial-of-service attack that this guard and its adjacent comment exist to prevent.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Expose MessagePackSecurity.GetHashCollisionResistantEqualityComparer<T> through a test subclass and invoke it for a non-whitelisted custom key type, or deserialize a hash-based collection with that key type using MessagePackSecurity.UntrustedData. The existing security contract requires TypeAccessException; head returns/uses the default equality comparer instead."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterHonorsAttributesTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System;\nusing System.IO;\nusing System.Linq;\nusing System.Threading;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterHonorsAttributesTests\n{\n    [Fact]\n    public async Task MessagePackAttributesOnReferencedTypeAreHonored()\n    {\n        ImmutableArray<MetadataReference> frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        MetadataReference[] messagePackReferences = frameworkReferences\n            .Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n            .ToArray();\n\n        const string projectASource = \"\"\"\n            using MessagePack;\n\n            namespace ProjectA\n            {\n                [MessagePackObject]\n                public class MyObject\n                {\n                    [Key(0)]\n                    public int Value { get; set; }\n\n                    [IgnoreMember]\n                    public int Ignored { get; set; }\n                }\n            }\n            \"\"\";\n\n        CSharpCompilation projectA = CSharpCompilation.Create(\n            \"ProjectA\",\n            new[] { CSharpSyntaxTree.ParseText(projectASource, new CSharpParseOptions(LanguageVersion.Latest)) },\n            messagePackReferences,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        using MemoryStream assemblyImage = new();\n        var emitResult = projectA.Emit(assemblyImage);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n        MetadataReference projectAReference = MetadataReference.CreateFromImage(assemblyImage.ToArray());\n\n        const string projectBSource = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            [GeneratedMessagePackFormatter]\n            public partial class MyObjectFormatter : IMessagePackFormatter<ProjectA.MyObject>\n            {\n            }\n            \"\"\";\n\n        CSharpCompilation projectB = CSharpCompilation.Create(\n            \"ProjectB\",\n            new[] { CSharpSyntaxTree.ParseText(projectBSource, new CSharpParseOptions(LanguageVersion.Latest)) },\n            messagePackReferences.Concat(new[] { projectAReference }),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(\n            projectB,\n            out Compilation outputCompilation,\n            out ImmutableArray<Diagnostic> generatorDiagnostics);\n\n        Assert.Empty(generatorDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));\n        Assert.Empty(outputCompilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error));\n\n        string? formatterSource = driver.GetRunResult().Results\n            .SelectMany(result => result.GeneratedSources)\n            .Select(source => source.SourceText.ToString())\n            .SingleOrDefault(source => source.Contains(\"partial class MyObjectFormatter\", StringComparison.Ordinal));\n\n        Assert.True(formatterSource is not null, \"The user-declared formatter implementation was not generated.\");\n        Assert.Contains(\"ReadArrayHeader\", formatterSource!);\n        Assert.DoesNotContain(\"Ignored\", formatterSource!);\n    }\n}\n",
+        "test_names": [
+          "MessagePackAttributesOnReferencedTypeAreHonored"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 11634,
+  "output_tokens": 12900,
+  "ms": 161444,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.228402
+}

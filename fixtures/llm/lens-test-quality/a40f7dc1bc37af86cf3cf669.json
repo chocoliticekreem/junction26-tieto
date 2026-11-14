@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new tests only inspect generator text output and never compile the generated code for netstandard2.0 or .NET Framework. The `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guard is therefore unverified in compilation, and the requirement says generated code must still compile on every supported target. Because the guard is only asserted textually, mutating or deleting it would survive on the test side. The tests also never exercise the guard under a netstandard preprocessor symbol.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:95",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 remove-guard: '#if !NETSTANDARD2_0 && !NETFRAMEWORK\\r\\n[attr]\\r\\n#endif' -> bare attribute; expected to survive for compile checking because the guard test only counts text patterns and nothing compiles generated code with NETSTANDARD2_0 defined. Note ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable would fail, so the gap is compile-level only."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Test source covers only one generic-free case per template. Nested or generic containing types, generic formatters (type constraints path), and the CompositeResolver template (CompositeResolverTemplate) are not exercised, so the CompositeResolver attribute edits (both on the class and FormatterCache) have no test. The `GeneratedMessagePackResolver` test uses ResolverTemplate only.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:15",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27 delete-statement: remove the '#if...ExcludeFromCodeCoverage...#endif' text from the Write call; expected to survive because no test in the diff generates a CompositeResolver (no [CompositeResolver] attribute in TestSource)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute-presence check is file-level (`text.Contains`), so a mutant that drops the attribute from one type in a file survives. The nested FormatterCache and GetFormatterHelper classes in ResolverTemplate carry their own attributes. The first test would still pass if either one were removed, because the resolver file keeps the attribute on the outer partial class. The second test only checks that existing attribute occurrences are guarded, not how many there are.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:68",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:67 delete-statement: remove the attribute before 'private static class XGetFormatterHelper'; expected to survive because both tests only require >=1 attribute per file, and the outer class still has one."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "TransformUtilities changes the nesting-type brace emission from \"{\" to \"{\\r\\n\" when constraints exist. No test targets this path, since TestSource has no nested generic types with constraints. Only the snapshot regeneration would notice, and the tests would not catch a revert of this line.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: '{\\r\\n' -> '{'; expected to survive in CodeCoverageExclusionTests because it has no nested constrained generic type; only snapshot tests might kill it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MessagePackSecurity copy constructor no longer copies HashCollisionResistant. This is a security-relevant behavioral change unrelated to the coverage requirement, and there are no tests in the diff. A cloned or derived options object will silently lose the hash-collision-resistant setting, for example via WithMaximumObjectGraphDepth.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:62",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Create MessagePackSecurity.UntrustedData, call WithMaximumObjectGraphDepth(10) (which uses the copy ctor), and Assert.True(result.HashCollisionResistant); this fails on head and passes on base."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12591,
+  "output_tokens": 1680,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

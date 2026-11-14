@@ -1,0 +1,198 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The production changes only harden duplicate/mixed-key collection; they do not change any handling of SuppressSourceGeneration itself. Thus the patch does not address the reported case where an ordinary suppressed contract receives no analyzer diagnostics, such as MsgPack004 for a member without [Key] or [IgnoreMember].",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerReceiptTests.SuppressedTypeStillReportsMsgPack004 against base and head. Base should reproduce the missing diagnostic; if head still fails, the central acceptance criterion remains unimplemented."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-1"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-3",
+    "lens": "requirement-tests",
+    "claim": "Removing the Str8 case changes serialization of every string whose UTF-8 payload is 128-255 bytes: it is now encoded with a three-byte Str16 header instead of a two-byte Str8 header. This unrelated runtime change increases output size and changes the serialized wire bytes for existing callers.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:914",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Using base-built and head-built MessagePack assemblies, serialize new string('a', 128) and compare the bytes. Base should begin with MessagePackCode.Str8 (0xd9), have a two-byte header, and total 131 bytes; head will begin with Str16 (0xda), have a three-byte header, and total 132 bytes."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "Strings whose UTF-8 payload is 128–255 bytes are now serialized with the str16 header instead of str8. This changes the wire bytes for existing users and increases the encoded size by one byte, although the requirement only concerns analyzer behavior under SuppressSourceGeneration.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:917",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "With base-built and head-built MessagePack assemblies, serialize a string containing 200 ASCII 'a' characters using MessagePackSerializer.Serialize<string>(value). Verify that base emits 0xD9 0xC8 followed by the payload, while head emits 0xDB 0x00 0xC8 followed by the payload; compare full bytes and lengths."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "The unrelated string-header change removes the Str8 encoding for lengths 32–255, so those strings now use a three-byte Str16 header instead of a two-byte Str8 header. The bytes remain decodable, but serialized output grows and changes even when SuppressSourceGeneration is unset or false.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:914",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Serialize the same 32-byte and 255-byte string with base-built and head-built MessagePackSerializer using identical options. Base should emit Str8 (0xd9) with a two-byte header; head will emit Str16 (0xda) with a three-byte header. Verify the payload is otherwise identical and that this test is unrelated to source-generation suppression."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-2",
+    "lens": "product-context",
+    "claim": "MsgPack017 is incorrectly classified as AOT-only and explicitly suppressed. Ledger entry L10 describes it as warning that an init-property initializer is replaced by the type default on deserialization; that runtime behavior also applies when the dynamic resolver deserializes a suppressed type, so users lose a relevant contract warning and the new test locks in that loss.",
+    "location": "README.md:1633",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add an analyzer case for [MessagePackObject(SuppressSourceGeneration = true)] with a keyed init property having an initializer and expect MsgPack017, consistent with [L10]. Also deserialize that type through the dynamic resolver with the property's key absent and observe that its initializer value is replaced by default, demonstrating that the warning is not generation-specific. The current SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed test encodes the opposite expectation."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The new tests do not exercise the removal of Str8 encoding for string headers with byte counts from 32 through 255, so that serializer change could be reversed or otherwise broken without any test in this change noticing. A boundary/round-trip test is needed for those lengths (and both success and insufficient-destination cases).",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:917",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack/MessagePackPrimitives.Writers.cs:917 delete-statement: destination[0] = MessagePackCode.Str8 (in the removed <= byte.MaxValue case) -> statement absent; expected to survive because the added tests cover only analyzer diagnostics and suppressed-type serialization, with no string-header boundary test for lengths 32, 255, and 256 or short destinations."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "suppressed by unconfirmed context entry: Cite ledger L10: MsgPack017 warns that an init property initializer's default is replaced by the type's default value on deserialization. That runtime hazard remains when no formatter is generated. A suppressed type with an initialized [Key] init property should still produce MsgPack017. (would-be finding: The new documentation says MsgPack017 is AOT-only and is not reported for suppressed types. MsgPack017 actually concerns init-property initializers being replaced during deserialization, which still occurs when the dynamic resolvers serialize the type at run time. Excluding it therefore contradicts both its established purpose and the requirement to retain analyzer validation with source generation suppressed.)",
+    "location": "README.md:1633",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "Cite ledger L10: MsgPack017 warns that an init property initializer's default is replaced by the type's default value on deserialization. That runtime hazard remains when no formatter is generated. A suppressed type with an initialized [Key] init property should still produce MsgPack017."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m8",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects remove-guard at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (!intMembers.ContainsKey(member.IntKey)) -> if (true)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m10",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects negate-condition at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (!stringMembers.ContainsKey(member.StringKey)) -> if (!(!stringMembers.ContainsKey(member.StringKey)))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m11",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects remove-guard at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (!stringMembers.ContainsKey(member.StringKey)) -> if (true)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m12",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects delete-statement at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1181",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1181",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "stringMembers.Add(member.StringKey, (member, item.Type)); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-suite-only-TypeCollector",
+    "lens": "test-quality",
+    "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163, 1165; the existing suite does",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:1163 negate-condition: if (!intMembers.ContainsKey(member.IntKey)) -> if (!(!intMembers.ContainsKey(member.IntKey))); TypeCollector.cs:1165 delete-statement: intMembers.Add(member.IntKey, (member, item.Type)); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compat-break",
+    "lens": "compatibility",
+    "claim": "compatibility break: 3 sample(s) serialize to different bytes",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Compatibility bytes: 3/124 cases differ, 0 base payloads fail to read on head, public API +0/-0"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "compat-bytes"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

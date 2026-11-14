@@ -1,0 +1,59 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "MessagePack attributes on the formatted type are never inspected. With no surrogate, every attributed type is sent through CreateContractlessMembers, so [Key] values are replaced by alphabetic string keys and [IgnoreMember] members are serialized, contrary to the acceptance criterion that attributes on T be honoured.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:91",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a user-declared formatter for a [MessagePackObject] type having one [Key] property and one [IgnoreMember] property. Inspect the generated partial formatter: it must exclude the ignored member and use the declared key. On head, the generated formatter contains serialization/deserialization code for the ignored member."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "A formatter implementing IMessagePackFormatter<T> for two different data types is accepted even though MsgPack020 describes the exactly-one-data-type requirement. Only the zero-interface case is rejected; formatterInterfaces[0] is then chosen arbitrarily, leaving the other interface unimplemented and causing compiler errors in the generated compilation instead of MsgPack020.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:57",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator over a [GeneratedMessagePackFormatter] partial class implementing both IMessagePackFormatter<A> and IMessagePackFormatter<B>. Assert that generator diagnostics contain MsgPack020. Head emits no such diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The partial validation checks only the annotated class itself. A partial formatter nested in a non-partial containing class passes collection, but the generator cannot add another declaration of that nested type without also extending its container. The resulting generated compilation has conflicting/missing-partial type declarations (and the original formatter may remain unimplemented) rather than being supported or rejected with MsgPack019.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:47",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator for public class Outer containing a [GeneratedMessagePackFormatter] public partial class NestedFormatter : IMessagePackFormatter<Poco>. The collector should reject this layout with MsgPack019 unless it can generate every containing declaration compatibly. Head reports no MsgPack019 because IsPartial examines only NestedFormatter."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterEdgeCaseReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System;\nusing System.Collections.Immutable;\nusing System.Linq;\nusing System.Threading;\nusing System.Threading.Tasks;\nusing FluentAssertions;\nusing MessagePack.SourceGenerator;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterEdgeCaseReceiptTests\n{\n    [Fact]\n    public async Task MessagePackAttributesOnDataTypeAreHonored()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            [MessagePackObject]\n            public class AttributedPoco\n            {\n                [Key(0)]\n                public int Value { get; set; }\n\n                [IgnoreMember]\n                public int Ignored { get; set; }\n            }\n\n            [GeneratedMessagePackFormatter]\n            public partial class AttributedExternalFormatter : IMessagePackFormatter<AttributedPoco>\n            {\n            }\n            \"\"\";\n\n        (GeneratorDriverRunResult result, Compilation output) = await RunGeneratorAsync(source);\n        output.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Should().BeEmpty();\n\n        string[] formatterSources = result.Results\n            .SelectMany(r => r.GeneratedSources)\n            .Select(s => s.SourceText.ToString())\n            .Where(s => s.Contains(\"partial class AttributedExternalFormatter\", StringComparison.Ordinal))\n            .ToArray();\n        formatterSources.Should().ContainSingle();\n        formatterSources[0].Should().NotContain(\"Ignored\");\n    }\n\n    [Fact]\n    public async Task MultipleFormatterInterfacesAreRejected()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            public class A\n            {\n                public int Value { get; set; }\n            }\n\n            public class B\n            {\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackFormatter]\n            public partial class DuoFormatter : IMessagePackFormatter<A>, IMessagePackFormatter<B>\n            {\n            }\n            \"\"\";\n\n        (GeneratorDriverRunResult result, _) = await RunGeneratorAsync(source);\n        result.Diagnostics.Should().Contain(d => d.Id == \"MsgPack020\");\n    }\n\n    [Fact]\n    public async Task NestedFormatterRequiresPartialContainingTypes()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            public class Poco\n            {\n                public int Value { get; set; }\n            }\n\n            public class Outer\n            {\n                [GeneratedMessagePackFormatter]\n                public partial class NestedFormatter : IMessagePackFormatter<Poco>\n                {\n                }\n            }\n            \"\"\";\n\n        (GeneratorDriverRunResult result, _) = await RunGeneratorAsync(source);\n        result.Diagnostics.Should().Contain(d => d.Id == \"MsgPack019\");\n    }\n\n    private static async Task<(GeneratorDriverRunResult Result, Compilation Output)> RunGeneratorAsync(string source)\n    {\n        ImmutableArray<MetadataReference> references = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        references = references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"Receipts.GeneratedFormatter\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePackGenerator().AsSourceGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out _);\n        return (driver.GetRunResult(), output);\n    }\n}\n",
+        "test_names": [
+          "MessagePackAttributesOnDataTypeAreHonored",
+          "MultipleFormatterInterfacesAreRejected",
+          "NestedFormatterRequiresPartialContainingTypes"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 11426,
+  "output_tokens": 14782,
+  "ms": 179230,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.256008
+}

@@ -1,0 +1,55 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The attribute is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, but this conditional is evaluated in the consuming project's compilation. ExcludeFromCodeCoverage exists in netstandard2.0 and .NET Framework 4.0+ (mscorlib), so the guard needlessly skips users on those targets. Those users still get the coverage skew the requirement describes, so 'all generated code' is not met for them. Separately, projects targeting netstandard2.1 or net6+ are covered, while multi-targeting projects get inconsistent output across TFMs.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile generated output in a project targeting net48 and netstandard2.0. Assert the formatter type carries ExcludeFromCodeCoverage via reflection or Roslyn symbol inspection. It will fail because the #if removes the attribute. Compare with a net8.0 build."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is not applied to every generated type or member. Only the formatter, resolver and nested cache/helper classes are decorated. Other generated code, such as the GetFormatterHelper static dictionary and any additional generated helper types, may be undecorated. The requirement says 'all generated code'.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:45",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests, then scan the generated snapshot outputs for type declarations (class/struct/enum) lacking a preceding ExcludeFromCodeCoverage. Also check any other templates or emitters in Transforms/ for undecorated types."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The `#if` / `#endif` lines are emitted at column 0, inside `EmitNestingTypesAndNamespaces`. If a user's generated file or a custom emitter later wraps this output (for example in a `#nullable` or `#pragma` context), the output formatting and checked-in snapshots change for every type. Users who check in generator output will see a diff in all 222 snapshots without opting in.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/UnionTemplate.tt:10",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests at base and head and diff the outputs. Confirm that every generated file differs only by the added #if/attribute/#endif lines."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the attribute be emitted unconditionally, or only on TFMs where it is believed to be missing?",
+        "options": [
+          "Unconditional: ExcludeFromCodeCoverage is available in netstandard2.0 and net4x, so no #if is needed",
+          "Keep the #if guard, but write it so it excludes only truly unsupported targets (such as net35)"
+        ],
+        "why_it_matters": "If unconditional is acceptable, the current guard is a defect: netstandard2.0 and .NET Framework users do not get the attribute, so the requirement is not met. If the guard was meant for old targets, the finding becomes narrower.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 9803,
+  "output_tokens": 1163,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01Dbg3xnSVbJt6wK1KGzecTi"
+}

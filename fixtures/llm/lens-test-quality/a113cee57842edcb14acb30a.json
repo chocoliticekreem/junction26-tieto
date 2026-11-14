@@ -1,0 +1,74 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The 'honour MessagePack attributes if T has them' acceptance criterion is untested. No test uses a T with [MessagePackObject], [Key] or [DataContract]. The collector ignores T's attributes entirely, and no test would notice.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:81",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an ExternalTypes or in-compilation type with [MessagePackObject] and [Key(n)] and a [GeneratedMessagePackFormatter] for it. Assert the bytes use the declared keys. It is expected to fail on the head build, which uses contractless string keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ordering of contractless members (OrderBy name) and the use of string keys are not mutation-tested. The test checks only that 'Id' and 'Label' appear in the JSON, and the order is never asserted. The cast, callback-receiver and required/init-only paths have no test either.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:131",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:131 delete-statement: .OrderBy(m => m.Name, StringComparer.Ordinal) -> removed; expected to survive because the tests only use Contains on the JSON and no byte order is asserted."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode has no test for public fields, inherited members, or private members. The IsPublicReadWrite checks are not exercised for fields or for non-public setters. Negating the field branch or the setter-accessibility check would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:268",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:268 negate-condition: field.DeclaredAccessibility == Accessibility.Public && !field.IsReadOnly -> !(...); expected to survive because the external types have only auto-properties and no fields."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Diagnostics MsgPack021 (inaccessible, generic, or interface data type), the no-parameterless-constructor path, MemberNeedsKey, and KeysMustBeUnique have no test. Only the abstract-class case for MsgPack021 is covered. Removing the generic or accessibility guards would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:61",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:61 remove-guard: drop '!compilation.IsSymbolAccessibleWithin(type, formatter)' and 'IsGenericType: false'; expected to survive because only the abstract case is tested."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities.cs filter that excludes [GeneratedMessagePackFormatter] classes from hand-written formatter registration has no direct test. Removing it would likely cause a duplicate registration or a compile error, but nothing asserts this beyond the existing execution test. No generator snapshot test covers the emitted output of a user-declared partial class.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot-style generator test for a [GeneratedMessagePackFormatter] class. Delete the exclusion and rerun it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate test does not check string-key surrogates, a surrogate with a missing [Key], or the failure path. The surrogate success case is only covered for int keys and one ignored member. The type-equality check in surrogate matching is covered, but not nullable-annotation differences.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:196",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:206 swap-boolean: stringKey: (string)key branch (members.Count as intKey) altered; expected to survive because no execution test uses string-key surrogates."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25301,
+  "output_tokens": 1591,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

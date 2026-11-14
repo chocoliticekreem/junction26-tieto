@@ -1,0 +1,58 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The collector rejects every metadata-only formatted type through `type.DeclaringSyntaxReferences.IsEmpty`. Consequently, the central scenario in REQ-2129—a formatter in Project B for a public type compiled into Project A—reports MsgPack021 and generates no formatter. The existing TypeCollector convention for ordinary discovered types does not justify applying that restriction to this explicit opt-in feature.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:67",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "GeneratedFormatterEdgeCaseReceiptTests.MetadataTypeIsSupported emits Project A without a MessagePack reference, references its PE image from Project B, and applies [GeneratedMessagePackFormatter] to a partial IMessagePackFormatter<ProjectA.MyObject>. The test expects successful generation but fails on head with MsgPack021."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MessagePack and DataContract attributes on T are never read. In the no-surrogate path, CreateContractlessMembers always includes every public read-write member under an ordinal string key, so [Key], [IgnoreMember], [MessagePackObject], [DataMember], custom formatter settings, and related contract settings are ignored instead of being honoured as required.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:132",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a source-declared [MessagePackObject] T with one property marked [Key(0)] and another marked [IgnoreMember], plus a [GeneratedMessagePackFormatter] partial formatter. Run MessagePackGenerator and inspect the generated partial formatter: it should contain an array header of length 1 and no serialization of the ignored property. On head it instead generates string-key map output containing both properties."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Inherited explicit serialization callbacks produce uncompilable formatter code. hasCallbackReceiver includes interfaces inherited from base types, but needsCast examines only type.GetMembers() on the derived type. If a base class explicitly implements IMessagePackSerializationCallbackReceiver, needsCast remains false and the template calls the interface methods directly on the derived instance, where those explicit methods are unavailable.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:84",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "GeneratedFormatterEdgeCaseReceiptTests.InheritedExplicitCallbacksCastThroughInterface formats a class whose base explicitly implements both serialization callback methods. Generation and compilation should succeed by casting the value to IMessagePackSerializationCallbackReceiver; on head the generated formatter fails to compile because it calls the callbacks directly on the derived type."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterEdgeCaseReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Emit;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic sealed class GeneratedFormatterEdgeCaseReceiptTests\n{\n    [Fact]\n    public async Task MetadataTypeIsSupported()\n    {\n        var frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        CSharpCompilation projectA = CSharpCompilation.Create(\n            \"ProjectA\",\n            new[] { CSharpSyntaxTree.ParseText(\"namespace ProjectA { public class MyObject { public int Value { get; set; } } }\") },\n            frameworkReferences,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using MemoryStream image = new();\n        EmitResult emitResult = projectA.Emit(image);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n\n        var test = new VerifyCS.Test\n        {\n            ReferenceAssemblies = ReferenceAssemblies.Net.Net80,\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.AdditionalReferences.Add(MetadataReference.CreateFromImage(image.ToArray()));\n        test.TestState.Sources.Add(\"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n            using ProjectA;\n\n            [GeneratedMessagePackFormatter]\n            public partial class MyObjectFormatter : IMessagePackFormatter<MyObject>\n            {\n            }\n            \"\"\");\n\n        await test.RunAsync();\n    }\n\n    [Fact]\n    public async Task InheritedExplicitCallbacksCastThroughInterface()\n    {\n        var test = new VerifyCS.Test\n        {\n            ReferenceAssemblies = ReferenceAssemblies.Net.Net80,\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(\"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            public class CallbackBase : IMessagePackSerializationCallbackReceiver\n            {\n                void IMessagePackSerializationCallbackReceiver.OnBeforeSerialize()\n                {\n                }\n\n                void IMessagePackSerializationCallbackReceiver.OnAfterDeserialize()\n                {\n                }\n            }\n\n            public class MyObject : CallbackBase\n            {\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackFormatter]\n            public partial class MyObjectFormatter : IMessagePackFormatter<MyObject>\n            {\n            }\n            \"\"\");\n\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "MetadataTypeIsSupported",
+          "InheritedExplicitCallbacksCastThroughInterface"
+        ],
+        "expects": "new-api"
+      }
+    ]
+  },
+  "input_tokens": 11437,
+  "output_tokens": 12096,
+  "ms": 144471,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.215751
+}

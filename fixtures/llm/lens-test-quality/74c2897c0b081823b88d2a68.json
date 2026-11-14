@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "EnumTemplate has the guard inverted: it emits ExcludeFromCodeCoverage only on NETSTANDARD2_0 || NETFRAMEWORK, where the attribute is unavailable, so it can break compilation there and enum formatters are not excluded on modern targets. Neither new test notices, because both only look for the attribute text and an exact guard string, and the enum guard string differs from the one asserted.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8 negate-condition: #if NETSTANDARD2_0 || NETFRAMEWORK -> #if !NETSTANDARD2_0 && !NETFRAMEWORK. The enum guard in the diff is inverted relative to every other template. Run CodeCoverageExclusionTests.ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable: it should FAIL on the current head, because attributeCount != guardedCount for the enum file. If it passes, the test is too weak."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests only check that generated text contains the attribute string and that each occurrence is wrapped in the exact guard string. They do not compile the generated output under a netstandard2.0 or net framework reference set, so the 'still compiles on every target' criterion is untested. They also cannot tell whether the guard polarity is right, only that it matches the literal string.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:73",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test that compiles the generator output with a netstandard2.0 reference set and NETSTANDARD2_0 defined, asserting no CS0246 or CS0234 diagnostics. Then run it against the head build."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test source contains no generic, nested or private-nested types, and the generated formatters for such types go through the nesting wrapper whose brace emission changed in TransformUtilities (\"{\" -> \"{\\r\\n\"). Nothing in the new tests exercises that change. Only the snapshots cover it, and only if a nested or constrained case exists.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: revert \"{\\r\\n\" -> \"{\" in the anyConstraints branch; expected to survive in CodeCoverageExclusionTests because TestSource has no generic type with constraints. Only snapshot regeneration might catch it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The assertion generated.Count >= 5 and the 'contains the attribute' check can be satisfied by a single type's attribute in a file. The helper nested classes (FormatterCache, GetFormatterHelper) are not individually verified. If one of the two guarded occurrences in the resolver were removed, the contains check would still pass.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:68",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48 delete-statement: remove the attribute on GetFormatterHelper; expected to survive the CodeCoverageExclusionTests because the resolver file still contains the attribute on the class and on FormatterCache, so both tests pass."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12331,
+  "output_tokens": 1345,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

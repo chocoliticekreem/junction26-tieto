@@ -1,0 +1,55 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The attribute is emitted only under `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, so generated code in consumers targeting netstandard2.0 or .NET Framework (a common MessagePack target) gets no exclusion. The requirement says ALL generated code should be decorated. The guard is a deliberate compile-safety choice, but it leaves a coverage gap. The README documents it.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guards in the templates. Compile a netstandard2.0 or net472 consumer with the generator and observe that no ExcludeFromCodeCoverage is emitted. Note that on net472 the attribute does exist in mscorlib, so the NETFRAMEWORK guard looks overly broad."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Only the top-level types and the nested FormatterCache and GetFormatterHelper classes are decorated. The requirement says 'all generated code'. Any other generated type or file not routed through these templates, for example the resolver's other helper types, is not covered. The test only checks that each file contains the attribute at least once, not that every generated type has it.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:66",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test that parses each generated tree, enumerates all type declarations, and asserts that each has ExcludeFromCodeCoverage under the guard. Run it against the head build."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README sentence is placed in the custom-formatter mixing section, which is an odd location for generated-code behavior. The change adds no opt-out setting and does not mention one. Neither the requirement nor the ledger says whether an opt-out is wanted.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Review README.md around line 1639 for a more suitable section, such as the source generator or analyzer docs."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditionally emit [ExcludeFromCodeCoverage] on all generated types (formatters, resolvers, and nested helper classes) in every template, guarded by `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, with no setting."
+      },
+      {
+        "label": "B",
+        "summary": "Add an opt-out MSBuild or generator option, for example a property read by the generator, that suppresses the attribute. The templates would emit it conditionally on that option, and the guard would be replaced by an accurate availability check, so that net472 is not excluded needlessly."
+      }
+    ]
+  },
+  "input_tokens": 12849,
+  "output_tokens": 1015,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

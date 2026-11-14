@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early `return null` when `SuppressSourceGeneration` is true skips all type analysis for that type. No MsgPack003/004/005 or key diagnostics are reported for it, and its member types are never collected. The requirement asks for the opposite: the analyzer must keep reporting diagnostics with `SuppressSourceGeneration = true`, as it did in 3.1.0. Example: `[MessagePackObject(SuppressSourceGeneration = true)] public class MyObject { [Key(0)] public int A {get;set;} public int B {get;set;} }` produces no MsgPack004 on `B`.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:714",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerReceiptTests.MissingKey_WithSuppressSourceGeneration_StillReportsMsgPack004. It expects MsgPack004 on member B of a SuppressSourceGeneration=true type; on head the diagnostic is missing, so the test fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `!intMembers.ContainsKey` / `!stringMembers.ContainsKey` guards silently drop the second member that has a duplicate key, and no diagnostic is reported. This also applies when source generation is not suppressed. Example: `[MessagePackObject] public class C { [Key(0)] public int A {get;set;} [Key(0)] public int B {get;set;} }` now produces a formatter that never serializes `B`. Before, `Dictionary.Add` threw, so the problem was at least visible. Both behaviour without suppression and data are affected.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1029",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Drive CSharpGeneratorDriver on a type with two [Key(0)] members plus a [GeneratedMessagePackResolver] partial class. Assert that either a diagnostic is reported or the generated formatter source references both A and B. On head neither holds: the generated formatter contains only A and there are no diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys skips the rest of the member's processing, which includes collecting the member's type. Diagnostics that belong to that member's type (for example MsgPack003 for a non-serializable member type) are no longer reported until the key mix-up is fixed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "TypeCollector.cs:1014 and :1154. The `continue` jumps past member construction and past the collection of the member type that follows, so nested diagnostics for that member are dropped."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerReceiptTests\n{\n    [Fact]\n    public async Task MissingKey_WithSuppressSourceGeneration_StillReportsMsgPack004()\n    {\n        string testSource = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                public int {|MsgPack004:B|} { get; set; }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(testSource);\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "MissingKey_WithSuppressSourceGeneration_StillReportsMsgPack004"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8441,
+  "output_tokens": 3895,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

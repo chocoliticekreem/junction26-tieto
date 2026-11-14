@@ -1,0 +1,362 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "When no surrogate is supplied, the collector unconditionally builds a contractless model and never inspects attributes on T. Consequently, a referenced type with [MessagePackObject], [Key], or [IgnoreMember] is serialized with ordinal string keys and all public read-write members instead of its declared MessagePack contract, violating the acceptance criterion that existing MessagePack attributes be honoured.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:91",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.GeneratedMessagePackFormatterAttributeHonouringReceiptTests.MessagePackAttributesOnReferencedTypeAreHonoured. It creates a referenced ProjectA type with [Key(0)] on Id and [IgnoreMember] on Secret, generates the formatter in ProjectB, and asserts integer-key/array output with Secret omitted. The current implementation instead selects CreateContractlessMembers, producing map output and including Secret."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "A formatted type's own MessagePack attributes are ignored unless the caller duplicates its contract in a surrogate. In the no-surrogate path, the collector unconditionally builds members with CreateContractlessMembers. For example, a type with [MessagePackObject(SuppressSourceGeneration = true)], [Key(0)] on Value, and [IgnoreMember] on Ignored gets a contractless string-key formatter that serializes Ignored, instead of the required [Key]/[IgnoreMember] behaviour.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:103",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.Req2129ReceiptTests.GeneratedFormatterHonoursMessagePackAttributes. It generates a formatter for an attributed type and fails on head because generated source still contains the [IgnoreMember] property. A runtime companion can serialize the same object and show that Ignored is written and that string keys are used instead of the declared integer key."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "The timestamp32 eligibility mask was inverted. nanoseconds shifted left by 34 always leaves the low 32 bits clear, so every positive-subsecond timestamp whose Unix seconds value is zero now takes the timestamp32 branch and loses its subsecond component. For example, 1970-01-01T00:00:00.500Z round-trips as 1970-01-01T00:00:00Z; a seconds value of 2^32 is likewise truncated by the 32-bit encoding.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.Req2129ReceiptTests.TimestampAtEpochWithSubsecondsRoundTrips. It serializes and deserializes 1970-01-01T00:00:00.500Z using MessagePackSerializer and fails on head because the result is the epoch without the 500 milliseconds. Also assert that an integral timestamp at Unix second 0 uses timestamp32 while a subsecond timestamp at that second uses timestamp64."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "The timestamp compact-encoding guard now tests the low 32 bits instead of the high 32 bits. An instant at the Unix epoch with nonzero subsecond nanoseconds therefore passes the timestamp32 path, which discards its nanoseconds; ordinary timestamps with nonzero seconds also lose the previous compact encoding. This changes the wire format and can corrupt deserialized values for existing users without any opt-in.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Serialize DateTimeOffset.UnixEpoch.AddTicks(1) and DateTimeOffset.UnixEpoch.AddSeconds(1) with base-built and head-built MessagePackPrimitives timestamp writing, compare the emitted bytes, and round-trip both values with the head build. The epoch-plus-one-tick case must expose the lost fractional value."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-2",
+    "lens": "compatibility",
+    "claim": "When no surrogate is supplied, the collector always creates a contractless string-key member list and never reads attributes on T. Consequently [MessagePackObject]/[Key] contracts become name-keyed maps instead of integer-keyed arrays, and [IgnoreMember] members are serialized, contrary to the requirement that MessagePack attributes on T be honoured.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:95",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Generate and use a formatter for T declared as [MessagePackObject] with [Key(0)] public int A { get; set; } and [IgnoreMember] public int B { get; set; }, using A=1 and B=2. Compare its bytes with the established attributed formatter/standard resolver: the attributed contract is the one-element array [1], while this collector produces a string-keyed map containing A and B."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "When no surrogate is supplied, the collector always builds contractless string-key members and never reads attributes on T, so MessagePack attributes such as [Key] and [IgnoreMember] are ignored despite the acceptance criterion requiring them to be honoured.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:83",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add an execution test with a formatter declared without SurrogateType for a type marked [MessagePackObject], with Id marked [Key(0)] and another public writable member marked [IgnoreMember]. Serialize and assert a one-element integer-keyed array containing only Id, then round-trip it. The current contractless path instead emits a string-keyed map including the ignored member."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-2",
+    "lens": "product-context",
+    "claim": "The timestamp compactness mask is reversed: testing the low 32 bits for zero selects the 6-byte representation for values whose significant seconds are in the high 32 bits, truncating them during encoding.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Serialize a timestamp with Unix seconds 4294967296 and zero nanoseconds using base-built and head-built MessagePack code and compare bytes. Base uses the representation preserving 2^32 seconds; head takes bytesWritten = 6 with zero low bits, and deserializing the head bytes no longer produces the original timestamp."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "No test exercises the acceptance criterion that MessagePack attributes on the formatted type are honoured. Every external data type is explicitly attribute-free, so the unconditional contractless collection path can ignore such attributes without any test failing.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:90",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add an execution test whose formatted type has [MessagePackObject] with non-sequential integer [Key] values and an [IgnoreMember] member, declare a [GeneratedMessagePackFormatter] without a surrogate, and assert the array shape, values, and excluded member. With the current unconditional CreateContractlessMembers call this should expose the missing behaviour."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "Surrogate tests use only integer keys. Consequently a formatter collector that always selects integer-key mode for surrogates would pass the entire added suite, leaving string-key surrogate output unverified.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:211",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:211 swap-boolean: isIntKey = keyKindIsInt ?? false -> isIntKey = true; expected to survive because contractless mode assigns false separately and the only surrogate execution test uses integer keys 3 and 7."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The duplicate-surrogate-key rejection has no negative test; both added surrogate execution keys are distinct and the diagnostic tests do not declare duplicates.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:200",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:200 remove-guard: if (!claimedKeys.Add(key)) { ... return null; } -> statement removed; expected to survive because no test gives two surrogate members the same key or expects MsgPack006 from this collector."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "Surrogate matching tests cover a missing member and a mismatched type, but not a same-name, same-type target that is non-public or not read-write. The accessibility/writability guard can therefore be removed undetected.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:190",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:190 remove-guard: target is null || !IsPublicReadWrite(target) || !SymbolEqualityComparer... -> target is null || !SymbolEqualityComparer...; expected to survive because no surrogate test targets a read-only property, private setter, or non-public member."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-5",
+    "lens": "test-quality",
+    "claim": "The accessible parameterless-constructor requirement is untested: all formattable classes in the added tests have an implicit public parameterless constructor, and no diagnostic test expects NoDeserializingConstructor.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:76",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:76 remove-guard: if (isClass && !type.InstanceConstructors.Any(...)) { ... return null; } -> statement removed; expected to survive because no test formats a class having only parameterized or inaccessible constructors."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-6",
+    "lens": "test-quality",
+    "claim": "The contractless field writability check is not covered because ExternalPerson, ExternalPoint, and ExternalWidget contain only properties. A public read-only field could incorrectly enter the serialization model without a test failing.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:281",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:281 remove-guard: field.DeclaredAccessibility == Accessibility.Public && !field.IsReadOnly && !field.IsConst -> field.DeclaredAccessibility == Accessibility.Public && !field.IsConst; expected to survive because no external test type declares any field, read-only or otherwise."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-7",
+    "lens": "test-quality",
+    "claim": "The timestamp wire-format mask change has no accompanying serializer test; the added generator tests cannot distinguish the corrected 32-bit mask from the previous high-32-bit mask.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack/MessagePackPrimitives.Writers.cs:787 swap-boolean: (data64 & 0x00000000ffffffffL) == 0 -> (data64 & 0xffffffff00000000L) == 0; expected to survive because no test hunk exercises MessagePackPrimitives timestamp writing or checks the 32-bit/64-bit/96-bit timestamp encoding boundary."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-8",
+    "lens": "test-quality",
+    "claim": "The explicitly supported body-less declaration form is never compiled by the tests: every annotated formatter has an opening and closing brace. A regression specific to semicolon-only partial class declarations would go unnoticed.",
+    "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypes.cs:9",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add a generator/execution test declaring `[GeneratedMessagePackFormatter] public partial class ExternalPersonFormatter : IMessagePackFormatter<ExternalPerson>;` with no body, then serialize and deserialize through the generated resolver to prove that this declaration form receives the implementation."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m1",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects swap-boolean at src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:324",
+    "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:324",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "isEnabledByDefault: true, -> isEnabledByDefault: false,"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m2",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects linq-first at src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:44",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:44",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "Location location = formatter.Locations.FirstOrDefault() ?? Location.None; -> Location location = formatter.Locations.First() ?? Location.None;"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m5",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects logical-operator at src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:55",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:55",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": ".Where(i => i.IsGenericType && SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, openFormatterInterface)) -> .Where(i => i.IsGenericType || SymbolEqualityComparer.Default.Equals(i.OriginalDefinition, openFormatterInterface))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m7",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects logical-operator at src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:168",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:168",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "&& IsUserDeclaredFormatter == other.IsUserDeclaredFormatter -> || IsUserDeclaredFormatter == other.IsUserDeclaredFormatter"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m8",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects negate-condition at src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:168",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:168",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "&& IsUserDeclaredFormatter == other.IsUserDeclaredFormatter -> && IsUserDeclaredFormatter != other.IsUserDeclaredFormatter"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m16",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects delete-statement at src/MessagePack.SourceGenerator/MessagePackGenerator.cs:74",
+    "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:74",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "modelPerType.Add(generatedModel); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m21",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects negate-condition at src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if ((data64 & 0x00000000ffffffffL) == 0) -> if (!((data64 & 0x00000000ffffffffL) == 0))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m22",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects remove-guard at src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if ((data64 & 0x00000000ffffffffL) == 0) -> if (true)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compat-break",
+    "lens": "compatibility",
+    "claim": "compatibility break: 4 sample(s) serialize to different bytes",
+    "location": "src/MessagePack.Annotations/Attributes.cs",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Compatibility bytes: 4/124 cases differ, 0 base payloads fail to read on head, public API +3/-0"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "compat-bytes"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

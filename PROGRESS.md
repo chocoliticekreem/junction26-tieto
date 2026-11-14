@@ -55,8 +55,29 @@
 | When | What | Real spend | Running total |
 |---|---|---|---|
 | 11:30 | Provider built; `GET /v1/models` (empty list) and two 20-token chat probes returned `403 subscription_required` (not billed) | €0.00 | €0.00 |
+| 13:04-13:10 | Smoke: `ju26-issue-2283` on Kimi K3.1 Pro (all roles), scratch runs folder | €0.53 | €0.53 |
+| 13:11-13:19 | `ju26-issue-2297-r2` with A/B (side B not built) | €0.99 | €1.52 |
+| 13:19-14:00 | `ju26-issue-2283` (replayed, €0), `2234`, `2129` with A/B | €1.99 | €3.50 |
+| 14:00-14:02 | `2297`, first attempt; process killed with the session, fixtures lost | €0.45 | €3.95 |
+| 21:10-21:17 | `ju26-issue-2297` with A/B | €0.76 | €4.72 |
+| 21:17-22:43 | Cold bench, 36 cases (2 lost lenses to Verda disconnects/timeout) | €16.27 | €20.98 |
+| 22:43-23:02 | Warm `mock-2283`, 9 cases | €3.37 | €24.36 |
+| 23:02-23:10 | Re-run of the 2 affected cold cases | €0.64 | €25.00 |
 
-Projected spend once models are enabled (from recorded Anthropic token counts; re-estimated after the smoke review with `receipts estimate-verda`): cold bench 36 cases €15.06, warm mock-2283 €3.49, warm mock-2234 €2.62, 2297 round 2 €1.51, four Tieto changes €4.84; total about €27.52. A hard guard in code (`work/verda-spend.json`, `VERDA_MAX_EUR=40`) refuses any call that would pass the budget. Source of truth for real spend: `work/verda-spend.json`.
+Final: **€25.00 of €40** (372 calls, `work/verda-spend.json`). Prices pessimistic (Kimi at $3/$15, 1 USD = 1 EUR).
+
+## Anthropic spend log (budget: $20 for this pass, owner's raised limit)
+Guard: `work/anthropic-spend.json`, `ANTHROPIC_MAX_USD=20` (reserves the worst case before every live call and batch; a batch that does not fit is split into chunks that do).
+
+| When | What | Real spend | Running total |
+|---|---|---|---|
+| 13:03-13:14 | Cold bench, 36 cases, 3 Message Batches (189 requests) | $10.20 | $10.20 |
+| 21:39-22:24 | `live lens-regression` calls from another track sharing the ledger (not this pass) | $1.40 | $11.60 |
+| 22:08-22:17 | Warm `mock-2283`, 3 batches (57 requests) | $2.88 | $14.47 |
+| 22:32-22:41 | Warm `mock-2234`, 3 batches (56 requests) | $2.02 | $16.50 |
+| 22:50 | `receipts metrics` (Haiku router re-score for T3, 10 live calls) | $0.02 | $16.51 |
+
+This pass: **$15.12**; ledger total $16.51 of $20.
 
 ## Decisions
 - 11:16 Verda added to CHALLENGE.md by Anson: Verda Inference API (OpenAI-compatible, EU-hosted open-weight models) becomes a provider behind `llm.py`, selected by `LLM_PROVIDER=verda`; Anthropic stays the default. Verda runs use change ids suffixed `@verda` so both providers' runs sit side by side.

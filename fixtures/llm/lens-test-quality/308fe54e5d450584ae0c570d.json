@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The early-return guard for generic types without declaring syntax is the primary crash fix, and the tests do not isolate it. The tests only assert that no diagnostic is raised and that the resolver exists, so they do not show that the guard is what stops the crash. The other fixes (ReportIfLocatedInCompilation, GetPropertyIdentifierLocation, FirstOrDefault) could mask its removal: the unguarded path would reach GetObjectInfo, and the diagnostic paths would no longer throw. The tests would then likely still pass, but wrongly, and the generator might emit a formatter for the external generic type. The tests do not assert that no formatter is generated for the metadata generic type.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641 remove-guard: if (type.OriginalDefinition.DeclaringSyntaxReferences.IsEmpty) { return; } -> removed; expected to survive because the other null-safe location fixes prevent the crash and the tests only check for no warnings plus the resolver hint name, not the absence of a formatter for the metadata generic."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The BothStringAndIntKeyAreNull change (GetPropertyIdentifierLocation) has no test. The unkeyed-member test only covers MemberNeedsKey, and keyless members with neither int nor string keys are never exercised. Mutating the helper back to [0] indexing would survive, since the early-return guard prevents that path from being reached for metadata types.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:991",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:991 delete-statement: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because the generic early return stops metadata types before this code, and no test hits the null-key diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "ReportIfLocatedInCompilation has no negative test. No test checks that a source-located diagnostic is still reported (e.g. MsgPack004 on a same-assembly type), so negating the condition or reporting everything would survive. The tests only assert the absence of diagnostics, and for a metadata type no diagnostic is reachable anyway.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1451",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1451 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(...)) -> if (!(...)); expected to survive in these new tests since the metadata-type scenarios emit no diagnostics, though existing analyzer tests may kill it."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10535,
+  "output_tokens": 1178,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

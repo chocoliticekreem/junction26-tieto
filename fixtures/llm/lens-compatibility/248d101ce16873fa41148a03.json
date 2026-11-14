@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "IsPublicReadWrite treats a public field as eligible only when field.IsReadOnly is true, which is inverted. Writable public fields are skipped and readonly fields are included, so the generated deserializer would assign to readonly fields (compile error CS0191 in the user's project). Contractless mode would also miss normal public fields, contradicting the documented behavior.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:271",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a generator snapshot test for [GeneratedMessagePackFormatter] partial class F : IMessagePackFormatter<T> where T has `public int A;` and `public readonly int B;`. Check that A is emitted and B is not, then compile the output."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Constructor parameters are always passed as empty and members are all marked writable. The generated code therefore requires a parameterless constructor, and for structs it relies on init/required handling. Types with only a parameterized constructor or get-only properties get no formatter, and a required or init-only property may produce uncompilable output. The documented 'public read-write' limit makes this partly intended.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:87",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate a formatter for a type with `public required string P {get;set;}` and for one with `init`-only properties. Compile the output and compare it with the diagnostics."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The generated formatter is emitted as `partial class` with no accessibility modifier. In the existing template the generated formatter is also registered in the source-generated resolver. A user's `public partial class` merges fine, but if the user class is nested or has `sealed`/`static`/other modifiers that differ from the emitted ones, nothing is emitted that preserves them. The generated file also drops type constraints for the formatter class, which is harmless. Because the class is also listed in the resolver, the resolver may now start returning the formatter for T in existing projects. Without opting in, an existing project that happens to add the attribute changes formatter selection for T, which is the intended opt-in.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that the resolver template emits registration of Info.Formatter for IsUserDeclaredFormatter infos, and that the class name is not duplicated with the user's declared type in a nested-type case."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "New diagnostics MsgPack019-022 are added to the analyzer's SupportedDiagnostics, but the generator reports them in the generator itself (RegisterSourceOutput) rather than the analyzer. The AnalyzerReleases.Unshipped.md and the docs under doc/analyzers/ for the new ids are not part of the diff, so the release tracking analyzer (RS2000) and the help links (404) may break the build. The reported diagnostics also reuse existing ids such as NoDeserializingConstructor, MemberNeedsKey and KeysMustBeUnique, with a mismatched message format argument count (NoDeserializingConstructor is created with no args).",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build the SourceGenerator project, which has the Microsoft.CodeAnalysis.Analyzers release tracking enabled, and check for RS2000/RS2002 warnings. Add a test that triggers NoDeserializingConstructor on a formatter and confirm the message formats without error."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In contractless mode, the key order is alphabetical (OrderBy name) and string keys are used with no attributes honored on T. The requirement says that attributes on T are honored if present, but the collector never reads [Key], [IgnoreMember], [DataContract] or [DataMember] on T.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:131",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a formatter for a type annotated with [MessagePackObject] and [Key(0)] on its members, or with [IgnoreMember] on a public property. Serialize and check that the keys and membership follow the attributes."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18022,
+  "output_tokens": 1617,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

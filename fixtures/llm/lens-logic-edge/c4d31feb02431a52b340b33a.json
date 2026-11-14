@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new location filter does not drop metadata-symbol diagnostics that have been converted to Location.None. For a closed generic struct from a referenced assembly with a public member lacking [Key], the null-safe MemberNeedsKey path creates MsgPack004 with a null location; !diagnostic.Location.IsInSource is then true, so the consumer compilation receives a locationless MsgPack004 error. This both contradicts the helper's stated behavior and analyses metadata types that the defining assembly owns.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a Lib metadata reference containing [MessagePackObject] public partial struct Item<T> { public int Value { get; set; } } without running analyzers on Lib. Analyze an App compilation referencing Lib and containing [MessagePackObject] public class Cmd { [Key(0)] public Item<int> Member { get; set; } }. Assert that App has no MsgPack004, AD0001, or CS8785. On head, MsgPack004 is reported with Location.None instead of being dropped."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataGenericStructDiagnosticsTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MetadataGenericStructDiagnosticsTests\n{\n    private const string LibrarySource = \"\"\"\n        using MessagePack;\n\n        namespace Lib;\n\n        [MessagePackObject]\n        public partial struct Item<T>\n        {\n            public int Value { get; set; }\n        }\n        \"\"\";\n\n    private const string AppSource = \"\"\"\n        using MessagePack;\n        using Lib;\n\n        namespace App;\n\n        [MessagePackObject]\n        public sealed partial record Cmd([property: Key(0)] string Scope)\n        {\n            [Key(1)]\n            public Item<int> Member { get; init; }\n        }\n\n        [GeneratedMessagePackResolver]\n        public partial class AppResolver\n        {\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task UnkeyedMetadataGenericStructDoesNotReportDiagnosticInConsumer()\n    {\n        MetadataReference libraryReference = await CompileLibraryAsync();\n        var test = new VerifyCS.Test(ReferencesSet.MessagePack)\n        {\n            LanguageVersion = LanguageVersion.Latest,\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n            TestState =\n            {\n                Sources = { AppSource },\n                AdditionalReferences = { libraryReference },\n            },\n        };\n\n        await test.RunAsync();\n    }\n\n    private static async Task<MetadataReference> CompileLibraryAsync()\n    {\n        ImmutableArray<MetadataReference> frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        ImmutableArray<MetadataReference> references = frameworkReferences.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpCompilation library = CSharpCompilation.Create(\n            assemblyName: \"Lib\",\n            syntaxTrees: new[] { CSharpSyntaxTree.ParseText(LibrarySource, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references: references,\n            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using var stream = new MemoryStream();\n        var emitResult = library.Emit(stream);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n        return MetadataReference.CreateFromImage(stream.ToArray());\n    }\n}\n",
+        "test_names": [
+          "UnkeyedMetadataGenericStructDoesNotReportDiagnosticInConsumer"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 5439,
+  "output_tokens": 8414,
+  "ms": 114589,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.142527
+}

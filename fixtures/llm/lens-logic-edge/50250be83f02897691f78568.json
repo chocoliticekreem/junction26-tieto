@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new filter does not drop diagnostics for metadata members, despite what its remarks say. `ReportIfLocatedInCompilation` only drops diagnostics that are in source but belong to another syntax tree. Changing the MemberNeedsKey site to `FirstOrDefault()?.…` gives a null location (Location.None) for a metadata member, and `!Location.IsInSource` is true, so the diagnostic is still reported. Example: a referenced lib built without the analyzer has `[MessagePackObject] public struct Item<T> { [Key(0)] public string Key; public int Extra; }`. A consumer that uses `Item<int>` now gets a location-less MsgPack004 error about a type it does not own. That breaks its build, where before it only got an AD0001 warning. This contradicts L8: types from a referenced assembly are deliberately not analysed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataGenericStructDiagnosticsTests.cs (ClosedGenericStructFromReferencedAssembly_WithUnkeyedPublicField_ReportsNothingInConsumer). It compiles the lib in memory, references it from the app, and expects no diagnostics. On head an unexpected MsgPack004 with no location is reported."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change fixes only two of the three unguarded `DeclaringSyntaxReferences[0]` sites the requirement names. The hunks touch base lines 985 and 1077, which map to the reporter's 1009 and 1101 at a consistent offset of 24. The reporter's line 735 (about base line 711) is untouched. The new `ReportIfLocatedInCompilation` wrapper cannot protect it, because the indexing happens while the Diagnostic argument is evaluated, before the wrapper runs. Any closed generic struct from metadata that reaches that path still throws IndexOutOfRangeException (AD0001 from the analyzer; CS8785 from the generator if the site is evaluated eagerly). That fails the acceptance criterion that location-needing diagnostics do not crash for metadata symbols.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "grep TypeCollector.cs on head for `DeclaringSyntaxReferences[0]`. Any remaining hit inside GetObjectInfo (the reporter's line 735, about 711 in base) is still reachable for metadata symbols through the closed-generic branch of CollectGeneric."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataGenericStructDiagnosticsTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MetadataGenericStructDiagnosticsTests\n{\n    private const string LibSource = \"\"\"\n        using MessagePack;\n\n        namespace Lib\n        {\n            [MessagePackObject]\n            public struct Item<T>\n            {\n                [Key(0)]\n                public string Key;\n\n                public int Extra;\n            }\n        }\n        \"\"\";\n\n    private const string AppSource = \"\"\"\n        using MessagePack;\n        using Lib;\n\n        namespace App\n        {\n            [MessagePackObject]\n            public class Cmd\n            {\n                [Key(0)]\n                public Item<int> Member { get; set; }\n            }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task ClosedGenericStructFromReferencedAssembly_WithUnkeyedPublicField_ReportsNothingInConsumer()\n    {\n        var framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = new List<MetadataReference>();\n        references.AddRange(framework);\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        var libCompilation = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(LibSource) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using var stream = new MemoryStream();\n        var emitResult = libCompilation.Emit(stream);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n        MetadataReference libReference = MetadataReference.CreateFromImage(stream.ToArray());\n\n        var test = new VerifyCS.Test()\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(AppSource);\n        test.TestState.AdditionalReferences.Add(libReference);\n\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "ClosedGenericStructFromReferencedAssembly_WithUnkeyedPublicField_ReportsNothingInConsumer"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 11612,
+  "output_tokens": 7434,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

@@ -1,0 +1,72 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "For an opted-out type whose members have Key attributes, the new early continue skips the later key-recording and duplicate-key checks. Two members with the same key therefore produce no MsgPack005, despite the requirement that analyzer diagnostics continue to work and the new README explicitly promising key-uniqueness validation. The same pattern exists in both changed member-processing loops.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerReceiptTests.SuppressedType_ReportsDuplicateKeys. The test compiles a SuppressSourceGeneration=true type with two [Key(0)] members and asserts MsgPack005; on the changed code both members are skipped before duplicate detection, so the assertion exposes the missing diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The early continue also bypasses the remaining processing of every keyed member, including the later recursive collection of that member's type. Consequently an opted-out type with a [Key] member whose type violates the serializability contract no longer gets MsgPack003, contradicting both the acceptance criterion and the README's explicit statement that member types are still validated.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerReceiptTests.SuppressedType_ReportsUnserializableMemberType. It uses a SuppressSourceGeneration=true type with a keyed member of an unannotated, non-serializable class and asserts MsgPack003; the changed control flow skips member-type collection and the assertion exposes the missing diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "For types using MessagePackObject(SuppressSourceGeneration = true), should all MsgPack0xx rules remain active, or only rules governing the runtime serialization contract?",
+        "options": [
+          "Only runtime-contract rules are required; keep MsgPack011, MsgPack016, and MsgPack017 suppressed for these types, as the README states.",
+          "Every MsgPack0xx rule remains active, so non-partial declarations and AOT-related violations must still be diagnosed even though no formatter is generated."
+        ],
+        "why_it_matters": "The first answer makes the documented exclusions intentional, although the reported MsgPack003 and MsgPack005 gaps remain defects. The second answer makes those exclusions an additional requirement gap and requires implementation changes for MsgPack011, MsgPack016, and MsgPack017.",
+        "area": "docs",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerReceiptTests\n{\n    [Fact]\n    public async Task SuppressedType_ReportsMissingKeys()\n    {\n        GeneratorDriverRunResult result = await RunGeneratorAsync(\"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class SuppressedType\n            {\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\");\n\n        result.Diagnostics.Should().Contain(diagnostic => diagnostic.Id == \"MsgPack004\");\n    }\n\n    [Fact]\n    public async Task SuppressedType_ReportsDuplicateKeys()\n    {\n        GeneratorDriverRunResult result = await RunGeneratorAsync(\"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class SuppressedType\n            {\n                [Key(0)]\n                public int First { get; set; }\n\n                [Key(0)]\n                public int Second { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\");\n\n        result.Diagnostics.Should().Contain(diagnostic => diagnostic.Id == \"MsgPack005\");\n    }\n\n    [Fact]\n    public async Task SuppressedType_ReportsUnserializableMemberType()\n    {\n        GeneratorDriverRunResult result = await RunGeneratorAsync(\"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class SuppressedType\n            {\n                [Key(0)]\n                public UnannotatedType Value { get; set; }\n            }\n\n            public class UnannotatedType\n            {\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\");\n\n        result.Diagnostics.Should().Contain(diagnostic => diagnostic.Id == \"MsgPack003\");\n    }\n\n    [Fact]\n    public async Task SuppressedType_GeneratesNoFormatter()\n    {\n        GeneratorDriverRunResult result = await RunGeneratorAsync(\"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class SuppressedType\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\");\n\n        result.Diagnostics.Should().NotContain(diagnostic => diagnostic.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal));\n        result.GeneratedSources.Should().Contain(source => source.HintName.EndsWith(\"TestResolver.g.cs\", StringComparison.Ordinal));\n        result.GeneratedSources.Should().NotContain(source => source.HintName.Contains(\"SuppressedType\", StringComparison.Ordinal));\n    }\n\n    private static async Task<GeneratorDriverRunResult> RunGeneratorAsync(string source)\n    {\n        CSharpParseOptions parseOptions = new(LanguageVersion.CSharp7_3);\n        SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);\n        ImmutableArray<MetadataReference> references = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        references = references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"SuppressSourceGenerationReceipts\",\n            new[] { syntaxTree },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);\n        return driver.GetRunResult();\n    }\n}\n",
+        "test_names": [
+          "SuppressedType_ReportsMissingKeys",
+          "SuppressedType_ReportsDuplicateKeys",
+          "SuppressedType_ReportsUnserializableMemberType",
+          "SuppressedType_GeneratesNoFormatter"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Suppression disables only generation-specific diagnostics. The analyzer must still validate the runtime contract (including MsgPack003, MsgPack004, MsgPack005, MsgPack012, and MsgPack015), while MsgPack011, MsgPack016, and MsgPack017 remain unreported for opted-out types; this is the scope documented by the change."
+      },
+      {
+        "label": "B",
+        "summary": "The acceptance criterion's reference to MsgPack0xx rules is comprehensive. Opted-out types must receive every applicable analyzer diagnostic, including MsgPack011 for non-partial types and MsgPack016/MsgPack017 for AOT-related violations, so the change must add those diagnostic paths even though formatter generation remains disabled."
+      }
+    ]
+  },
+  "input_tokens": 5579,
+  "output_tokens": 11248,
+  "ms": 142923,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.185457
+}

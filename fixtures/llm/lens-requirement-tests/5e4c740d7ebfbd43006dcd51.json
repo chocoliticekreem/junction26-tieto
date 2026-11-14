@@ -1,0 +1,49 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "MessagePack attributes on the formatted type are ignored in the normal, non-surrogate path. The collector unconditionally calls CreateContractlessMembers and forces string keys, without inspecting T for MessagePackObject, Key, or IgnoreMember. Consequently, a referenced type with [Key(0)] and [IgnoreMember] is serialized as a contractless map including the ignored member, contrary to the acceptance criterion that MessagePack attributes on T be honoured.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:90",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run GeneratedMessagePackFormatterRequirementTests.MessagePackAttributesOnReferencedType_AreHonoured. It generates a formatter for a referenced [MessagePackObject] type with one [Key(0)] member and one [IgnoreMember] member, then asserts an array formatter with key 0 and no serialization of the ignored member. The current contractless map implementation fails these assertions."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedMessagePackFormatterRequirementTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedMessagePackFormatterRequirementTests\n{\n    private const string FormatterSource = \"\"\"\n        using MessagePack;\n        using MessagePack.Formatters;\n\n        [GeneratedMessagePackFormatter]\n        public partial class MyObjectFormatter : IMessagePackFormatter<ProjectA.MyObject>;\n        \"\"\";\n\n    [Fact]\n    public async Task BodylessFormatter_GeneratesContractlessFormatterForReferencedType()\n    {\n        string projectASource = \"\"\"\n            namespace ProjectA;\n\n            public class MyObject\n            {\n                public int Id { get; set; }\n\n                public string? Name { get; set; }\n            }\n            \"\"\";\n\n        string generated = await GenerateAsync(projectASource, projectAReferencesMessagePack: false);\n\n        Assert.Contains(\"partial class MyObjectFormatter\", generated);\n        Assert.Contains(\"IMessagePackFormatter<global::ProjectA.MyObject>\", generated);\n        Assert.Contains(\"Serialize(\", generated);\n        Assert.Contains(\"Deserialize(\", generated);\n        Assert.Contains(\"writer.WriteMapHeader(2);\", generated);\n    }\n\n    [Fact]\n    public async Task MessagePackAttributesOnReferencedType_AreHonoured()\n    {\n        string projectASource = \"\"\"\n            using MessagePack;\n\n            namespace ProjectA;\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int Id { get; set; }\n\n                [IgnoreMember]\n                public string? Ignored { get; set; }\n            }\n            \"\"\";\n\n        string generated = await GenerateAsync(projectASource, projectAReferencesMessagePack: true);\n\n        Assert.Contains(\"writer.WriteArrayHeader(1);\", generated);\n        Assert.Contains(\"writer.Write(0);\", generated);\n        Assert.Contains(\"value.Id\", generated);\n        Assert.DoesNotContain(\"Ignored\", generated);\n    }\n\n    private static async Task<string> GenerateAsync(string projectASource, bool projectAReferencesMessagePack)\n    {\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Preview);\n        var compilationOptions = new CSharpCompilationOptions(\n            OutputKind.DynamicallyLinkedLibrary,\n            nullableContextOptions: NullableContextOptions.Enable);\n        ImmutableArray<MetadataReference> frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        ImmutableArray<MetadataReference> projectAReferences = projectAReferencesMessagePack\n            ? frameworkReferences.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n            : frameworkReferences;\n\n        CSharpCompilation projectA = CSharpCompilation.Create(\n            \"ProjectA\",\n            new[] { CSharpSyntaxTree.ParseText(projectASource, parseOptions) },\n            projectAReferences,\n            compilationOptions);\n\n        using var projectAImage = new MemoryStream();\n        var emitResult = projectA.Emit(projectAImage);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n\n        ImmutableArray<MetadataReference> projectBReferences = frameworkReferences\n            .AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n            .Add(MetadataReference.CreateFromImage(projectAImage.ToArray()));\n        CSharpCompilation projectB = CSharpCompilation.Create(\n            \"ProjectB\",\n            new[] { CSharpSyntaxTree.ParseText(FormatterSource, parseOptions) },\n            projectBReferences,\n            compilationOptions);\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            generators: new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(\n            projectB,\n            out Compilation outputCompilation,\n            out ImmutableArray<Diagnostic> generatorDiagnostics);\n\n        Assert.DoesNotContain(generatorDiagnostics, diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);\n        Assert.DoesNotContain(outputCompilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);\n\n        GeneratorDriverRunResult runResult = driver.GetRunResult();\n        return string.Join(\n            Environment.NewLine,\n            runResult.Results.SelectMany(result => result.GeneratedSources).Select(source => source.SourceText.ToString()));\n    }\n}\n",
+        "test_names": [
+          "BodylessFormatter_GeneratesContractlessFormatterForReferencedType",
+          "MessagePackAttributesOnReferencedType_AreHonoured"
+        ],
+        "expects": "new-api"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Use the implemented surrogate design: GeneratedMessagePackFormatterAttribute exposes SurrogateType, the generator defaults to contractless public-member serialization, and when a surrogate is supplied its [Key] and [IgnoreMember] members select and key matching members of T. This requires the SurrogateType public API, surrogate collector path, and MsgPack022 diagnostics."
+      },
+      {
+        "label": "B",
+        "summary": "Use BCL serialization attributes on T instead of introducing a surrogate contract: remove SurrogateType and its collector path, serialize unattributed types contractlessly, honour MessagePack attributes when present, and when T is [DataContract], derive membership and ordering from [DataMember] and [IgnoreDataMember]. This keeps Project A dependent only on the BCL while providing an explicit external wire contract."
+      }
+    ]
+  },
+  "input_tokens": 13657,
+  "output_tokens": 8753,
+  "ms": 117710,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.172266
+}

@@ -1,0 +1,57 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Closed generic types from a referenced assembly now exit CollectCore early with no formatter and no diagnostics. This is consistent with the L8 convention for non-generic metadata types, so it is checked and acceptable.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] types from referenced assemblies are deliberately not analysed and get no formatter from the compiling assembly; a missing formatter or diagnostic is not a defect. [L11] states no preference and says to follow the requirement."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README section and the MsgPack004 doc say diagnostics for referenced-assembly types are reported by the defining assembly. The README also says such types 'can be used', but with the early return no formatter is generated for Item<int> in the consuming resolver. The docs do not say that the user or the defining assembly's resolver must supply the formatter, and at runtime (trimmed or AOT) this could still fail for an unregistered formatter.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the new README paragraph against the early return at TypeCollector.cs:640. Nothing documents that the consuming resolver does not include Item<int>, or how to register the defining assembly's resolver."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new ReportIfLocatedInCompilation wrapper drops every diagnostic whose location is not in a syntax tree of the compilation, including diagnostics with Location.None. Previously such diagnostics were reported, for example a MsgPack004 or MsgPack003 on a type in the compiling assembly with an inherited member from a base type in a referenced assembly. This is a behaviour change beyond the crash fix, and the risk is a lost diagnostic (see L10, which warns about analyzer diagnostic changes).",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer test where a [MessagePackObject] class in the compiling assembly derives from a base class in a referenced assembly that has a public member without [Key]. Compare diagnostics at base and head."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "When a [MessagePackObject] type in the compiling assembly has an inherited unkeyed public member from a base type in a referenced assembly, should the diagnostic (MsgPack004) still be reported, e.g. on the derived type's identifier, or silently dropped?",
+        "options": [
+          "Keep reporting, anchored on the derived type's identifier",
+          "Drop it, since the defining assembly owns it"
+        ],
+        "why_it_matters": "If it must still be reported, the blanket drop in ReportIfLocatedInCompilation is a regression. If dropping is acceptable, the change is fine.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 13358,
+  "output_tokens": 1069,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

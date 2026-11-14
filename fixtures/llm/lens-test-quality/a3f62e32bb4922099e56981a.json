@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The reportDiagnostic wrapper filter (ReportIfLocatedInCompilation) is not pinned by any test. The tests only assert no AD0001/CS8785 and no diagnostics. Removing the filter, or inverting the condition so it drops legitimate in-source diagnostics, would not fail any added test. No test confirms that diagnostics for types in the compiling assembly are still reported, which is the 'ok rows keep working' criterion.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239 negate-condition: `!diagnostic.Location.IsInSource || ContainsSyntaxTree(...)` -> `diagnostic.Location.IsInSource || ...`; expected to survive because the added tests only assert zero diagnostics, and existing analyzer tests are not shown covering this path."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The BothStringAndIntKeyAreNull path (GetPropertyIdentifierLocation) has no test. The new tests use [Key] on all keyed members and never reach intKey==null && stringKey==null on a metadata property. Reverting this line to DeclaringSyntaxReferences[0] would not be detected. There is also no source-declared positive test confirming the location is still reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 delete-statement: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no added test has a metadata property with a [Key] whose int and string values are both null."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test ClosedGenericStruct_FromMetadataReference_UnkeyedMember may not exercise the MemberNeedsKey FirstOrDefault fix. The unkeyed member is public and the type is a metadata struct, and which branch fires is unconfirmed (the reporter did not narrow it down). The test would pass on base if that branch is never reached, or if the metadata-only check exits earlier. Because the wrapper filter also drops the diagnostic, reverting the FirstOrDefault change may be masked: the null-conditional NRE still occurs, and the test could still fail only if the line is reached.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:553",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 delete-statement: `.FirstOrDefault()?` -> `[0]`; run ClosedGenericStruct_FromMetadataReference_UnkeyedMember to check it fails; if it survives the test does not cover this line."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests assert only the absence of diagnostics and the presence of a resolver hint name, with SkipGeneratedSourcesCheck. They never check that the resolver output is correct, or whether it includes or excludes a formatter for the closed generic Item<int>. The test would not detect a resolver that is generated but wrong. No negative test confirms that a real MsgPack003/004 on a source-declared closed generic type is still reported.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:632",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "RunWithMetadataReferenceAsync sets TestBehaviors.SkipGeneratedSourcesCheck and only asserts Assert.Contains(hintName) and no warnings; no content assertion."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12139,
+  "output_tokens": 1453,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

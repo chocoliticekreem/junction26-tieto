@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new ReportIfLocatedInCompilation wrapper is applied to every diagnostic reported through reportDiagnostic. It drops any diagnostic whose Location is not in source, including Location.None. Diagnostics in source types that were previously reported with a null or None location are now silently suppressed in users' builds. Examples are MemberNeedsKey on an inherited public member without [Key] from a base type in a referenced assembly, and diagnostics built from GetIdentifierLocation/GetLocation helpers that can return null. A MsgPack004 error that users previously saw can disappear, and an error-level diagnostic going missing is a visible change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] class in the compiling assembly derives from a base class in a referenced assembly that has a public property without [Key]. Run against base and head and compare whether MsgPack004 is reported. Head would report nothing (location None), base would report it."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The `contractAttr is not null && !formattedType.DeclaringSyntaxReferences.IsEmpty` guard skips the AOTDerivedKeyAttribute and MemberNeedsKey checks for metadata types. It is applied inside the whole-type check for formattedType, not just where a location is needed. For a source type with partial declarations the behavior is unchanged. But the guard also changes the control flow for metadata types. Their members are silently skipped, so the generated formatter for a closed generic from metadata may be built differently than before. Per L8, non-analysis of metadata types is deliberate, so this is low risk, but the generated output for such types could differ.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:915",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests. Add a case with a closed generic struct from a referenced assembly whose property carries a KeyAttribute-derived attribute, and confirm the generated output is unchanged for the existing ok rows (class Item<T>, struct Item)."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9265,
+  "output_tokens": 798,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

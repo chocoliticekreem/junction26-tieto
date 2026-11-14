@@ -1,0 +1,48 @@
+{
+  "purpose": "lens-product-context",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new target-framework guard suppresses ExcludeFromCodeCoverage on netstandard2.0 and .NET Framework even though the attribute is available there, so generated code on those supported targets is not decorated as required. The README also incorrectly describes those targets as lacking the attribute.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile generated output for netstandard2.0 and a supported .NET Framework target with the attribute emitted unconditionally; demonstrate that System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute resolves on both, then show that the current #if removes it from those compilations."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "An unrelated change to DecimalFormatter switches from general formatting to fixed-point 'F' formatting without a precision. This can round fractional decimal values (for example, 1.234m to 1.23), changing the serialized representation and losing information, and is outside the code-coverage feature.",
+        "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize 1.234m with the base and head builds and compare bytes; decode both outputs and verify that the head output is rounded. Revert the StandardFormat('F') argument and verify the original representation is preserved."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "'All generated code' means every generated formatter, resolver, and nested helper type; emit the attribute unconditionally wherever available, with no new setting, as the templates implement."
+      },
+      {
+        "label": "B",
+        "summary": "Provide an opt-out setting while retaining the attribute by default: add a source-generator MSBuild/configuration option and condition the template emission on it, so consumers can restore inclusion in coverage reports."
+      }
+    ]
+  },
+  "input_tokens": 7667,
+  "output_tokens": 1340,
+  "ms": 16770,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.043101
+}

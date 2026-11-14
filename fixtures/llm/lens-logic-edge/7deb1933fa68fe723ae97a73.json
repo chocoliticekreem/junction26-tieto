@@ -1,0 +1,65 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "MessagePackSecurity.DepthStep changed from `>=` to `>`, so the depth limit is now off by one: a graph one level deeper than MaximumObjectGraphDepth is accepted. With MaximumObjectGraphDepth = 1, `[[ ]]` (0x91 0x90) used to be rejected and now deserializes. This weakens a security limit (the default stays at 500, per L9) and the requirement does not ask for it; L18 records no intent to change it.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run ReceiptsLogicEdgeTests.DepthStep_RejectsGraphOneLevelDeeperThanMaximum. It deserializes 0x91 0x90 as object with UntrustedData.WithMaximumObjectGraphDepth(1) and expects an exception. It passes on base and fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `if (!intMembers.ContainsKey(...))` and `if (!stringMembers.ContainsKey(...))` guards silently discard the second member that shares a key. Two members marked [Key(0)] used to make the collector throw, which is at least visible. Now they produce no diagnostic, and the generated formatter omits the second member. That member is silently never serialized or deserialized, so data is lost. The dynamic resolver rejects duplicate keys.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run ReceiptsLogicEdgeTests.DuplicateIntKey_IsReportedOrBothMembersGenerated. It compiles a [MessagePackObject] with two [Key(0)] properties and runs the generator and the MessagePack analyzers. It asserts that either a MsgPack or generator diagnostic is reported or the generated formatter references SecondMember. It fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same silent-drop guard is applied to the second member-collection path (lines 1163 and 1179) and to string keys (line 1039). Duplicate string keys, or duplicate keys on that path, also lose a member without any diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Variant of DuplicateIntKey_IsReportedOrBothMembersGenerated using [Key(\"a\")] on two members, and a variant using fields instead of properties. Expect a diagnostic or both members in the generated formatter."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "None of the in-scope hunks touches the SuppressSourceGeneration gating. Whatever skips analysis for `[MessagePackObject(SuppressSourceGeneration = true)]` types is unchanged here. The acceptance criterion that MsgPack003/004/005 are still reported for such types (L19) is not shown to be met by this change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the diff: only the duplicate-key and mixed-key handling in TypeCollector and DepthStep change. A test with [MessagePackObject(SuppressSourceGeneration = true)] and a public property without [Key] should expect MsgPack004. This lens only sees in-scope hunks, so this is unverified."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ReceiptsLogicEdgeTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\nusing MessagePack.SourceGenerator;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ReceiptsLogicEdgeTests\n{\n    [Fact]\n    public void DepthStep_RejectsGraphOneLevelDeeperThanMaximum()\n    {\n        MessagePackSerializerOptions options = MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(1));\n\n        // [[ ]] : two nested arrays, depth 2, which exceeds a maximum depth of 1.\n        byte[] bytes = new byte[] { 0x91, 0x90 };\n\n        Assert.ThrowsAny<Exception>(() => MessagePackSerializer.Deserialize<object>(bytes, options));\n    }\n\n    [Fact]\n    public async Task DuplicateIntKey_IsReportedOrBothMembersGenerated()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace DupNs\n            {\n                [MessagePackObject]\n                public class DupKeys\n                {\n                    [Key(0)]\n                    public int FirstMember { get; set; }\n\n                    [Key(0)]\n                    public int SecondMember { get; set; }\n                }\n\n                [GeneratedMessagePackResolver]\n                partial class DupResolver\n                {\n                }\n            }\n            \"\"\";\n\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        IEnumerable<MetadataReference> references = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"DupKeyAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp7_3)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new[] { new MessagePackGenerator().AsSourceGenerator() });\n        driver = driver.RunGenerators(compilation);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n        string generated = string.Join(\"\\n\", result.GeneratedTrees.Select(t => t.ToString()));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = typeof(MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n\n        ImmutableArray<Diagnostic> analyzerDiagnostics = analyzers.IsEmpty\n            ? ImmutableArray<Diagnostic>.Empty\n            : await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n\n        bool reported = result.Diagnostics.Any(d => d.Severity >= DiagnosticSeverity.Warning)\n            || analyzerDiagnostics.Any(d => d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal) && d.Severity >= DiagnosticSeverity.Warning);\n\n        Assert.True(\n            reported || generated.Contains(\"SecondMember\"),\n            \"Two members share [Key(0)]: expected either a diagnostic or a formatter that handles SecondMember, but SecondMember was silently dropped.\");\n    }\n}\n",
+        "test_names": [
+          "DepthStep_RejectsGraphOneLevelDeeperThanMaximum",
+          "DuplicateIntKey_IsReportedOrBothMembersGenerated"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10143,
+  "output_tokens": 11829,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01LRnr97VeVc8UU8nVuQdTKz"
+}

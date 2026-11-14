@@ -1,0 +1,50 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The requirement identifies three diagnostic paths that index DeclaringSyntaxReferences[0], but the diff rewrites only the BothStringAndIntKeyAreNull and MemberNeedsKey paths. Wrapping reportDiagnostic in ReportIfLocatedInCompilation cannot protect the remaining path: the indexing occurs while constructing the Diagnostic, before the wrapper is called. A metadata symbol reaching that path can therefore still cause CS8785 and AD0001 and prevent resolver generation.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ClosedGenericMetadataValueTypeTests.ClosedGenericValueTypeFromReferencedAssembly_DoesNotCrashAndGeneratesResolver. It compiles Lib as a metadata reference, runs both the generator and MsgPack00xMessagePackAnalyzer on the repro App, and fails if CS8785 or AD0001 is produced or App.TestResolver.g.cs is absent."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Deleting the byte.MaxValue arm changes TryWriteUInt32 for values 128 through 255 from the compact uint8 encoding (0xCC plus one byte) to uint16 encoding (0xCD plus two bytes). This changes established serialized bytes and increases their size, and is unrelated to the referenced-assembly collector crash.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:477",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add or run a MessagePackPrimitives writer unit test calling TryWriteUInt32 for 128 and 255. Assert the bytes are CC 80 and CC FF respectively, with bytesWritten equal to 2; the head implementation instead emits CD 00 80 and CD 00 FF with bytesWritten equal to 3."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ClosedGenericMetadataValueTypeTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack.SourceGenerator.Analyzers;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ClosedGenericMetadataValueTypeTests\n{\n    [Theory]\n    [InlineData(\"public partial struct Item<T> { [Key(0)] public string Key { get; set; } }\")]\n    [InlineData(\"public partial record struct Item<T>([property: Key(0)] string Key);\")]\n    public async Task ClosedGenericValueTypeFromReferencedAssembly_DoesNotCrashAndGeneratesResolver(string itemDeclaration)\n    {\n        await RunCaseAsync(itemDeclaration, \"Item<int>\");\n    }\n\n    [Theory]\n    [InlineData(\"public partial class Item<T> { [Key(0)] public string Key { get; set; } }\", \"Item<int>\")]\n    [InlineData(\"public partial struct Item { [Key(0)] public string Key { get; set; } }\", \"Item\")]\n    public async Task OtherMetadataTypeShapes_StillGenerateResolver(string itemDeclaration, string memberType)\n    {\n        await RunCaseAsync(itemDeclaration, memberType);\n    }\n\n    private static async Task RunCaseAsync(string itemDeclaration, string memberType)\n    {\n        MetadataReference libraryReference = await CompileLibraryAsync(itemDeclaration);\n        string appSource = $$\"\"\"\n            using MessagePack;\n            using Lib;\n\n            namespace App;\n\n            [MessagePackObject]\n            public sealed partial record Cmd([property: Key(0)] string Scope)\n            {\n                [Key(1)]\n                public {{memberType}} Member { get; init; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        List<MetadataReference> references = await GetFrameworkAndMessagePackReferencesAsync();\n        references.Add(libraryReference);\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(appSource, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ISourceGenerator generator = new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator();\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(generator);\n        driver = driver.RunGeneratorsAndUpdateCompilation(\n            compilation,\n            out _,\n            out ImmutableArray<Diagnostic> generatorDiagnostics,\n            CancellationToken.None);\n\n        Assert.DoesNotContain(generatorDiagnostics, diagnostic => diagnostic.Id == \"CS8785\");\n        GeneratorDriverRunResult runResult = driver.GetRunResult();\n        Assert.DoesNotContain(runResult.Diagnostics, diagnostic => diagnostic.Id == \"CS8785\");\n        Assert.Contains(\n            runResult.GeneratedTrees,\n            tree => tree.FilePath.EndsWith(\"App.TestResolver.g.cs\", StringComparison.Ordinal));\n\n        ImmutableArray<Diagnostic> analyzerDiagnostics = await compilation\n            .WithAnalyzers(ImmutableArray.Create<DiagnosticAnalyzer>(new MsgPack00xMessagePackAnalyzer()))\n            .GetAnalyzerDiagnosticsAsync();\n        Assert.DoesNotContain(analyzerDiagnostics, diagnostic => diagnostic.Id == \"AD0001\");\n    }\n\n    private static async Task<MetadataReference> CompileLibraryAsync(string itemDeclaration)\n    {\n        string libSource = $$\"\"\"\n            using MessagePack;\n\n            namespace Lib;\n\n            [MessagePackObject]\n            {{itemDeclaration}}\n            \"\"\";\n\n        List<MetadataReference> references = await GetFrameworkAndMessagePackReferencesAsync();\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(libSource, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using var stream = new MemoryStream();\n        Microsoft.CodeAnalysis.Emit.EmitResult emitResult = compilation.Emit(stream);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n        return MetadataReference.CreateFromImage(stream.ToArray());\n    }\n\n    private static async Task<List<MetadataReference>> GetFrameworkAndMessagePackReferencesAsync()\n    {\n        var frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = frameworkReferences.ToList();\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        return references;\n    }\n}\n",
+        "test_names": [
+          "ClosedGenericValueTypeFromReferencedAssembly_DoesNotCrashAndGeneratesResolver",
+          "OtherMetadataTypeShapes_StillGenerateResolver"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 6692,
+  "output_tokens": 10756,
+  "ms": 129484,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.181416
+}

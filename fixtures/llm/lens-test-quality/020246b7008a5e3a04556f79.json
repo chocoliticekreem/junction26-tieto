@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The key diagnostic filter (ReportIfLocatedInCompilation) that drops all diagnostics whose location is not in the compilation has no negative test. Tests only assert no diagnostics. If the filter were removed or inverted, a metadata type would yield Location.None diagnostics, which are not dropped. The tests use well-formed metadata types, so diagnostics are only suppressed, never shown to be correctly reported for source types. No test checks that real diagnostics (MsgPack004 on a source type) are still reported after the wrapper is added, so a filter that always drops would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(...)) -> if (false); expected to survive because every new test asserts zero diagnostics, so dropping all diagnostics passes. Existing analyzer tests (MsgPack003/004) may kill it; confirm by running them."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test 'ClosedGenericStruct_FromMetadataReference_UnkeyedMember' only asserts no diagnostics; it does not distinguish the MemberNeedsKey FirstOrDefault change (line 1077) from the wrapper filter. With the wrapper in place, reverting the FirstOrDefault()?. change would still be caught only if an exception occurs. Note that Diagnostic.Create with a null location is fine, so the hunk could be mutated without failing. Also, the BothStringAndIntKeyAreNull path (line 985) has no test at all: nothing in the diff exercises a metadata property with a [Key]-attribute having null int and string keys.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 delete-statement: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation() (original code); expected to survive because no new test reaches the both-keys-null branch for a metadata property."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The first two tests (struct and record struct) only check the absence of warnings and the presence of the resolver hint name. They never check that the resolver content or that Item<int> is handled consistently; also SkipGeneratedSourcesCheck is set, so the generated output is not verified. The generated resolver could be wrong or empty and the tests would still pass.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:620",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:620 remove-guard: TestBehaviors.SkipGeneratedSourcesCheck stays; mutate the generator so the resolver is emitted empty but under the same hint name; expected to survive because only the HintName is asserted via Assert.Contains."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12132,
+  "output_tokens": 1226,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

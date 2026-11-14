@@ -1,0 +1,48 @@
+{
+  "purpose": "lens-product-context",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "When no surrogate is supplied, the collector always builds contractless string-key members and never reads attributes on T, so MessagePack attributes such as [Key] and [IgnoreMember] are ignored despite the acceptance criterion requiring them to be honoured.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:83",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an execution test with a formatter declared without SurrogateType for a type marked [MessagePackObject], with Id marked [Key(0)] and another public writable member marked [IgnoreMember]. Serialize and assert a one-element integer-keyed array containing only Id, then round-trip it. The current contractless path instead emits a string-keyed map including the ignored member."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The timestamp compactness mask is reversed: testing the low 32 bits for zero selects the 6-byte representation for values whose significant seconds are in the high 32 bits, truncating them during encoding.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a timestamp with Unix seconds 4294967296 and zero nanoseconds using base-built and head-built MessagePack code and compare bytes. Base uses the representation preserving 2^32 seconds; head takes bytesWritten = 6 with zero low bits, and deserializing the head bytes no longer produces the original timestamp."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Use [GeneratedMessagePackFormatter] with contractless generation by default and an optional SurrogateType whose [Key] and [IgnoreMember] members describe the external type's wire contract, as implemented here."
+      },
+      {
+        "label": "B",
+        "summary": "Use [GeneratedMessagePackFormatter] without a surrogate mechanism and read System.Runtime.Serialization attributes such as DataContract, DataMember, and IgnoreDataMember directly from T to determine keys and membership; implement that attribute translation in GeneratedFormatterCollector instead of CreateSurrogateMembers."
+      }
+    ]
+  },
+  "input_tokens": 16335,
+  "output_tokens": 2229,
+  "ms": 29406,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.08244
+}

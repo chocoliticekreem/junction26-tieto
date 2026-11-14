@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "UInt32 values from 128 through 255 are no longer emitted with the compact uint8 representation. Removing the byte.MaxValue branch sends them to TryWriteUInt16, so for example 200 is serialized as CD 00 C8 (three bytes) instead of CC C8 (two bytes). This changes the wire bytes and regresses payload size for an entire commonly used value range; it can also break consumers or persisted data that rely on the serializer's established byte representation.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:477",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run a runtime serialization test such as Assert.Equal(new byte[] { 0xCC, 0xC8 }, MessagePackSerializer.Serialize((uint)200)). It passes with the base implementation and fails on head with CD 00 C8. Also cover the boundaries 127, 128, and 255 to verify that only the intended fixint/uint8 ranges changed."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/UInt32CompactEncodingReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class UInt32CompactEncodingReceiptTests\n{\n    [Theory]\n    [InlineData(127, new byte[] { 0x7F })]\n    [InlineData(128, new byte[] { 0xCC, 0x80 })]\n    [InlineData(200, new byte[] { 0xCC, 0xC8 })]\n    [InlineData(255, new byte[] { 0xCC, 0xFF })]\n    public void UInt32UsesCompactFixIntAndUInt8Encoding(uint value, byte[] expected)\n    {\n        byte[] actual = MessagePackSerializer.Serialize(value);\n\n        Assert.Equal(expected, actual);\n    }\n}\n",
+        "test_names": [
+          "UInt32UsesCompactFixIntAndUInt8Encoding"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 5746,
+  "output_tokens": 2544,
+  "ms": 32974,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.055398
+}

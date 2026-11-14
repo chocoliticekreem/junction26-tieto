@@ -1,0 +1,57 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Inverted condition in the second member loop. `if (stringMembers.ContainsKey(member.StringKey)) { stringMembers.Add(...) }` never adds a string-keyed member the first time it is seen. A duplicate would make `Add` throw. Every string-keyed member handled by this loop is therefore dropped from the object info. For normal (non-suppressed) types this breaks the requirement that behaviour with SuppressSourceGeneration unset does not change. The generated formatter silently omits those members, so their values are lost on serialize and deserialize.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.StringKeyedMembersStillGeneratedTests.StringKeyedFields_AppearInGeneratedFormatter and StringKeyedProperties_AppearInGeneratedFormatter. At least one should fail on head because the members are missing from the generated source. Confirm with a byte-diff: serialize a string-keyed [MessagePackObject] via base-built and head-built generated formatters and compare the map entries."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No hunk references SuppressSourceGeneration. The change only tolerates duplicate or mixed keys (skip on mixed kind, skip duplicate dictionary Add). If the 3.1.1 regression is that types marked SuppressSourceGeneration are skipped or otherwise not analysed, the analyzer still reports nothing for them, and the core requirement is not met. Meanwhile the README asserts that MsgPack003/004/005/012/015 are reported for such types, and nothing in this change demonstrates that.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerTests (all methods): MsgPack004 must be reported for a member without [Key] on a [MessagePackObject(SuppressSourceGeneration = true)] type, and no AD0001 may appear for duplicate or mixed keys."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Reflection;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests\n{\n    private static async Task<ImmutableArray<Diagnostic>> GetAnalyzerDiagnosticsAsync(string source)\n    {\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = frameworkRefs.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        var analyzers = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetCustomAttribute<DiagnosticAnalyzerAttribute>() is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n        Assert.NotEmpty(analyzers);\n        return await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n    }\n\n    private static void AssertNoAnalyzerCrash(ImmutableArray<Diagnostic> diagnostics)\n    {\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n    }\n\n    [Fact]\n    public async Task Suppressed_MissingKey_ReportsMsgPack004()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                public int B { get; set; }\n            }\n            \"\"\";\n        var diagnostics = await GetAnalyzerDiagnosticsAsync(source);\n        AssertNoAnalyzerCrash(diagnostics);\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack004\");\n    }\n\n    [Fact]\n    public async Task Suppressed_DuplicateIntKeys_ReportsDiagnosticWithoutCrash()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                [Key(0)]\n                public int B { get; set; }\n            }\n            \"\"\";\n        var diagnostics = await GetAnalyzerDiagnosticsAsync(source);\n        AssertNoAnalyzerCrash(diagnostics);\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack005\");\n    }\n\n    [Fact]\n    public async Task Suppressed_MixedKeyKinds_ReportsDiagnosticWithoutCrash()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                [Key(\"b\")]\n                public int B { get; set; }\n            }\n            \"\"\";\n        var diagnostics = await GetAnalyzerDiagnosticsAsync(source);\n        AssertNoAnalyzerCrash(diagnostics);\n        Assert.Contains(diagnostics, d => d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal) && d.Severity == DiagnosticSeverity.Error);\n    }\n}\n",
+        "test_names": [
+          "Suppressed_MissingKey_ReportsMsgPack004",
+          "Suppressed_DuplicateIntKeys_ReportsDiagnosticWithoutCrash",
+          "Suppressed_MixedKeyKinds_ReportsDiagnosticWithoutCrash"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/StringKeyedMembersStillGeneratedTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class StringKeyedMembersStillGeneratedTests\n{\n    private static async Task<string> GenerateAsync(string source)\n    {\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = frameworkRefs.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsGenAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGenerators(compilation);\n        var result = driver.GetRunResult();\n        Assert.All(result.Results, r => Assert.Null(r.Exception));\n        return string.Join(\"\\n\", result.GeneratedTrees.Select(t => t.ToString()));\n    }\n\n    [Fact]\n    public async Task StringKeyedFields_AppearInGeneratedFormatter()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace TestNs\n            {\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n\n                [MessagePackObject]\n                public class StringKeyedFieldsObject\n                {\n                    [Key(\"k1\")]\n                    public int AlphaFieldValue;\n\n                    [Key(\"k2\")]\n                    public int BetaFieldValue;\n                }\n            }\n            \"\"\";\n        string generated = await GenerateAsync(source);\n        Assert.Contains(\"StringKeyedFieldsObject\", generated);\n        Assert.Contains(\"AlphaFieldValue\", generated);\n        Assert.Contains(\"BetaFieldValue\", generated);\n    }\n\n    [Fact]\n    public async Task StringKeyedProperties_AppearInGeneratedFormatter()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace TestNs\n            {\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n\n                [MessagePackObject]\n                public class StringKeyedPropsObject\n                {\n                    [Key(\"k1\")]\n                    public int GammaPropValue { get; set; }\n\n                    [Key(\"k2\")]\n                    public int DeltaPropValue { get; set; }\n                }\n            }\n            \"\"\";\n        string generated = await GenerateAsync(source);\n        Assert.Contains(\"StringKeyedPropsObject\", generated);\n        Assert.Contains(\"GammaPropValue\", generated);\n        Assert.Contains(\"DeltaPropValue\", generated);\n    }\n}\n",
+        "test_names": [
+          "StringKeyedFields_AppearInGeneratedFormatter",
+          "StringKeyedProperties_AppearInGeneratedFormatter"
+        ],
+        "expects": "fail-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 9203,
+  "output_tokens": 11661,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01Dbg3xnSVbJt6wK1KGzecTi"
+}

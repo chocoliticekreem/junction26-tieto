@@ -1,0 +1,228 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The change documents that analyzers still validate suppressed types but does not implement a path that restores analyzer diagnostics when SuppressSourceGeneration is true. The TypeCollector edits only alter member collection and duplicate-key handling, so the reported MsgPack004 diagnostic remains absent for a suppressed type and the primary requirement is unmet.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerTests.SuppressedTypeStillGetsMsgPack004. It supplies a suppressed MessagePackObject with a public member lacking Key and IgnoreMember and expects MsgPack004; it fails while analyzer validation remains suppressed."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-1"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "The string-key insertion guard is inverted: Add is attempted only when the key is already present. Consequently, previously absent string-keyed members are never collected, while a duplicate key reaches Dictionary.Add and throws instead of following the intended guarded path. Unset/false behavior therefore changes and string-keyed contracts can lose generated serialization members or crash generation.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationControlTests.StringKeyedContractStillGeneratesMembersWhenNotSuppressed. The ordinary, unsuppressed contract has unique string keys and the test requires both keys in generated source; the inverted guard omits them. A second variant using the same string key on both members would also demonstrate the ArgumentException from the unguarded effective Add."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The string-keyed field branch has an inverted duplicate guard. Because `stringMembers` is populated only when it already contains the key, ordinary string-keyed fields are never collected and can be omitted from generated serialization; a property/field duplicate can instead reach `Add` and throw.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run `StringKeyedFieldCollectionReceiptTests.StringKeyedFields_AreRetainedInGeneratedFormatter`: generate a resolver for a MessagePackObject with two `[Key(\"...\")]` public fields and assert that the generated formatter references both fields. The assertion fails on head because the field dictionary remains empty."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "The final string-members guard is inverted: normal string-keyed members are skipped because their keys are not already present, while a repeated key reaches Dictionary.Add and throws ArgumentException. Consequently, this generation path can omit all string-keyed members or crash on duplicates whenever source generation runs.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run source generation for a [MessagePackObject] with ordinary unique [Key(\"name\")] string-keyed properties and assert that each property appears in the generated formatter, then run it with two properties using the same string key and assert that generation completes without ArgumentException. Both cases expose the inverted ContainsKey condition."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "The second string-key collection path has its duplicate guard inverted: it adds an entry only when that key is already present, so ordinary unique string keys are omitted and duplicate keys still reach Dictionary.Add and can throw. This breaks both analysis and generation for affected types.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run SuppressSourceGenerationAnalyzerTests.DuplicateStringKeysAreReportedWithoutAnalyzerFailure and add/run a non-suppressed [MessagePackObject] case with unique [Key(\"a\")] and [Key(\"b\")] members. The duplicate case should report MsgPack005 without an analyzer exception, and the unique-key case should retain both collected members."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The field-processing mixed-key guard has no killing test: all mixed-key analyzer inputs use properties, and removing this continue still produces the expected MsgPack005 without an analyzer failure.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 delete-statement: continue; -> (deleted); expected to survive because no test mixes key kinds on fields and the property-only MixedKeyKindsAreReportedWithoutAnalyzerFailure assertion is unchanged when a mismatched key is also collected."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "Duplicate-key exception protection for integer-keyed fields is untested. The duplicate-key tests declare properties, so an unconditional dictionary Add on this field path would not be exercised.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023 remove-guard: if (!intMembers.ContainsKey(member.IntKey)) { intMembers.Add(member.IntKey, (member, item.Type)); } -> intMembers.Add(member.IntKey, (member, item.Type)); expected to survive because no test supplies duplicate integer keys on fields."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "Duplicate-key exception protection for string-keyed fields is likewise untested; the only duplicate-string-key input uses properties.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1039",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1039 remove-guard: if (!stringMembers.ContainsKey(member.StringKey)) { stringMembers.Add(member.StringKey, (member, item.Type)); } -> stringMembers.Add(member.StringKey, (member, item.Type)); expected to survive because no test supplies duplicate string keys on fields."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "The property-processing mixed-key continue is not pinned by MixedKeyKindsAreReportedWithoutAnalyzerFailure: deleting it preserves the single expected MsgPack005 diagnostic and does not itself cause a failure, so the test would still pass.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148 delete-statement: continue; -> (deleted); expected to survive because MixedKeyKindsAreReportedWithoutAnalyzerFailure checks only the same MsgPack005 diagnostic and absence of analyzer failure, both unchanged by collecting the mismatched member."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-2",
+    "lens": "product-context",
+    "claim": "MsgPack017 is incorrectly classified as AOT-only and deliberately suppressed. Its documented warning concerns an init-property initializer being replaced during deserialization, which also applies when the suppressed type is serialized dynamically; omitting it removes a runtime contract warning rather than merely a formatter-generation check.",
+    "location": "README.md:1634",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Cite ledger [L6] and doc/analyzers/MsgPack017.md: the diagnostic describes deserialization replacing the initializer's default, not a generated-formatter-only restriction. SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed currently enshrines the contrary behavior and should instead expect MsgPack017 for Prop1."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m8",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects remove-guard at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (!intMembers.ContainsKey(member.IntKey)) -> if (true)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m10",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects negate-condition at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (stringMembers.ContainsKey(member.StringKey)) -> if (!(stringMembers.ContainsKey(member.StringKey)))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m11",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects remove-guard at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (stringMembers.ContainsKey(member.StringKey)) -> if (true)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m12",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects delete-statement at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1181",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1181",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "stringMembers.Add(member.StringKey, (member, item.Type)); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-suite-only-TypeCollector",
+    "lens": "test-quality",
+    "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163, 1165; the existing suite does",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:1163 negate-condition: if (!intMembers.ContainsKey(member.IntKey)) -> if (!(!intMembers.ContainsKey(member.IntKey))); TypeCollector.cs:1165 delete-statement: intMembers.Add(member.IntKey, (member, item.Type)); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

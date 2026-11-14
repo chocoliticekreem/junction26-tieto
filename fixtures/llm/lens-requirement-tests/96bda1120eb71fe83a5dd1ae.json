@@ -1,0 +1,41 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The patch makes an unrelated security-sensitive change by raising UntrustedData.MaximumObjectGraphDepth from the recorded limit of 500 to 5000. This weakens the object-graph depth defense by allowing ten times as many nested objects before the guard applies, and is not part of the referenced-assembly crash fix. The value should remain 500.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "Cite ledger entry L9, which records the stack depth limit of 500 even for trusted data, and compare it with the changed UntrustedData value of 5000. REQ-2283 contains no requirement to alter this security limit."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ClosedGenericMetadataValueTypeTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing MessagePack.SourceGenerator;\nusing MessagePack.SourceGenerator.Analyzers;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ClosedGenericMetadataValueTypeTests\n{\n    private const string AppSource = \"\"\"\n        using MessagePack;\n        using Lib;\n\n        namespace App;\n\n        [MessagePackObject]\n        public sealed partial record Cmd([property: Key(0)] string Scope)\n        {\n            [Key(1)]\n            public Item<int> Member { get; init; }\n        }\n\n        [GeneratedMessagePackResolver]\n        public partial class AppResolver\n        {\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task ClosedGenericStructFromMetadata_GeneratesResolverWithoutCrash()\n    {\n        const string itemDeclaration = \"\"\"\n            [MessagePackObject]\n            public partial struct Item<T>\n            {\n                [Key(0)]\n                public string Key { get; set; }\n            }\n            \"\"\";\n\n        await AssertNoGeneratorOrAnalyzerCrashAsync(itemDeclaration, expectGeneratedResolver: true);\n    }\n\n    [Fact]\n    public async Task ClosedGenericRecordStructFromMetadata_GeneratesResolverWithoutCrash()\n    {\n        const string itemDeclaration = \"\"\"\n            [MessagePackObject]\n            public partial record struct Item<T>([property: Key(0)] string Key);\n            \"\"\";\n\n        await AssertNoGeneratorOrAnalyzerCrashAsync(itemDeclaration, expectGeneratedResolver: true);\n    }\n\n    [Fact]\n    public async Task MetadataMemberDiagnosticsWithoutSourceLocation_DoNotCrashGeneratorOrAnalyzer()\n    {\n        const string itemDeclaration = \"\"\"\n            [MessagePackObject]\n            public partial struct Item<T>\n            {\n                [Key(null)]\n                public string NullKey { get; set; }\n\n                public string MissingKey { get; set; }\n            }\n            \"\"\";\n\n        await AssertNoGeneratorOrAnalyzerCrashAsync(itemDeclaration, expectGeneratedResolver: false);\n    }\n\n    private static async Task AssertNoGeneratorOrAnalyzerCrashAsync(string itemDeclaration, bool expectGeneratedResolver)\n    {\n        string librarySource = $$\"\"\"\n            using MessagePack;\n\n            namespace Lib;\n\n            {{itemDeclaration}}\n            \"\"\";\n\n        ImmutableArray<MetadataReference> references = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        references = references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n\n        CSharpCompilation libraryCompilation = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(librarySource, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using var libraryImage = new MemoryStream();\n        var emitResult = libraryCompilation.Emit(libraryImage);\n        emitResult.Success.Should().BeTrue(string.Join(Environment.NewLine, emitResult.Diagnostics));\n\n        ImmutableArray<MetadataReference> appReferences = references.Add(MetadataReference.CreateFromImage(libraryImage.ToArray()));\n        CSharpCompilation appCompilation = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(AppSource, parseOptions) },\n            appReferences,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePackGenerator().AsSourceGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(appCompilation, out Compilation outputCompilation, out ImmutableArray<Diagnostic> generatorDiagnostics);\n        GeneratorDriverRunResult runResult = driver.GetRunResult();\n\n        generatorDiagnostics.Should().NotContain(diagnostic => diagnostic.Id == \"CS8785\");\n        runResult.Results.Should().OnlyContain(result => result.Exception is null);\n\n        if (expectGeneratedResolver)\n        {\n            runResult.GeneratedTrees.Should().Contain(tree => tree.FilePath.EndsWith(\"AppResolver.g.cs\", StringComparison.Ordinal));\n        }\n\n        var analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new MsgPack00xMessagePackAnalyzer());\n        ImmutableArray<Diagnostic> analyzerDiagnostics = await outputCompilation.WithAnalyzers(analyzers).GetAllDiagnosticsAsync();\n        analyzerDiagnostics.Should().NotContain(diagnostic => diagnostic.Id == \"AD0001\");\n    }\n}\n",
+        "test_names": [
+          "ClosedGenericStructFromMetadata_GeneratesResolverWithoutCrash",
+          "ClosedGenericRecordStructFromMetadata_GeneratesResolverWithoutCrash",
+          "MetadataMemberDiagnosticsWithoutSourceLocation_DoNotCrashGeneratorOrAnalyzer"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 6314,
+  "output_tokens": 9440,
+  "ms": 107153,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.160542
+}

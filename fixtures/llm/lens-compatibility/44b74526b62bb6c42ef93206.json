@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new collector rejects metadata-only data types via `type.DeclaringSyntaxReferences.IsEmpty`, so the central Project B scenario cannot work: when `T` is defined in referenced Project A, generation is abandoned and MsgPack021 is reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:65",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build a generator test with Project A emitting `public class MyObject { public int Value { get; set; } }` to a metadata reference, and Project B declaring `[GeneratedMessagePackFormatter] public partial class MyObjectFormatter : IMessagePackFormatter<MyObject>;`. Run the generator on Project B and assert that no MsgPack021 is reported and a partial formatter implementation for MyObject is emitted; the current collector returns null at this check."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "When no surrogate is supplied, the collector always builds contractless string-key members and never inspects `[MessagePackObject]`, `[Key]`, or `[IgnoreMember]` on `T`. Thus a type carrying MessagePack attributes does not have them honoured as required, and its generated wire format can differ from its attributed contract.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:90",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator for `[GeneratedMessagePackFormatter] partial class F : IMessagePackFormatter<T>` where the source-declared `T` is `[MessagePackObject]` and has `A` annotated `[Key(0)]` and `B` annotated `[IgnoreMember]`. Assert that the generated formatter serializes a one-element integer-keyed array containing A and omits B; the current path instead generates contractless string-keyed serialization including B."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9908,
+  "output_tokens": 1768,
+  "ms": 25360,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.056244
+}

@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetEqualityComparer's fallback for unknown types now returns EqualityComparer<T>.Default instead of throwing TypeAccessException. In untrusted-data mode, types that were rejected as not hash-resistant are now silently accepted as keys in hash collections, which reintroduces the hash-collision DoS vector. It is also a behavioral change for existing users, and the requirement does not ask for it.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "With MessagePackSecurity.UntrustedData, deserialize a Dictionary<CustomKeyType,int> where CustomKeyType has no registered hash-resistant comparer. Base throws TypeAccessException; head succeeds. Assert that it throws."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ForAttributeWithMetadataName transform returns new GeneratedFormatterRequest holding raw INamedTypeSymbol values, and the pipeline then combines it with the compilation. Each compilation change therefore regenerates all output. The extra Combine also changes the s.Left.* tuple shape. A pipeline-shape change like this is a regression risk for the generated output, so the snapshot tests should be rerun.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:29",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the existing generator snapshot tests for ordinary [MessagePackObject] types and confirm the generated output is byte-identical to base."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless mode orders members by ordinal name and assigns int keys 0..n-1. Members are only public read-write ones, so read-only properties and fields are dropped. The wire format for contractless types is therefore not the same as the dynamic contractless resolver. Pre-existing hand-written or reflection formatters for the same type will produce different bytes (string-key maps compared with the dynamic resolver's ordering and read-only handling).",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:156",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with public get-only property, get/set property, and field using ContractlessStandardResolver versus the generated formatter. Compare the bytes for member presence and order."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The generated-formatter diagnostics MsgPack019-022 are registered in the analyzer SupportedDiagnostics but are not added to AnalyzerReleases.Unshipped.md. There are also no doc/analyzers pages, even though the helpLinkUri points to them. Under the RS2000 release-tracking check this breaks the analyzer build. The generator collector also reuses MsgPack004/NoDeserializingConstructor diagnostics outside their original context.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare the AnalyzerReleases.Unshipped.md entries with the new IDs MsgPack019-022. Check that doc/analyzers/MsgPack019.md through MsgPack022.md exist."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The user-declared formatter's generated partial class is emitted without the partial class's accessibility or generic constraints being aligned. The generated partial 'partial class Name : IMessagePackFormatter<T>' re-declares the interface. This is fine, but the same formatter is also registered in the resolver via ObjectSerializationInfo. The resolver may therefore reference the user's class as 'new Formatter()'. If that class has no public parameterless constructor or is private/nested, the generated resolver code will not compile in user projects.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate output for a private nested [GeneratedMessagePackFormatter] class and one with a parameterized constructor. Compile the generated resolver and check for errors."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18359,
+  "output_tokens": 1507,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

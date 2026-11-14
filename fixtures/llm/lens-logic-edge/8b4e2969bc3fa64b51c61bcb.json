@@ -1,0 +1,56 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `case <= byte.MaxValue` (Str8) branch was removed from the string-header writer. Every string whose UTF-8 length is 32..255 bytes now gets a 3-byte Str16 header (0xDA) instead of a 2-byte Str8 header (0xD9). This changes the wire format of very common payloads: each such string grows by one byte and is no longer the minimal encoding the MessagePack spec asks for. Any byte-exact consumer, cache key or hash of serialized data breaks. The serializer-runtime change is unrelated to REQ-2234.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:916",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ReceiptsReq2234LogicTests.StringOf100Bytes_UsesStr8Header and WriteStringHeader100_UsesStr8Header. On head the first byte is 0xDA (length 103) instead of 0xD9 (length 102). Also byte-diff MessagePackSerializer.Serialize(new string('a', 100)) between base-built and head-built code."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No hunk touches the SuppressSourceGeneration handling. The only TypeCollector changes are duplicate-key and mixed-key guards. A [MessagePackObject(SuppressSourceGeneration = true)] type with a public member that lacks [Key] should still get MsgPack004 from the analyzer (acceptance criterion 1), but nothing in the change makes the analyzer visit such types.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ReceiptsReq2234LogicTests.SuppressSourceGeneration_StillReportsMsgPack004. It runs every DiagnosticAnalyzer from the generator assembly over a SuppressSourceGeneration=true type whose public member has no [Key], and asserts that MsgPack004 is reported."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Two members with the same [Key(n)] or the same string key used to throw from Dictionary.Add. They are now silently de-duplicated with `if (!ContainsKey) Add`. The second member is dropped from the collected members, and no diagnostic is reported at that point. The generated formatter therefore silently omits that member, losing its data on round-trip, where previously the generator failed loudly.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "The ContainsKey guards at TypeCollector.cs:1023-1026, 1039-1042, 1163-1166 and 1179-1182 skip the colliding member and invoke no reportDiagnostic. To confirm, run the generator on `[MessagePackObject] public class C { [Key(0)] public int A {get;set;} [Key(0)] public int B {get;set;} }` and check whether any diagnostic is emitted and whether B appears in the generated formatter."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ReceiptsReq2234LogicTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Buffers;\nusing System.Reflection;\nusing MessagePack;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ReceiptsReq2234LogicTests\n{\n    [Fact]\n    public void StringOf100Bytes_UsesStr8Header()\n    {\n        byte[] bytes = MessagePackSerializer.Serialize(new string('a', 100));\n        Assert.Equal(0xD9, bytes[0]);\n        Assert.Equal(102, bytes.Length);\n    }\n\n    [Fact]\n    public void WriteStringHeader100_UsesStr8Header()\n    {\n        var buffer = new ArrayBufferWriter<byte>();\n        var writer = new MessagePackWriter(buffer);\n        writer.WriteStringHeader(100);\n        writer.Flush();\n        byte[] bytes = buffer.WrittenSpan.ToArray();\n        Assert.Equal(2, bytes.Length);\n        Assert.Equal(0xD9, bytes[0]);\n        Assert.Equal(100, bytes[1]);\n    }\n\n    [Fact]\n    public async Task SuppressSourceGeneration_StillReportsMsgPack004()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                public int Value { get; set; }\n            }\n            \"\"\";\n\n        var framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = new List<MetadataReference>(framework);\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp7_3)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        Assembly generatorAssembly = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly;\n        var analyzers = generatorAssembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetCustomAttributes(typeof(DiagnosticAnalyzerAttribute), false).Length > 0 && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n        Assert.NotEmpty(analyzers);\n\n        var diagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack004\");\n    }\n}\n",
+        "test_names": [
+          "StringOf100Bytes_UsesStr8Header",
+          "WriteStringHeader100_UsesStr8Header",
+          "SuppressSourceGeneration_StillReportsMsgPack004"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8526,
+  "output_tokens": 6918,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

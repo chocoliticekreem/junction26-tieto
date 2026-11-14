@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new test only checks `text.Contains(ExcludeAttribute)` per generated file. A file with several types, such as the resolver with FormatterCache and GetFormatterHelper, or a file with nested formatters, passes if just one carries the attribute. Deleting the attribute from FormatterCache<T> or GetFormatterHelper in ResolverTemplate would survive in this test. The guard test would also pass, since it only compares counts of occurrences against guarded occurrences.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:68",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:64 delete-statement: remove the '[ExcludeFromCodeCoverage]' lines before 'private static class <Resolver>GetFormatterHelper' -> mutated; expected to survive because the test only requires one attribute per file and the guard test only compares counts."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Guard test: if the attribute were removed from all but one type, or the guard dropped from one, the counts could still match. Only occurrences that are present are compared against guarded ones, so a missing attribute is not caught. The test also never compiles the generated code on a netstandard2.0 or .NET Framework target, so the 'compiles on every supported TFM' criterion is not exercised. It only checks the text of the #if lines.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:82",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 swap-boolean: change guard '#if !NETSTANDARD2_0 && !NETFRAMEWORK' to '#if NETSTANDARD2_0' in one template; the string-based guard test would fail only if the exact string differs, and no test compiles with a netstandard2.0 target, so a wrongly-spelled symbol in one template would still be missed if the Guard constant were updated in the same way."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change ('{' -> '{\\r\\n' when constraints exist) is a behavior change in nesting-type emission with no dedicated test. The new test source has no nested types or generic constraints, so the changed branch is never exercised by the new tests. Only the withheld snapshots could cover it.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: revert '{\\r\\n' to '{'; expected to survive in CodeCoverageExclusionTests because TestSource has no nested generic types with constraints; only snapshots can kill it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The decimal serialization change adds StandardFormat('F') in StandardClassLibraryFormatter. It is unrelated to the requirement and has no test hunk in this change. A wire-format change (it avoids exponent notation) is untested.",
+        "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize decimal values such as 1E-10, 1.5m, and decimal.MaxValue with base-built and head-built MessagePack and compare bytes; also mutate line 148 by removing the StandardFormat('F') argument and run the test suite to see that nothing fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test does not cover generic formatters, nested types, or the CompositeResolver template. The CompositeResolverTemplate changes (2 attributes) have no test source that generates a composite resolver, so deleting them would survive.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27 delete-statement: remove the attribute from the partial class; expected to survive CodeCoverageExclusionTests because TestSource uses no [CompositeResolver]."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12965,
+  "output_tokens": 1579,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

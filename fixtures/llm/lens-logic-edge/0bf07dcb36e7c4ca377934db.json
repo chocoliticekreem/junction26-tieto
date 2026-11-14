@@ -1,0 +1,52 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `MessagePackSecurity` copy constructor no longer copies `HashCollisionResistant`. Every derived instance therefore silently becomes non-collision-resistant, for example `MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(100)` or any other `With*`/`Clone` path. Its `GetEqualityComparer` then returns the default (non-resistant) comparers, which reopens hash-flooding DoS for untrusted data. This is unrelated to REQ-2297 and is a security regression.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:62",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.MessagePackSecurityCopyReceipts.WithMaximumObjectGraphDepth_PreservesHashCollisionResistance. It asserts `UntrustedData.WithMaximumObjectGraphDepth(123).HashCollisionResistant` is true; on head it is false."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Every new `[ExcludeFromCodeCoverage]` is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. `System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute` exists in .NET Standard 2.0 and .NET Framework 4.0+ and is valid on classes, so the guard is unnecessary. Projects targeting netstandard2.0 or .NET Framework (net472 is a supported TFM) get generated resolvers and formatters with no attribute at all. That violates the acceptance criterion that all generated code is decorated; conditional emission was only allowed where the attribute does not exist.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageDownlevelReceipts.GeneratedResolverIsExcludedFromCoverage_OnDownlevelTargets(\"NETSTANDARD2_0\"/\"NETFRAMEWORK\"). It drives the generator with that preprocessor symbol defined and finds no ExcludeFromCodeCoverageAttribute on the generated resolver."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MessagePackSecurityCopyReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MessagePackSecurityCopyReceipts\n{\n    [Fact]\n    public void WithMaximumObjectGraphDepth_PreservesHashCollisionResistance()\n    {\n        Assert.True(MessagePackSecurity.UntrustedData.HashCollisionResistant);\n        MessagePackSecurity derived = MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(123);\n        Assert.Equal(123, derived.MaximumObjectGraphDepth);\n        Assert.True(derived.HashCollisionResistant);\n    }\n}\n",
+        "test_names": [
+          "WithMaximumObjectGraphDepth_PreservesHashCollisionResistance"
+        ],
+        "expects": "fail-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageDownlevelReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Threading;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageDownlevelReceipts\n{\n    private const string Source = \"\"\"\n        using MessagePack;\n\n        namespace Test\n        {\n            [GeneratedMessagePackResolver]\n            partial class MyResolver\n            {\n            }\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n        }\n        \"\"\";\n\n    [Theory]\n    [InlineData(\"NETSTANDARD2_0\")]\n    [InlineData(\"NETFRAMEWORK\")]\n    public async Task GeneratedResolverIsExcludedFromCoverage_OnDownlevelTargets(string symbol)\n    {\n        CSharpParseOptions parseOptions = new CSharpParseOptions(LanguageVersion.Latest, preprocessorSymbols: new[] { symbol });\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(Source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation output, out _);\n\n        GeneratorDriverRunResult runResult = driver.GetRunResult();\n        Assert.NotEmpty(runResult.GeneratedTrees);\n\n        INamedTypeSymbol? resolver = output.GetTypeByMetadataName(\"Test.MyResolver\");\n        Assert.NotNull(resolver);\n        List<string?> attributeNames = resolver!.GetAttributes().Select(a => a.AttributeClass?.ToDisplayString()).ToList();\n        Assert.Contains(\"System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute\", attributeNames);\n    }\n}\n",
+        "test_names": [
+          "GeneratedResolverIsExcludedFromCoverage_OnDownlevelTargets"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 13291,
+  "output_tokens": 8208,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

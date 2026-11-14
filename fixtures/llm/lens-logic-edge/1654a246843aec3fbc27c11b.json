@@ -1,0 +1,45 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `ContainsKey` guards turn a duplicate `[Key]` into silent first-wins with no diagnostic. Example input: a `[MessagePackObject]` with `[Key(0)] public int FirstValue` and `[Key(0)] public int SecondValue`, or the same string key on two members. On base, `Dictionary.Add` threw, so the problem surfaced as AD0001 or CS8785. On head nothing is reported. With generation not suppressed, the generated formatter serializes only `FirstValue` and silently drops `SecondValue`, so data is lost on round-trip. The dynamic resolver rejects duplicate keys at run time, so the analyzer now hides an error it used to surface. This also changes behaviour when `SuppressSourceGeneration` is unset, which the requirement says must not change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeySilentlyDroppedTests (DuplicateIntKey_IsReportedOrBothMembersSerialized and DuplicateStringKey_IsReportedOrBothMembersSerialized). On head no error, AD0001, CS8785 or generator exception is produced, and the generated code never references SecondValue."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same silent first-wins guard was added to the string-key path in the second member-collection loop (the field/constructor variant at the 1145-1180 region). A duplicate string key there is dropped without any diagnostic. In map mode the later member, for example a derived `new` member that hides a base member with the same key, is silently not serialized, depending on member enumeration order.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Same harness as DuplicateStringKey_IsReportedOrBothMembersSerialized, but declare two public fields with [Key(\"a\")]. Assert that a diagnostic is reported or that both fields appear in the generated formatter. On head neither happens."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeySilentlyDroppedTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Reflection;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeySilentlyDroppedTests(ITestOutputHelper logger)\n{\n    [Fact]\n    public Task DuplicateIntKey_IsReportedOrBothMembersSerialized() => this.RunCaseAsync(\"[Key(0)]\", \"[Key(0)]\");\n\n    [Fact]\n    public Task DuplicateStringKey_IsReportedOrBothMembersSerialized() => this.RunCaseAsync(\"[Key(\\\"a\\\")]\", \"[Key(\\\"a\\\")]\");\n\n    private async Task RunCaseAsync(string key1, string key2)\n    {\n        string source = $$\"\"\"\n            using MessagePack;\n\n            namespace TestNs\n            {\n                [GeneratedMessagePackResolver]\n                partial class MyResolver\n                {\n                }\n\n                [MessagePackObject]\n                public class MyObject\n                {\n                    {{key1}}\n                    public int FirstValue { get; set; }\n\n                    {{key2}}\n                    public int SecondValue { get; set; }\n                }\n            }\n            \"\"\";\n\n        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3);\n        var tree = CSharpSyntaxTree.ParseText(source, parseOptions);\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var refs = Enumerable.Concat<MetadataReference>(frameworkRefs, ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { tree },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out var genDiagnostics);\n        var runResult = driver.GetRunResult();\n\n        var analyzers = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract\n                && typeof(DiagnosticAnalyzer).IsAssignableFrom(t)\n                && t.GetConstructor(Type.EmptyTypes) is not null\n                && t.GetCustomAttributes<DiagnosticAnalyzerAttribute>().Any())\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n        var analyzerDiagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n\n        var allDiagnostics = analyzerDiagnostics.Concat(genDiagnostics).Concat(runResult.Diagnostics).ToList();\n        foreach (var d in allDiagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        bool reported = allDiagnostics.Any(d =>\n                (d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal) && d.Severity == DiagnosticSeverity.Error)\n                || d.Id == \"AD0001\"\n                || d.Id == \"CS8785\")\n            || runResult.Results.Any(r => r.Exception is not null);\n\n        string generated = string.Join(\"\\n\", runResult.GeneratedTrees.Select(t => t.ToString()));\n        logger.WriteLine(generated);\n        bool bothSerialized = generated.Contains(\"FirstValue\") && generated.Contains(\"SecondValue\");\n\n        Assert.True(reported || bothSerialized, \"A duplicate key must be reported, or both members must be serialized; head silently drops SecondValue.\");\n    }\n}\n",
+        "test_names": [
+          "DuplicateIntKey_IsReportedOrBothMembersSerialized",
+          "DuplicateStringKey_IsReportedOrBothMembersSerialized"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 9536,
+  "output_tokens": 8652,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_016ZTRtoFx12DniTJbHDKck6"
+}

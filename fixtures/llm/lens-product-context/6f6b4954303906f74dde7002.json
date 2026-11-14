@@ -1,0 +1,56 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetPropertyIdentifierLocation still indexes DeclaringSyntaxReferences[0] and casts unguarded, despite its doc saying it returns null for metadata. For a metadata property with both keys null (BothStringAndIntKeyAreNull path) it still throws IndexOutOfRangeException. This is the crash the requirement names, so the helper does not meet the 'no crash for metadata symbol' criterion.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1432",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test where a referenced-assembly closed generic struct has a [Key] property whose key value is neither int nor string (e.g. a KeyAttribute-derived key), then use it as a member. The generator/analyzer should not throw, but it will throw IndexOutOfRangeException. Alternatively, mutate the helper to use FirstOrDefault() and see whether existing tests catch it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper ReportIfLocatedInCompilation silently drops every diagnostic whose location is not in the compilation's source. This includes Location.None diagnostics from FirstOrDefault()?.GetSyntax().GetLocation() yielding null, and any diagnostic that previously reported without a location. That could suppress legitimate diagnostics for in-compilation types, such as MsgPack004 via inherited members from a base type in a referenced assembly (L12 left this open). It is a broad behavior change beyond the crash fix.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Test a [MessagePackObject] class in the compiling assembly that inherits an unattributed public member from a base class in a referenced assembly. Compare base-built vs head-built analyzer diagnostics (MsgPack004) and show whether the report disappears."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The new README section and the MsgPack004 doc state that diagnostics for referenced-assembly types are the defining assembly's responsibility. This is consistent with L8, which records that referenced-assembly types are deliberately not analysed. It is recorded as checked, not a defect.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] Types from referenced assemblies are deliberately not analysed or formatted by the consuming assembly; a missing diagnostic for them is not a defect."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests never cover a metadata property with a null int and string key, nor the MemberNeedsKey path for a record struct. The unkeyed-member test only exercises the MemberNeedsKey path, so a mutant restoring unguarded indexing in GetPropertyIdentifierLocation would survive.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:576",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Mutate GetPropertyIdentifierLocation and the FirstOrDefault change; run GenericsFormatterTests and check whether any test fails."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 13152,
+  "output_tokens": 1175,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

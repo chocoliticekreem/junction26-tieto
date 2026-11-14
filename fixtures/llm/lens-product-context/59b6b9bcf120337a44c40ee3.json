@@ -1,0 +1,77 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Unrelated security regression: the MessagePackSecurity copy constructor no longer copies HashCollisionResistant from copyFrom. Derived or cloned security settings (WithMaximumObjectGraphDepth, etc.) silently lose collision-resistant hashing for untrusted data. This is outside the scope of REQ-2297 and runs against the recorded secure-by-default direction [L4].",
+        "location": "src/MessagePack/MessagePackSecurity.cs:62",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Create MessagePackSecurity.UntrustedData (HashCollisionResistant=true), call WithMaximumObjectGraphDepth(10), and assert HashCollisionResistant is still true. It fails on head and passes on base."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement says all generated code should carry ExcludeFromCodeCoverage. The attribute is omitted on netstandard2.0 and .NET Framework, and the README documents this. The omission fits the derived criterion that the attribute must exist or be conditionally emitted, but it is not recorded in the ledger. Generated code on those targets still skews coverage.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare the #if !NETSTANDARD2_0 && !NETFRAMEWORK guards in the templates with the 'all generated code' acceptance criterion. On netstandard2.0, ExcludeFromCodeCoverage exists in the BCL for netstandard2.0 projects. The guard may be unnecessarily broad."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The TransformUtilities change from \"{\" to \"{\\r\\n\" when type constraints are present is an unrelated formatting change to the emitted code. It is not mentioned in the requirement and is probably needed only because of the new #if lines.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the snapshot tests. Check that snapshots for nested generic types with constraints change only by this newline and that the output compiles."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The compile-time effect of the guards on netstandard2.0 and .NET Framework consumers is not tested. The new tests only check for text presence and guard wrapping. Nothing compiles the generated output against a netstandard2.0 reference set.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:96",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile the generator output with a NETSTANDARD2_0 preprocessor symbol and a reference set lacking ExcludeFromCodeCoverage. Assert there are no errors."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the ExcludeFromCodeCoverage attribute be emitted unconditionally for every generated target, or should there be an opt-out setting?",
+        "options": [
+          "Unconditional with no setting",
+          "Add an opt-out MSBuild/attribute setting",
+          "Opt-in only"
+        ],
+        "why_it_matters": "The requirement says no setting is needed but allows one. A setting would require new options code and docs. Unconditional emission is correct only if maintainers accept it.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "All generator-emitted types (formatters, string-key, enum, union, resolvers, and their helper classes) get a guarded [ExcludeFromCodeCoverage] unconditionally. There is no setting, and the attribute is omitted on netstandard2.0 and .NET Framework."
+      },
+      {
+        "label": "B",
+        "summary": "Same coverage, plus an opt-out setting such as a MessagePackGenerator option or MSBuild property that suppresses the attribute. Alternatively, the attribute is emitted on netstandard2.0 too, via a reference or polyfill."
+      }
+    ]
+  },
+  "input_tokens": 13393,
+  "output_tokens": 1413,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

@@ -1,0 +1,47 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "Positional record properties no longer produce MsgPack005 when their Key attribute contains null. A positional record property is declared by ParameterSyntax rather than PropertyDeclarationSyntax, so GetPropertyIdentifierLocation returns null even though the property is in source. ReportIfLocatedInCompilation then silently drops the diagnostic. For example, `[MessagePackObject] public partial record R([property: Key(null)] string P);` should report MsgPack005 but does not.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a VerifyCS analyzer test with LanguageVersion.Latest for `[MessagePackObject] public partial record R([property: Key(null)] string {|MsgPack005:P|});` and TestBehaviors.SkipGeneratedSourcesCheck. On head, the expected MsgPack005 is absent because the property's declaring syntax is a ParameterSyntax and the new location filter drops the Location.None diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "UInt32 values from 128 through 255 are no longer encoded with the one-byte uint8 prefix. For example, writing 200u now emits `cd 00 c8` instead of the previous canonical `cc c8`, increasing the payload and breaking existing byte-level expectations and two-byte-destination behavior.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:474",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.UInt32WriterEncodingReceiptTests.ByteSizedUInt32UsesUInt8Encoding: use MessagePackWriter with an ArrayBufferWriter<byte>, write and flush 200u, and assert the bytes are cc c8. It passes on base and fails on head with cd 00 c8."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/UInt32WriterEncodingReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Buffers;\nusing FluentAssertions;\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class UInt32WriterEncodingReceiptTests\n{\n    [Fact]\n    public void ByteSizedUInt32UsesUInt8Encoding()\n    {\n        var output = new ArrayBufferWriter<byte>();\n        var writer = new MessagePackWriter(output);\n        writer.Write(200u);\n        writer.Flush();\n\n        output.WrittenSpan.ToArray().Should().Equal(new byte[] { 0xcc, 0xc8 });\n    }\n}\n",
+        "test_names": [
+          "ByteSizedUInt32UsesUInt8Encoding"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 5971,
+  "output_tokens": 6956,
+  "ms": 85180,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.122253
+}

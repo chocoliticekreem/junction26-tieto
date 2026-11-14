@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Early `return null` when SuppressSourceGeneration is true skips all TypeCollector validation for these types (MsgPack003/004/005/012 etc.). The requirement and ledger L17 say validation diagnostics must still be reported and only MsgPack011/016/017 skipped. This makes the analyzer stay silent for such types. It is also a security-relevant protection loss: the dynamic resolver is the only path that handles these types, and the removed checks (e.g. DoNotMixStringAndIntKeys, duplicate keys) no longer flag misconfigured contracts that would be deserialized from untrusted data.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:713",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: [MessagePackObject(SuppressSourceGeneration = true)] class with a public member lacking [Key]; assert MsgPack004 is reported. It will fail on head because CollectCore returns null before member validation."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate Key values are now silently deduplicated (ContainsKey guards) instead of throwing ArgumentException. First member wins and later ones are dropped from the generated formatter. The duplicate-key diagnostic is not guaranteed to fire on every path, so a mis-keyed contract could generate a formatter that silently drops data on serialize and deserialize, with no failure.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1029",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generator/analyzer test with two members sharing [Key(0)] (int and string variants, both field and property paths); assert a duplicate-key diagnostic is reported (and the type is not silently generated). Fails if no diagnostic is emitted."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7281,
+  "output_tokens": 676,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_016ZTRtoFx12DniTJbHDKck6"
+}

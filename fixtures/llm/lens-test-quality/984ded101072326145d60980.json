@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change replaces the TypeAccessException in the hash-resistant comparer fallback with EqualityComparer<T>.Default. This silently removes a security guard, and no test touches it or would fail if the line were reverted. It is unrelated to REQ-2129.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack/MessagePackSecurity.cs:215 delete-statement: return EqualityComparer<T>.Default -> throw new TypeAccessException(...); expected to survive because no test in the diff exercises GetHashCollisionResistantEqualityComparer for an unknown key type with untrusted data"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Execution tests use only int and string members. Nothing covers nested or collection-typed members, public fields, base-class members, the shadowing logic in GetInstanceMembers, or a class that has no parameterless constructor.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:1",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:~245 negate-condition: seen.Add(member.Name) -> !seen.Add(member.Name); expected to survive because no test type has inherited or hidden members, so it would not be caught"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless and surrogate tests never exercise the requirement to honour MessagePack attributes on T when it carries them. The external types deliberately have none. The surrogate tests do not cover string-key surrogates, and the integer-key sparse-array layout is only checked by its header length.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:68",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:~160 swap-boolean: isIntKey = keyKindIsInt ?? false -> false; expected to be caught only by the int-key surrogate test checking the array header, but there is no string-key surrogate execution test, so string-key surrogate output is unverified"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No diagnostic test covers MsgPack021 for a generic or inaccessible data type, MsgPack022 for a read-only or private target member, or the missing parameterless constructor diagnostic. The surrogate negative cases cover only a missing member and a type mismatch, so the IsPublicReadWrite check on the target is untested.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:196",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:196 remove-guard: delete `|| !IsPublicReadWrite(target)`; expected to survive because the MsgPack022 tests use a missing member and a type mismatch, not a non-public or read-only target"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities filter that excludes [GeneratedMessagePackFormatter] classes from hand-written formatter registration is only indirectly tested. The registration test asserts the resolver returns the right type, but a duplicate registration might still compile or be tolerated. There are no generator snapshot tests for the emitted code.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: delete the `!symbol.GetAttributes().Any(...)` condition; may survive or fail to compile only incidentally, with no explicit test"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25432,
+  "output_tokens": 1389,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

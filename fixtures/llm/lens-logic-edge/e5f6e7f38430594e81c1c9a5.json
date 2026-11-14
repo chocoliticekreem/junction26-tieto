@@ -1,0 +1,48 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The enum formatter's preprocessor condition is inverted. On modern targets, including .NET 8, the generated EnumFormatter has no ExcludeFromCodeCoverage attribute, while NETSTANDARD2_0 and NETFRAMEWORK are the only targets where the attribute is emitted. This misses enum formatters in the requested coverage and risks using the attribute on precisely the legacy targets for which every other template suppresses it.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:9",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a formatter for an enum referenced by a MessagePackObject using normal .NET 8 preprocessor symbols and inspect the active attributes on the generated enum formatter class. EnumFormatter_IsExcludedFromCodeCoverage_OnModernTargets demonstrates that ExcludeFromCodeCoverage is absent."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Applying ExcludeFromCodeCoverage unconditionally to the generated partial resolver causes CS0579 when the consumer has already applied the same attribute to their partial resolver declaration. Attributes from partial declarations are combined, and ExcludeFromCodeCoverageAttribute does not allow multiples, so existing user workarounds become compile errors.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:15",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a [GeneratedMessagePackResolver] partial class that is also annotated with [ExcludeFromCodeCoverage]. ResolverWithUserSuppliedCoverageAttributeStillCompiles expects no generated-code compilation diagnostics and fails on head with the duplicate-attribute error."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/CoverageAttributeEdgeCaseTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class CoverageAttributeEdgeCaseTests\n{\n    [Fact]\n    public async Task EnumFormatter_IsExcludedFromCodeCoverage_OnModernTargets()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            public enum SampleEnum\n            {\n                None,\n                Value,\n            }\n\n            [MessagePackObject]\n            public class SampleObject\n            {\n                [Key(0)]\n                public SampleEnum Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class SampleResolver\n            {\n            }\n            \"\"\";\n\n        IEnumerable<MetadataReference> references =\n            (await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None))\n            .Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"CoverageAttributeReceipt\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation outputCompilation, out _);\n\n        ClassDeclarationSyntax enumFormatter = outputCompilation.SyntaxTrees\n            .SelectMany(tree => tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())\n            .Single(type => type.Identifier.ValueText.EndsWith(\"SampleEnumFormatter\", StringComparison.Ordinal));\n        bool hasCoverageAttribute = enumFormatter.AttributeLists\n            .SelectMany(list => list.Attributes)\n            .Any(attribute => attribute.Name.ToString().EndsWith(\"ExcludeFromCodeCoverage\", StringComparison.Ordinal));\n\n        hasCoverageAttribute.Should().BeTrue(\"enum formatters on modern targets should be excluded from code coverage\");\n    }\n\n    [Fact]\n    public async Task ResolverWithUserSuppliedCoverageAttributeStillCompiles()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [GeneratedMessagePackResolver]\n            [System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]\n            public partial class ExistingCoverageAttributeResolver\n            {\n            }\n            \"\"\";\n        var test = new VerifyCS.Test(ReferencesSet.MessagePack)\n        {\n            TestState = { Sources = { source } },\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "EnumFormatter_IsExcludedFromCodeCoverage_OnModernTargets",
+          "ResolverWithUserSuppliedCoverageAttributeStillCompiles"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 7116,
+  "output_tokens": 5858,
+  "ms": 73758,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.109218
+}

@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "When no surrogate is supplied, the collector always calls CreateContractlessMembers and never inspects attributes on T. For example, if a referenced-assembly type has [MessagePackObject], [Key(42)] on Value, and [IgnoreMember] on Ignored, the generated user formatter still uses name-based string keys and serializes Ignored. This violates the explicit requirement that MessagePack attributes on T be honoured.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:91",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile Project A containing a public [MessagePackObject] type with [Key(42)] Value and [IgnoreMember] Ignored into a metadata reference. In Project B, declare [GeneratedMessagePackFormatter] partial class MyObjectFormatter : IMessagePackFormatter<MyObject>. Run MessagePackGenerator and assert that the emitted formatter excludes Ignored and writes integer key 42; on head it instead contains Ignored and uses the contractless string-key template. The supplied receipt test MessagePackAttributesOnMetadataType_ControlKeysAndMembership demonstrates this."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterHonorsMetadataAttributesReceipt.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterHonorsMetadataAttributesReceipt\n{\n    [Fact]\n    public async Task MessagePackAttributesOnMetadataType_ControlKeysAndMembership()\n    {\n        const string projectASource = \"\"\"\n            using MessagePack;\n\n            namespace ProjectA\n            {\n                [MessagePackObject]\n                public class MyObject\n                {\n                    [Key(42)]\n                    public int Value { get; set; }\n\n                    [IgnoreMember]\n                    public int Ignored { get; set; }\n                }\n            }\n            \"\"\";\n\n        const string projectBSource = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n            using ProjectA;\n\n            [GeneratedMessagePackFormatter]\n            public partial class MyObjectFormatter : IMessagePackFormatter<MyObject>\n            {\n            }\n            \"\"\";\n\n        List<MetadataReference> projectAReferences = new();\n        projectAReferences.AddRange(await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None));\n        projectAReferences.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation projectA = CSharpCompilation.Create(\n            assemblyName: \"ProjectA\",\n            syntaxTrees: new[] { CSharpSyntaxTree.ParseText(projectASource, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references: projectAReferences,\n            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using MemoryStream projectAStream = new();\n        var projectAEmitResult = projectA.Emit(projectAStream);\n        projectAEmitResult.Success.Should().BeTrue();\n        MetadataReference projectAReference = MetadataReference.CreateFromImage(projectAStream.ToArray());\n\n        List<MetadataReference> projectBReferences = new(projectAReferences) { projectAReference };\n        CSharpCompilation projectB = CSharpCompilation.Create(\n            assemblyName: \"ProjectB\",\n            syntaxTrees: new[] { CSharpSyntaxTree.ParseText(projectBSource, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references: projectBReferences,\n            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(\n            projectB,\n            out Compilation outputCompilation,\n            out ImmutableArray<Diagnostic> generatorDiagnostics);\n\n        generatorDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Should().BeEmpty();\n        outputCompilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Should().BeEmpty();\n\n        string generatedFormatter = outputCompilation.SyntaxTrees\n            .Select(tree => tree.ToString())\n            .Single(text => text.Contains(\"partial class MyObjectFormatter\", StringComparison.Ordinal)\n                && text.Contains(\"void Serialize\", StringComparison.Ordinal));\n\n        generatedFormatter.Should().NotContain(\"Ignored\");\n        generatedFormatter.Should().Contain(\"writer.Write(42)\");\n    }\n}\n",
+        "test_names": [
+          "MessagePackAttributesOnMetadataType_ControlKeysAndMembership"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 11554,
+  "output_tokens": 9494,
+  "ms": 97587,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.177072
+}

@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The generated resolver is still emitted without ExcludeFromCodeCoverage. The change decorates only the enum, object, string-key, and union formatter templates, so a compilation using [GeneratedMessagePackResolver] still has uncovered generated resolver code, contrary to the requirement that all generated code be decorated.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the source generator for a [MessagePackObject] type plus a [GeneratedMessagePackResolver] partial class TestResolver. Inspect the generated ClassDeclarationSyntax for TestResolver and assert that its attributes include ExcludeFromCodeCoverage; the assertion fails because only the formatter templates were changed. The supplied GeneratedResolver_IsExcludedFromCodeCoverage test demonstrates this."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedResolverExcludeFromCodeCoverageTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedResolverExcludeFromCodeCoverageTests\n{\n    [Fact]\n    public async Task GeneratedResolver_IsExcludedFromCodeCoverage()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        var syntaxTree = CSharpSyntaxTree.ParseText(source, parseOptions);\n        var frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var compilation = CSharpCompilation.Create(\n            assemblyName: \"Receipts.ExcludeFromCodeCoverage\",\n            syntaxTrees: new[] { syntaxTree },\n            references: frameworkReferences.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)),\n            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { MessagePack.SourceGenerator.MessagePackGenerator .AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);\n\n        var generatedSources = driver.GetRunResult().Results.Single().GeneratedSources;\n        var resolver = generatedSources\n            .SelectMany(generatedSource => generatedSource.SyntaxTree.GetRoot().DescendantNodes())\n            .OfType<ClassDeclarationSyntax>()\n            .Single(declaration => declaration.Identifier.ValueText == \"TestResolver\");\n\n        bool hasExcludeFromCodeCoverage = resolver.AttributeLists\n            .SelectMany(list => list.Attributes)\n            .Any(attribute => attribute.Name.ToString().EndsWith(\"ExcludeFromCodeCoverage\", StringComparison.Ordinal));\n\n        Assert.True(hasExcludeFromCodeCoverage, \"The generated resolver should be decorated with ExcludeFromCodeCoverage.\");\n    }\n}\n",
+        "test_names": [
+          "GeneratedResolver_IsExcludedFromCodeCoverage"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 5532,
+  "output_tokens": 4310,
+  "ms": 50346,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.081246
+}

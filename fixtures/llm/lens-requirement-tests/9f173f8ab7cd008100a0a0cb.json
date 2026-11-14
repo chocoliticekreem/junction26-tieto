@@ -1,0 +1,57 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The NETFRAMEWORK guard suppresses ExcludeFromCodeCoverage on every .NET Framework target, including .NET Framework 4.x where ExcludeFromCodeCoverageAttribute is available. Consequently, generated formatters and resolvers compiled for a supported target such as net472 are not decorated, contrary to the requirement that all generated code be decorated except where conditional emission is needed for compilation.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.NetFrameworkGeneratedCodeCoverageAttributeTests.NetFrameworkGeneratedCodeIncludesAvailableAttribute. It generates a formatter and resolver against the net472 reference assemblies with NETFRAMEWORK and NET472 defined and asserts that every generated source contains the attribute. It fails on head because the NETFRAMEWORK branch removes it, even though the attribute exists in .NET Framework 4.7.2. The same guard appears in all the changed templates."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedCodeCoverageAttributeTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedCodeCoverageAttributeTests\n{\n    private const string AttributeText = \"[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]\";\n\n    [Fact]\n    public async Task AllGeneratedSourceFilesContainExcludeFromCodeCoverage()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public partial class IntKeyObject\n            {\n                [Key(0)]\n                public int Value { get; set; }\n\n                [Key(1)]\n                public SampleEnum EnumValue { get; set; }\n            }\n\n            [MessagePackObject(true)]\n            public partial class StringKeyObject\n            {\n                public int Value { get; set; }\n            }\n\n            public enum SampleEnum\n            {\n                None,\n                One,\n            }\n\n            [MessagePackObject]\n            [Union(0, typeof(FirstUnion))]\n            [Union(1, typeof(SecondUnion))]\n            public partial interface IUnion\n            {\n            }\n\n            [MessagePackObject]\n            public partial class FirstUnion : IUnion\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n\n            [MessagePackObject]\n            public partial class SecondUnion : IUnion\n            {\n                [Key(0)]\n                public string Name { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        CSharpCompilation compilation = await CreateCompilationAsync(source, ReferenceAssemblies.Net.Net80);\n        (CSharpCompilation outputCompilation, GeneratorRunResult runResult) = RunGenerator(compilation);\n\n        Assert.NotEmpty(runResult.GeneratedSources);\n        Assert.All(runResult.GeneratedSources, generatedSource =>\n            Assert.Contains(AttributeText, generatedSource.SourceText.ToString()));\n        Assert.DoesNotContain(outputCompilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);\n    }\n\n    [Fact]\n    public async Task NetStandard20GeneratedCodeOmitsUnavailableAttributeAndCompiles()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public partial class MyObject\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        CSharpCompilation compilation = await CreateCompilationAsync(\n            source,\n            ReferenceAssemblies.NetStandard.NetStandard20,\n            \"NETSTANDARD2_0\");\n        (CSharpCompilation outputCompilation, GeneratorRunResult runResult) = RunGenerator(compilation);\n\n        Assert.NotEmpty(runResult.GeneratedSources);\n        Assert.All(runResult.GeneratedSources, generatedSource =>\n            Assert.DoesNotContain(\"ExcludeFromCodeCoverage\", generatedSource.SourceText.ToString()));\n        Assert.DoesNotContain(outputCompilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);\n    }\n\n    private static async Task<CSharpCompilation> CreateCompilationAsync(\n        string source,\n        ReferenceAssemblies referenceAssemblies,\n        params string[] preprocessorSymbols)\n    {\n        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3, preprocessorSymbols: preprocessorSymbols);\n        ImmutableArray<MetadataReference> references = await referenceAssemblies.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        references = references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        return CSharpCompilation.Create(\n            assemblyName: \"CoverageAttributeReceipts\",\n            syntaxTrees: new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references: references,\n            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n    }\n\n    private static (CSharpCompilation Compilation, GeneratorRunResult RunResult) RunGenerator(CSharpCompilation compilation)\n    {\n        var parseOptions = (CSharpParseOptions)compilation.SyntaxTrees.Single().Options;\n        ISourceGenerator generator = new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator();\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new[] { generator }, parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(\n            compilation,\n            out Compilation outputCompilation,\n            out ImmutableArray<Diagnostic> generatorDiagnostics);\n\n        Assert.Empty(generatorDiagnostics.Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));\n        return ((CSharpCompilation)outputCompilation, Assert.Single(driver.GetRunResult().Results));\n    }\n}\n",
+        "test_names": [
+          "AllGeneratedSourceFilesContainExcludeFromCodeCoverage",
+          "NetStandard20GeneratedCodeOmitsUnavailableAttributeAndCompiles"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/NetFrameworkGeneratedCodeCoverageAttributeTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class NetFrameworkGeneratedCodeCoverageAttributeTests\n{\n    [Fact]\n    public async Task NetFrameworkGeneratedCodeIncludesAvailableAttribute()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public partial class MyObject\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        var parseOptions = new CSharpParseOptions(\n            LanguageVersion.CSharp7_3,\n            preprocessorSymbols: new[] { \"NETFRAMEWORK\", \"NET472\" });\n        ImmutableArray<MetadataReference> references = await ReferenceAssemblies.NetFramework.Net472.Default.ResolveAsync(\n            LanguageNames.CSharp,\n            CancellationToken.None);\n        references = references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            assemblyName: \"NetFrameworkCoverageReceipts\",\n            syntaxTrees: new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references: references,\n            options: new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ISourceGenerator generator = new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator();\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new[] { generator }, parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(\n            compilation,\n            out Compilation outputCompilation,\n            out ImmutableArray<Diagnostic> generatorDiagnostics);\n        GeneratorRunResult runResult = Assert.Single(driver.GetRunResult().Results);\n\n        Assert.Empty(generatorDiagnostics.Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error));\n        Assert.NotEmpty(runResult.GeneratedSources);\n        Assert.All(runResult.GeneratedSources, generatedSource =>\n            Assert.Contains(\n                \"[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]\",\n                generatedSource.SourceText.ToString()));\n        Assert.DoesNotContain(outputCompilation.GetDiagnostics(), diagnostic => diagnostic.Severity == DiagnosticSeverity.Error);\n    }\n}\n",
+        "test_names": [
+          "NetFrameworkGeneratedCodeIncludesAvailableAttribute"
+        ],
+        "expects": "fail-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Decoration is always on for every emitted formatter, resolver, and nested helper/cache class, with preprocessor guards only to keep target frameworks compiling; no generator option is added. This is the broad scope implemented by the change."
+      },
+      {
+        "label": "B",
+        "summary": "Only formatter types, including object, string-key, enum, and union formatters, need decoration. Resolvers and nested helper/cache classes are outside the requested scope, so the resolver and composite-resolver template additions would be removed while retaining the formatter additions."
+      }
+    ]
+  },
+  "input_tokens": 7465,
+  "output_tokens": 9633,
+  "ms": 115902,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.16689
+}

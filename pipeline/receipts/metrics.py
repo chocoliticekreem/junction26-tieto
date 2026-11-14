@@ -767,11 +767,10 @@ def run_metrics(provider: str = "anthropic") -> int:
 VERDA = "@verda"
 VERDA_EXTRA = ("ju26-issue-2297-r2",)  # round 2 of 2297 exists on Verda only
 PROVIDER_NOTE = (
-    "Anthropic bench numbers come from the pipeline as of PR #11 (recorded Sat 14 Nov 07:10-09:10 "
-    "EET; the key then hit its spend limit); Verda bench numbers come from the final pipeline "
-    "(PR #13 claim-tied verification, PR #15 reader vote). So a bench difference mixes the model "
-    "change with the pipeline change. The four Tieto changes ran on the current pipeline on both "
-    "providers, so those rows compare models only. cost = recorded cost of every LLM call in the "
+    "Both providers' bench numbers come from the final pipeline (PR #13 claim-tied verification, "
+    "PR #15 reader vote, stripped bait comments; Anthropic re-run Sat 14 Nov through the Message "
+    "Batches API, Verda live), so bench rows compare models only. Verda runs use kimi-k3-1-pro "
+    "for every role. cost = recorded cost of every LLM call in the "
     "run (lenses, readers, orientation, A/B builder, LLM router; Tieto rows include the __A/__B "
     "review runs), at list price: Anthropic first-party, Verda per verda.com/inference with "
     "cached input at the full input price. EUR = USD x VERDA_EUR_PER_USD (default 1.0, parity). "

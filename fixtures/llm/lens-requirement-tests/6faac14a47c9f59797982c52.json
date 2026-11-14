@@ -1,0 +1,70 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The central referenced-assembly scenario is rejected: an INamedTypeSymbol obtained from a MetadataReference has an empty DeclaringSyntaxReferences collection, so the new guard reports MsgPack021 and returns no model for precisely the ProjectA.MyType case this feature is meant to support. This is distinct from the ledger's deliberate behavior for ordinary, non-opt-in TypeCollector processing.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:67",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedMessagePackFormatterRequirementTests.FormatterForAttributeFreeTypeInReferencedAssemblyIsGenerated. It compiles ProjectA into a MetadataReference without MessagePack references, then runs the generator in ProjectB; the current guard produces MsgPack021/no implementation and the output compilation retains the unimplemented-interface error."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MessagePack attributes on T are never inspected. Unless a surrogate is supplied, Collect always calls CreateContractlessMembers, assigns string keys, and includes every public read-write member; consequently [MessagePackObject]/[Key] integer keys and [IgnoreMember] on T are not honored as required.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:90",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedMessagePackFormatterRequirementTests.MessagePackAttributesOnReferencedTypeAreHonored. After the metadata-only guard is corrected, this test distinguishes the behaviors: the attributed type must generate an array formatter with two keyed members and omit its [IgnoreMember] member, whereas the current contractless path generates string-keyed output including that member."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The acceptance criterion's literal body-less declaration (`partial class X : IMessagePackFormatter<T>;`) is not supported by the change. The implementation and documentation exercise only brace-bodied class declarations, and source generation cannot remove the compiler syntax errors produced for the semicolon form on compilers that do not recognize it.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedMessagePackFormatterRequirementTests.BodyLessFormatterDeclarationIsSupported. It uses the exact semicolon declaration from the acceptance criteria under LanguageVersion.Preview and requires both successful generation and an error-free output compilation."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedMessagePackFormatterRequirementTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedMessagePackFormatterRequirementTests\n{\n    [Fact]\n    public async Task FormatterForAttributeFreeTypeInReferencedAssemblyIsGenerated()\n    {\n        MetadataReference projectA = await CompileLibraryAsync(\n            \"\"\"\n            namespace ProjectA;\n\n            public class MyObject\n            {\n                public int Id { get; set; }\n\n                public string Name { get; set; } = string.Empty;\n            }\n            \"\"\");\n\n        var result = await GenerateProjectBAsync(\n            \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            [GeneratedMessagePackFormatter]\n            public partial class MyObjectFormatter : IMessagePackFormatter<ProjectA.MyObject>\n            {\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\",\n            projectA);\n\n        AssertNoErrors(result.OutputCompilation, result.GeneratorDiagnostics);\n        result.GeneratedSource.Should().Contain(\"partial class MyObjectFormatter\");\n        result.GeneratedSource.Should().Contain(\"Id\");\n        result.GeneratedSource.Should().Contain(\"Name\");\n    }\n\n    [Fact]\n    public async Task MessagePackAttributesOnReferencedTypeAreHonored()\n    {\n        MetadataReference projectA = await CompileLibraryAsync(\n            \"\"\"\n            using MessagePack;\n\n            namespace ProjectA;\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int Id { get; set; }\n\n                [Key(1)]\n                public string Name { get; set; } = string.Empty;\n\n                [IgnoreMember]\n                public string DoNotSerialize { get; set; } = string.Empty;\n            }\n            \"\"\",\n            ReferencesHelper.GetReferences(ReferencesSet.MessagePack).ToArray());\n\n        var result = await GenerateProjectBAsync(\n            \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            [GeneratedMessagePackFormatter]\n            public partial class MyObjectFormatter : IMessagePackFormatter<ProjectA.MyObject>\n            {\n            }\n            \"\"\",\n            projectA);\n\n        AssertNoErrors(result.OutputCompilation, result.GeneratorDiagnostics);\n        result.GeneratedSource.Should().Contain(\"partial class MyObjectFormatter\");\n        result.GeneratedSource.Should().Contain(\"WriteArrayHeader(2)\");\n        result.GeneratedSource.Should().NotContain(\"DoNotSerialize\");\n    }\n\n    [Fact]\n    public async Task BodyLessFormatterDeclarationIsSupported()\n    {\n        var result = await GenerateProjectBAsync(\n            \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            public class MyObject\n            {\n                public int Id { get; set; }\n            }\n\n            [GeneratedMessagePackFormatter]\n            public partial class MyObjectFormatter : IMessagePackFormatter<MyObject>;\n            \"\"\");\n\n        AssertNoErrors(result.OutputCompilation, result.GeneratorDiagnostics);\n        result.GeneratedSource.Should().Contain(\"partial class MyObjectFormatter\");\n    }\n\n    private static async Task<MetadataReference> CompileLibraryAsync(string source, params MetadataReference[] additionalReferences)\n    {\n        ImmutableArray<MetadataReference> references = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        references = references.AddRange(additionalReferences);\n        CSharpParseOptions parseOptions = new(LanguageVersion.Preview);\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            $\"ProjectA_{Guid.NewGuid():N}\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));\n\n        using var image = new MemoryStream();\n        var emitResult = compilation.Emit(image);\n        emitResult.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Should().BeEmpty();\n        return MetadataReference.CreateFromImage(image.ToArray());\n    }\n\n    private static async Task<(Compilation OutputCompilation, ImmutableArray<Diagnostic> GeneratorDiagnostics, string GeneratedSource)> GenerateProjectBAsync(\n        string source,\n        params MetadataReference[] additionalReferences)\n    {\n        ImmutableArray<MetadataReference> references = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        references = references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        references = references.AddRange(additionalReferences);\n        CSharpParseOptions parseOptions = new(LanguageVersion.Preview);\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            $\"ProjectB_{Guid.NewGuid():N}\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            generators: new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(\n            compilation,\n            out Compilation outputCompilation,\n            out ImmutableArray<Diagnostic> generatorDiagnostics,\n            CancellationToken.None);\n\n        string generatedSource = string.Join(\n            \"\\n\",\n            driver.GetRunResult().Results.SelectMany(r => r.GeneratedSources).Select(s => s.SourceText.ToString()));\n        return (outputCompilation, generatorDiagnostics, generatedSource);\n    }\n\n    private static void AssertNoErrors(Compilation outputCompilation, ImmutableArray<Diagnostic> generatorDiagnostics)\n    {\n        generatorDiagnostics.Where(d => d.Severity == DiagnosticSeverity.Error).Should().BeEmpty();\n        outputCompilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).Should().BeEmpty();\n    }\n}\n",
+        "test_names": [
+          "FormatterForAttributeFreeTypeInReferencedAssemblyIsGenerated",
+          "MessagePackAttributesOnReferencedTypeAreHonored",
+          "BodyLessFormatterDeclarationIsSupported"
+        ],
+        "expects": "new-api"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "The change's reading: contractless public-member serialization is the default, MessagePack attributes already present on T must also be honored, and an optional SurrogateType is the compile-time mechanism for specifying Key/IgnoreMember contracts without modifying T. Keeping the surrogate requires fixing the metadata-only rejection and attribute handling, not adding DataMember support."
+      },
+      {
+        "label": "B",
+        "summary": "Alternative (1) from the issue is the selected key/customization design instead of a surrogate: the generator reads DataContract/DataMember/IgnoreDataMember and related serialization attributes directly from T to choose membership and keys, with contractless behavior when they are absent. This can be built by replacing the SurrogateType-specific contract path with serialization-attribute collection while retaining the same partial generated formatter API and continuing to honor MessagePack attributes."
+      }
+    ]
+  },
+  "input_tokens": 13783,
+  "output_tokens": 13673,
+  "ms": 148089,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.246444
+}

@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The Str8 case was removed from TryWriteStringHeader. Strings of 32..255 UTF-8 bytes now fall into the Str16 branch, so the header grows from 2 to 3 bytes and the first byte changes from 0xd9 to 0xda. Every existing user serializing such strings (string values, map string keys) sees different bytes, and the output is longer than the minimal encoding. The requirement is about analyzer diagnostics under SuppressSourceGeneration and does not ask for this.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:914",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a string of 40 ASCII chars ('a' x 40) and a [MessagePackObject] type with a 40-char string key using base-built and head-built MessagePack. Base emits 0xd9 0x28 ...; head emits 0xda 0x00 0x28 ... Compare the bytes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "When a member's key kind differs from the other members (DoNotMixStringAndIntKeys), the diagnostic is reported and the member is now skipped with `continue`. Previously the member was still added to intMembers or stringMembers. Generated formatter output, and the member set, changes for users whose code mixes key kinds. Such code is already an error, but the generated code that user projects compile differs, which can add or remove cascading compile errors.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshot tests with a type mixing [Key(0)] and [Key(\"a\")]. Compare the generated formatter against the base snapshot for dropped members."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate int or string keys are now silently deduplicated (first wins) via ContainsKey instead of throwing from Dictionary.Add. The generated formatter now omits the duplicate member. If the duplicate-key diagnostic (e.g. MsgPack005/006) is reported elsewhere this is fine. Otherwise generated output changes for users, and the omission could hide the problem. Verify that the diagnostics still fire.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test with two members sharing [Key(0)], and another with two members sharing the same string key. Assert that the duplicate-key diagnostic is still reported and that the generator does not throw."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7381,
+  "output_tokens": 944,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_016ZTRtoFx12DniTJbHDKck6"
+}

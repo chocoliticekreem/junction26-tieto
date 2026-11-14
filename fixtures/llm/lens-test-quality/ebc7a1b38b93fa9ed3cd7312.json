@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The test asserts only that the ExcludeFromCodeCoverage text appears somewhere in each generated file. FormatterCache<T> and GetFormatterHelper are nested types in the resolver, so deleting the attribute on one of them does not fail the file-level Contains check. The guard test compares the attribute count with the guarded count, which also survives the deletion because the remaining attributes are still guarded.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:68",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:31 delete-statement: remove the ExcludeFromCodeCoverage block on FormatterCache<T> (and on GetFormatterHelper) -> expected to survive because the resolver class itself still carries the attribute and the tests only check Contains and count equality per file. Run CodeCoverageExclusionTests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The guard test checks the text of the #if guard but never compiles the generated code with NETSTANDARD2_0 or NETFRAMEWORK defined, nor on a TFM lacking the attribute. The generated code is not compiled at all in these tests. An incorrect guard symbol that still matches the string is not caught. A wrong or missing guard in a template, for example on a path the test source does not exercise, would also go unnoticed.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:83",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "CompositeResolverTemplate.tt:7 negate-condition: change `#if !NETSTANDARD2_0 && !NETFRAMEWORK` to `#if NETSTANDARD2_0` -> the string-matching guard test fails only because of the literal text. A semantic mutation such as renaming the symbol in both the template and the test constant would survive, because no compilation under netstandard2.0 is done."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test source never exercises generic formatters, nested types, or the CompositeResolver template, since there is no [CompositeResolver] usage. The CompositeResolverTemplate changes (class and FormatterCache) therefore have no direct test other than the snapshot regeneration. Removing the attribute there would not fail the new tests.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:15",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27 delete-statement: remove the ExcludeFromCodeCoverage attribute from the Write string -> expected to survive CodeCoverageExclusionTests because TestSource has no composite resolver; only the snapshot tests would notice."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12047,
+  "output_tokens": 1055,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01Dbg3xnSVbJt6wK1KGzecTi"
+}

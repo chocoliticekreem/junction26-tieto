@@ -1,0 +1,65 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The preprocessor condition in EnumTemplate is inverted relative to every other template. The attribute is emitted only when NETSTANDARD2_0 or NETFRAMEWORK is defined, which are exactly the targets where the attribute is assumed unavailable. Enum formatters therefore get no exclusion on modern targets, so the requirement is unmet for them. On netstandard2.0/net472 the attribute is emitted, which may fail to compile there if ExcludeFromCodeCoverage is absent; it exists in netstandard2.0 and net40+, so it is probably fine on those targets. The result is an inconsistent and incorrect guard.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests. Build a net8.0 enum sample and a netstandard2.0 enum sample, and confirm the generated enum formatter lacks the attribute on net8.0 (the #if NETSTANDARD2_0 || NETFRAMEWORK branch is excluded). Compare against the guard on the other formatters, which use #if !NETSTANDARD2_0 && !NETFRAMEWORK."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is excluded on NETSTANDARD2_0/NETFRAMEWORK, where System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute does exist (netstandard2.0, net472). Generated code in those projects therefore remains covered, so 'all generated code is decorated' is not met on those targets. The guard also hardcodes symbols, so it misses other targets such as netstandard2.1 and net462, which could behave differently.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a generated formatter in a netstandard2.0 and a net472 project with the guard removed. If it builds, the conditional exclusion is unnecessary and the requirement is unmet on those targets."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The change to nesting-type emission alters whitespace in generated output when constraints exist ('{' becomes '{\\r\\n'). This changes the checked-in or snapshotted generated text for nested generic types with constraints, which is unrelated to the requirement. Users who snapshot generated output will see the diff.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests for nested generic types with constraints and diff the generated output between base and head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The #if directive is emitted after a '/// <summary>' doc comment in the ResolverTemplate. The doc comment still precedes the attribute, so it should attach correctly. However, in CompositeResolverTemplate and the formatter templates, '#if' must start at the start of a line. The emitted text begins after a previous Write that may not end with a newline in some paths, e.g. where EmitNestingTypesAndNamespaces ends a line without a trailing newline.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate formatters for a nested non-generic type without constraints and one with constraints. Confirm that '#if' starts on its own line and that the output compiles."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should generated code on NETSTANDARD2_0/NETFRAMEWORK targets also carry ExcludeFromCodeCoverage?",
+        "options": [
+          "Yes, always emit it, since the attribute exists on those targets",
+          "No, skip it on those targets, as the guard intends"
+        ],
+        "why_it_matters": "If yes, the conditional guards are unneeded and the requirement is unmet on those targets. If no, the guard is intentional, but EnumTemplate is still inverted.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 10087,
+  "output_tokens": 1467,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

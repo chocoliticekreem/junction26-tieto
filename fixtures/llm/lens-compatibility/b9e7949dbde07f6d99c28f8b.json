@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `continue` on DoNotMixStringAndIntKeys skips the mismatched member. Previously the member was still processed and added to intMembers/stringMembers (or fell through), so generated formatters for types that mix key kinds included it. Now the member is silently dropped from the member list. That changes generator output for code that already produced MsgPack errors. Because the diagnostic is an Error, such code should not build, but a user who has suppressed the diagnostic could see a different formatter or different bytes.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with a [MessagePackObject] class mixing [Key(0)] and [Key(\"a\")] members. Regenerate at base and head and diff the formatter output; the mismatched member should be missing at head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate int/string keys are now silently skipped via ContainsKey instead of reaching Add. The first member wins and later duplicates are dropped from the generated formatter. Previously Add threw ArgumentException, which was caught and logged or crashed. This is a behaviour change for duplicate-key types, and the dropped member could change serialized bytes. It is only safe if a duplicate-key diagnostic is reported elsewhere, which this hunk does not show.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] class with two members marked [Key(0)]. Assert that a duplicate-key diagnostic (MsgPack006) is still reported at head and that the generator does not throw. Also compare the generated formatter between base and head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 6592,
+  "output_tokens": 667,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01LRnr97VeVc8UU8nVuQdTKz"
+}

@@ -1,0 +1,138 @@
+[
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "Unsigned 32-bit values from 128 through 255 now use the two-byte UInt16 encoding instead of the one-byte UInt8 encoding. This is unrelated to REQ-2283 and changes the serialized bytes for existing callers without any opt-in, potentially changing snapshots, hashes, and output size.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:477",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Serialize uint values 127, 128, 200, and 255 with the base-built and head-built MessagePackPrimitives writer and compare the exact bytes. Base should emit cc80, ccc8, and ccff for 128, 200, and 255, while head emits cd0080, cd00c8, and cd00ff respectively; 127 should remain unchanged."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "The unrelated primitive-writer change stops encoding uint values from 128 through 255 in the one-byte uint8 representation and instead emits uint16. This changes the established wire bytes and payload sizes without serving the generator/analyzer crash fix.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Using base-built and head-built MessagePackPrimitives.Write(uint), serialize each value 127, 128, 200, 255, 256 and compare bytes. Head should incorrectly emit CD 00 80 through CD 00 FF where base emits CC 80 through CC FF; values 127 and 256 should remain unchanged."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The new tests verify that metadata diagnostics are suppressed, but none verifies that diagnostics for types declared in the usage compilation are still reported. A mutation that disables analyzer reporting entirely would therefore pass every test added by this change.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239 negate-condition: reportAnalyzerDiagnostic is null -> reportAnalyzerDiagnostic is not null; expected to survive because all added tests expect zero diagnostics, and none asserts an in-compilation MsgPack00x diagnostic."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The MessagePackPrimitives write-path change has no accompanying test. In particular, nothing in the added tests exercises unsigned integer values from 128 through 255, whose encoding now takes the UInt16 branch instead of the removed UInt8 branch.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:477",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack/MessagePackPrimitives.Writers.cs:477 off-by-one: case <= ushort.MaxValue -> case <= byte.MaxValue; expected to survive because the diff adds no MessagePackPrimitives or serialization test covering values 128-255."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-2",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L12] area=analyzer, generator: Types that come from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly. In `TypeCollector.CollectCore`, after the custom-formatter, enum and generic checks, a non-generic type whose symbol is metadata-only exits with a bare `if (type.Locations[0].IsInMetadata) { return; }` (TypeCollector.cs:367-370), so no MsgPack003/004/005 diagnostic and no generated formatter appear for it. The defining assembly owns validating and formatting its own types (rationale inferred: the code has no comment). A missing diagnostic or formatter for such a type is not a defect. (source: src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367) (would-be finding: Suppressing source-generator diagnostics for members whose declarations live only in a referenced assembly is deliberate: the defining assembly owns their validation and formatting. The README, MsgPack004 documentation, and compilation-local diagnostic filter consistently implement that policy.)",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L12] Types from referenced assemblies are deliberately not analysed and receive no formatter from the consuming assembly; missing diagnostics for them are not defects."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m5",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects linq-first at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation(); -> private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.First()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation();"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m6",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects logical-operator at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (diagnostic.Location.IsInSource || this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-suite-only-TypeCollector",
+    "lens": "test-quality",
+    "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239, 985, 1448; the existing suite does",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:239 delete-statement: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> (statement deleted); TypeCollector.cs:985 delete-statement: this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull, GetPropertyIdentifierLocation(item), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name)); -> (statement deleted); TypeCollector.cs:1448 delete-statement: report(diagnostic); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compat-break",
+    "lens": "compatibility",
+    "claim": "compatibility break: 5 sample(s) serialize to different bytes",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Compatibility bytes: 5/124 cases differ, 0 base payloads fail to read on head, public API +0/-0"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "compat-bytes"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

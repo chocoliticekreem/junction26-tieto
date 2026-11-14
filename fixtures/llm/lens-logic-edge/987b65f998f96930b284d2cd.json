@@ -1,0 +1,55 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change raises `MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth` from 500 to 5000. This is unrelated to REQ-2283, which is a generator/analyzer crash, and it weakens the secure-by-default preset (L9 records the 500 stack-depth limit). An untrusted payload nested 501 to 5000 levels deep used to be rejected and is now accepted. Deeply recursive typed formatters can then overflow the stack, which kills the process and cannot be caught.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.UntrustedDataDepthLimitTests. `UntrustedData_RejectsGraphDeeperThan500` deserializes 600 nested fixarrays (0x91 x600 + 0xC0) as object with `UntrustedData` and expects `MessagePackSerializationException`. It passes on base and fails on head because the payload is accepted. `UntrustedData_MaximumObjectGraphDepth_Is500` fails on head with 5000."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement names three unguarded `DeclaringSyntaxReferences[0]` sites (reporter's lines 735, 1009 and 1101). The diff fixes only the BothStringAndIntKeyAreNull site (~982) and the MemberNeedsKey site (~1077). No hunk touches the region around the reporter's line 735 (~708 in this base). If that site still does `formattedType.DeclaringSyntaxReferences[0]` while building a diagnostic (e.g. TypeMustBeMessagePackObject for a closed generic metadata struct without [MessagePackObject]), it still throws. The new `ReportIfLocatedInCompilation` wrapper cannot help, because the exception happens while the Diagnostic is being built, before reporting.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile lib as a metadata reference: `public struct Plain<T> { public T Value; }` (no [MessagePackObject]), plus the issue's `[MessagePackObject] partial record struct Item<T>`. Compile app with `[MessagePackObject] public class Cmd { [Key(0)] public Plain<int> A; [Key(1)] public Item<int> B; }`. Run MessagePackGenerator through CSharpGeneratorDriver and `compilation.WithAnalyzers(...)`. Assert there is no exception in `GetRunResult().Results[0].Exception` and no AD0001. Also grep head TypeCollector.cs for remaining `DeclaringSyntaxReferences[0]`."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new wrapper drops every diagnostic whose location is not in source, including Location.None. Before, diagnostics on source-declared types whose location helper returned null were still reported, at Location.None. Examples: `GetParameterListLocation` for an implicit constructor, or `GetIdentifierLocation` when the cast yields null. Those are now silently dropped. That is wider than L8, which covers only metadata types; source types now lose diagnostics they used to get.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "In head TypeCollector.cs, list the `reportDiagnostic` calls whose location comes from `GetParameterListLocation`, `GetIdentifierLocation`, `GetLocation` or `FirstOrDefault()?.GetSyntax()`. For a source type with an implicit constructor or other syntax-less member they produce Location.None, and `ReportIfLocatedInCompilation` then rejects them because `!Location.IsInSource`."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/UntrustedDataDepthLimitTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class UntrustedDataDepthLimitTests\n{\n    [Fact]\n    public void UntrustedData_MaximumObjectGraphDepth_Is500()\n    {\n        MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth.Should().Be(500);\n    }\n\n    [Fact]\n    public void UntrustedData_RejectsGraphDeeperThan500()\n    {\n        const int depth = 600;\n        byte[] bytes = new byte[depth + 1];\n        for (int i = 0; i < depth; i++)\n        {\n            bytes[i] = 0x91; // fixarray of length 1\n        }\n\n        bytes[depth] = 0xC0; // nil\n        MessagePackSerializerOptions options = MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData);\n        Action act = () => MessagePackSerializer.Deserialize<object>(new ReadOnlyMemory<byte>(bytes), options);\n        act.Should().Throw<MessagePackSerializationException>();\n    }\n}\n",
+        "test_names": [
+          "UntrustedData_MaximumObjectGraphDepth_Is500",
+          "UntrustedData_RejectsGraphDeeperThan500"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 11949,
+  "output_tokens": 8341,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

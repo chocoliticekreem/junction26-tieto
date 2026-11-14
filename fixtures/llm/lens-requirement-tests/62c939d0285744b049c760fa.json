@@ -1,0 +1,57 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "Enum formatters use the inverse target-framework condition from every other template. Consequently, on modern targets such as net8.0 the enum formatter's ExcludeFromCodeCoverage attribute is inactive, so not all generated code is decorated. On NETSTANDARD2_0 or NETFRAMEWORK it is instead active even though the change identifies those as targets where the attribute is unavailable, breaking the supported-target compilation criterion there.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:9",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.EnumExcludeFromCodeCoverageRequirementTests.EnumFormatter_HasActiveExcludeFromCodeCoverageAttributeOnModernTargets. It parses the generated enum formatter with modern-target preprocessor symbols and fails on head because the attribute occurs only inside inactive '#if NETSTANDARD2_0 || NETFRAMEWORK' text. Additionally, compiling that generated formatter with NETSTANDARD2_0 against netstandard2.0 references exercises the reversed availability branch."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageGenerationTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageGenerationTests\n{\n    private const string AttributeName = \"global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage\";\n\n    [Fact]\n    public async Task ObjectFormatter_HasActiveExcludeFromCodeCoverageAttribute()\n    {\n        GeneratorDriverRunResult result = await RunGeneratorAsync();\n        string formatter = result.GeneratedTrees\n            .Select(tree => tree.ToString())\n            .Single(text => text.Contains(\"IMessagePackFormatter<global::MyObject>\", StringComparison.Ordinal));\n\n        Assert.True(CountActiveAttributes(formatter) > 0, formatter);\n    }\n\n    [Fact]\n    public async Task ResolverAndNestedHelpers_HaveActiveExcludeFromCodeCoverageAttributes()\n    {\n        GeneratorDriverRunResult result = await RunGeneratorAsync();\n        string resolver = result.GeneratedTrees\n            .Select(tree => tree.ToString())\n            .Single(text => text.Contains(\"partial class TestResolver\", StringComparison.Ordinal));\n\n        Assert.Equal(3, CountActiveAttributes(resolver));\n    }\n\n    private static async Task<GeneratorDriverRunResult> RunGeneratorAsync()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        MetadataReference[] references = (await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None))\n            .AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n            .ToArray();\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"Receipts.GeneratedTests.ObjectAndResolver\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);\n        return driver.GetRunResult();\n    }\n\n    private static int CountActiveAttributes(string generatedSource)\n    {\n        return CSharpSyntaxTree.ParseText(generatedSource, new CSharpParseOptions(LanguageVersion.Latest))\n            .GetRoot()\n            .DescendantNodes()\n            .OfType<AttributeSyntax>()\n            .Count(attribute => attribute.Name.ToString() == AttributeName);\n    }\n}\n",
+        "test_names": [
+          "ObjectFormatter_HasActiveExcludeFromCodeCoverageAttribute",
+          "ResolverAndNestedHelpers_HaveActiveExcludeFromCodeCoverageAttributes"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/EnumExcludeFromCodeCoverageRequirementTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class EnumExcludeFromCodeCoverageRequirementTests\n{\n    private const string AttributeName = \"global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage\";\n\n    [Fact]\n    public async Task EnumFormatter_HasActiveExcludeFromCodeCoverageAttributeOnModernTargets()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            public enum MyEnum\n            {\n                None,\n                Value,\n            }\n\n            [MessagePackObject]\n            public class EnumHolder\n            {\n                [Key(0)]\n                public MyEnum Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        MetadataReference[] references = (await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None))\n            .AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n            .ToArray();\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"Receipts.GeneratedTests.Enum\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n        string formatter = result.GeneratedTrees\n            .Select(tree => tree.ToString())\n            .Single(text => text.Contains(\"IMessagePackFormatter<global::MyEnum>\", StringComparison.Ordinal));\n\n        int activeAttributes = CSharpSyntaxTree.ParseText(formatter, new CSharpParseOptions(LanguageVersion.Latest))\n            .GetRoot()\n            .DescendantNodes()\n            .OfType<AttributeSyntax>()\n            .Count(attribute => attribute.Name.ToString() == AttributeName);\n        Assert.True(activeAttributes > 0, formatter);\n    }\n}\n",
+        "test_names": [
+          "EnumFormatter_HasActiveExcludeFromCodeCoverageAttributeOnModernTargets"
+        ],
+        "expects": "fail-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Decorate every generated type without adding a setting: object/string-key, enum, and union formatters, resolver classes, and nested resolver formatter-cache/helper classes, suppressing the attribute only through target-availability preprocessor guards. This is the scope the change attempts to implement."
+      },
+      {
+        "label": "B",
+        "summary": "Interpret the coverage request as covering generated formatter classes only, still unconditionally where the attribute exists; omit it from resolvers and their nested helper classes by removing the ResolverTemplate and CompositeResolverTemplate additions while retaining the formatter-template additions."
+      }
+    ]
+  },
+  "input_tokens": 7686,
+  "output_tokens": 10048,
+  "ms": 128501,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.173778
+}

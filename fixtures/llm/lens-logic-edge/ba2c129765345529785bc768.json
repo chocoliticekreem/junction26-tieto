@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "DepthStep now permits one level beyond MaximumObjectGraphDepth. DepthStep increments reader.Depth after this guard, so with a configured maximum of 1 the first call leaves Depth at 1 and the second call now also succeeds (1 > 1 is false), leaving Depth at 2; only the third call throws. This also means a maximum of int.MaxValue can no longer reject at the boundary before Depth is incremented, potentially overflowing it.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Create security = MessagePackSecurity.TrustedData.WithMaximumObjectGraphDepth(1) and a MessagePackReader. Call security.DepthStep(ref reader) twice. The second call must throw InsufficientExecutionStackException: it does on base with >=, but does not on head with >."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SecurityDepthStepBoundaryTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SecurityDepthStepBoundaryTests\n{\n    [Fact]\n    public void DepthStepRejectsDepthAtConfiguredMaximum()\n    {\n        MessagePackSecurity security = MessagePackSecurity.TrustedData.WithMaximumObjectGraphDepth(1);\n        var reader = new MessagePackReader(new ReadOnlyMemory<byte>(new byte[] { 0x90 }));\n\n        security.DepthStep(ref reader);\n\n        bool threw = false;\n        try\n        {\n            security.DepthStep(ref reader);\n        }\n        catch (InsufficientExecutionStackException)\n        {\n            threw = true;\n        }\n\n        Assert.True(threw, \"A second depth step must be rejected when MaximumObjectGraphDepth is 1.\");\n    }\n}\n",
+        "test_names": [
+          "Receipts.GeneratedTests.SecurityDepthStepBoundaryTests.DepthStepRejectsDepthAtConfiguredMaximum"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 4655,
+  "output_tokens": 4309,
+  "ms": 53533,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.0786
+}

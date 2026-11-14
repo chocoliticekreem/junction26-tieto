@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "IsPublicReadWrite treats public fields as eligible only when field.IsReadOnly is true (inverted). Writable public fields are skipped, and readonly fields are marked IsWritable: true. The generated deserializer then assigns to readonly fields, so the generated formatter will fail to compile (CS0191) or the contractless contract will silently drop data. The inversion is not a security issue by itself, but it is a correctness defect in deserialization of untrusted data shape.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:274",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generator snapshot test: [GeneratedMessagePackFormatter] partial class for a type with `public int Field;` and `public readonly int RO;`. Expect Field serialized and RO excluded; the test fails: Field is dropped and RO produces a compile error."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In contractless mode, string-key members are sorted by name and given an IntKey of their index, but isIntKey=false. That is fine, but surrogate int keys with gaps (e.g. 0 and 1000) pass an attacker-irrelevant but unbounded IntKey into the array-layout templates. The array-header size is derived from the max key, so a very large [Key(int.MaxValue)] on a surrogate would make generated code allocate or write a huge array header. Deserialization of an array of that declared length then loops over attacker-supplied header counts; the existing MessagePackSecurity and collection checks do not apply to the generated object formatter's header count.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:176",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Snapshot test: surrogate with [Key(0)] and [Key(100000)]. Inspect the generated Serialize writing an array header of 100001 nil elements, and compare with the existing [MessagePackObject] behaviour."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated formatter model is built by the generator with reportDiagnostic: null, and failures return null silently. A separate diagnostics pipeline re-runs Collect. If ReferenceSymbols.TryCreate fails, no diagnostic is reported, and the formatter is silently not generated. The user-declared partial class then fails to implement IMessagePackFormatter<T> with only a generic compiler error. This is not a security protection being disabled, only a degraded diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:127",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the generatedFormatterDiagnostics SelectMany: when ReferenceSymbols.TryCreate returns false, it emits an empty array."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18007,
+  "output_tokens": 1019,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

@@ -1,0 +1,47 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new analyzer tests codify the opposite of the acceptance criterion: they require all diagnostics to disappear for a suppressed type, so the broad early return can silently disable MsgPack003/004/005 and other contract diagnostics without these tests treating that as a bug. In particular, MemberWithoutKeyIsNotReported expects no MsgPack004 even though the requirement says violations must still be diagnosed when SuppressSourceGeneration is true.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:714",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer test using [MessagePackObject(SuppressSourceGeneration = true)] with a public member lacking [Key] and [IgnoreMember], with MsgPack004 markup, and run it against this change; it fails because GetObjectInfo returns null before diagnostics are collected. The current MemberWithoutKeyIsNotReported test also demonstrates the inverted expectation."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The continue statements for mixed key kinds are not exercised by the only mixed-key test because that test uses SuppressSourceGeneration = true and therefore returns before member collection. Both added statements can be deleted without any test detecting the resulting analyzer failure for an ordinary generated type.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014 delete-statement: continue; -> no statement (and likewise the second instance at line 1154); expected to survive because MixedKeyKindsDoNotFailAnalyzer exits at the suppression guard and no non-suppressed mixed-key test reaches these statements"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The duplicate-string-key guards are untested on the code paths they modify. DuplicateStringKeysDoNotFailAnalyzer is suppressed and returns before either dictionary is built, while the sole non-suppressed duplicate-key test uses integer keys. Removing either stringMembers guard leaves all new tests passing.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1045",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1045 remove-guard: if (!stringMembers.ContainsKey(member.StringKey)) { stringMembers.Add(...); } -> stringMembers.Add(...); (and likewise line 1185); expected to survive because no generated-type duplicate-string-key analyzer test executes these guards"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 4982,
+  "output_tokens": 1133,
+  "ms": 15136,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "low",
+  "repaired": false,
+  "cost_eur": 0.031941
+}

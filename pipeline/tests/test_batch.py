@@ -391,7 +391,7 @@ def test_rounds_until_nothing_pending(iso, monkeypatch, tmp_path):
             write_fixture(e["purpose"], k, {"ok": True})
         return llm.BatchReport(batch_id=f"b{len(batches)}", submitted=len(reqs), succeeded=len(reqs))
 
-    monkeypatch.setattr(llm, "run_batch", fake_run_batch)
+    monkeypatch.setattr(llm, "run_batches", fake_run_batch)
     stop, log = bench.batch_rounds(entries, 1, tmp_path, max_usd=None, dry_run=False)
     assert stop is None
     assert [len(b) for b in batches] == [2, 1]
@@ -401,7 +401,7 @@ def test_rounds_until_nothing_pending(iso, monkeypatch, tmp_path):
 def test_cost_cap_and_dry_run_submit_nothing(iso, monkeypatch, tmp_path):
     r1 = list(_queue(("lens-logic-edge", "u" * 40000, "claude-opus-5-5")).values())
     entries, _ = _round_script(monkeypatch, [r1])
-    monkeypatch.setattr(llm, "run_batch", lambda *a, **k: pytest.fail("must not submit"))
+    monkeypatch.setattr(llm, "run_batches", lambda *a, **k: pytest.fail("must not submit"))
     stop, log = bench.batch_rounds(entries, 1, tmp_path, max_usd=0.01, dry_run=False)
     assert stop == 2 and log[0]["estimate"]["totals"]["batch_usd"] > 0.01
     stop, log = bench.batch_rounds(entries, 1, tmp_path, max_usd=None, dry_run=True)
@@ -417,7 +417,7 @@ def test_round_cap(iso, monkeypatch, tmp_path):
     monkeypatch.setattr(bench, "collect_case", endless)
     monkeypatch.setattr(estimate, "historical_output", lambda *a, **k: {})
     calls = []
-    monkeypatch.setattr(llm, "run_batch", lambda reqs, client=None: calls.append(1)
+    monkeypatch.setattr(llm, "run_batches", lambda reqs, client=None: calls.append(1)
                         or llm.BatchReport())
     stop, log = bench.batch_rounds([{"id": "x", "requirement": "R"}], 1, tmp_path, None, False)
     assert stop is None and len(calls) == bench.MAX_ROUNDS == len(log)

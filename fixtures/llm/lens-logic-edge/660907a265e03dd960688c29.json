@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The last hunk inverts the duplicate-key guard: `if (stringMembers.ContainsKey(member.StringKey)) { stringMembers.Add(...) }`. Its sibling hunks use `!ContainsKey`. As written, a string-keyed member in this second member loop is never added, because a first occurrence is never in the dictionary. So the generated formatter silently omits every string-keyed member there, likely fields. Data written through those members is lost on serialization and never populated on deserialization. Base added them unconditionally, so this is a regression for code that does not use SuppressSourceGeneration at all.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.StringKeyMemberLoopReceipts.StringKeyedFieldAndPropertyAppearInGeneratedFormatter. It runs the generator on a [MessagePackObject] class with only string-keyed fields and one with only string-keyed properties, then asserts both member names appear in the generated source. On head one of them is missing."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same inverted condition makes Add run only when the key is already present. If a property and a field share the same string key, the second loop calls Dictionary.Add with a duplicate key. That throws ArgumentException, so the generator fails (CS8785) and the analyzer fails (AD0001), which is the analyzer breakage the requirement is about.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator driver on `[MessagePackObject] public class C { [Key(\"a\")] public int P { get; set; } [Key(\"a\")] public int F; }`. Assert that GetRunResult().Results[0].Exception is null; on head it is an ArgumentException."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/StringKeyMemberLoopReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class StringKeyMemberLoopReceipts\n{\n    private readonly ITestOutputHelper logger;\n\n    public StringKeyMemberLoopReceipts(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task StringKeyedFieldAndPropertyAppearInGeneratedFormatter()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace ReceiptsNs\n            {\n                [GeneratedMessagePackResolver]\n                partial class MyResolver\n                {\n                }\n\n                [MessagePackObject]\n                public class FieldHolder\n                {\n                    [Key(\"k1\")]\n                    public int UniqueFieldNameAlpha;\n\n                    [Key(\"k2\")]\n                    public string UniqueFieldNameBeta;\n                }\n\n                [MessagePackObject]\n                public class PropertyHolder\n                {\n                    [Key(\"p1\")]\n                    public int UniquePropNameGamma { get; set; }\n\n                    [Key(\"p2\")]\n                    public string UniquePropNameDelta { get; set; }\n                }\n            }\n            \"\"\";\n\n        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3);\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = frameworkRefs.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n\n        foreach (var r in result.Results)\n        {\n            Assert.Null(r.Exception);\n        }\n\n        string generated = string.Join(\"\\n\", result.GeneratedTrees.Select(t => t.ToString()));\n        this.logger.WriteLine(generated);\n\n        Assert.Contains(\"UniqueFieldNameAlpha\", generated);\n        Assert.Contains(\"UniqueFieldNameBeta\", generated);\n        Assert.Contains(\"UniquePropNameGamma\", generated);\n        Assert.Contains(\"UniquePropNameDelta\", generated);\n    }\n}\n",
+        "test_names": [
+          "StringKeyedFieldAndPropertyAppearInGeneratedFormatter"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 9755,
+  "output_tokens": 4260,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01LRnr97VeVc8UU8nVuQdTKz"
+}

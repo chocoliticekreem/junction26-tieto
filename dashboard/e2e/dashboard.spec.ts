@@ -474,7 +474,7 @@ test("track record leads with headline tiles from summary.json and the new table
   await expect(tiles.filter({ hasText: "Questions per change" }).getByTestId("stat-value")).toHaveText("0.25 → 0.04");
   await expect(tiles.filter({ hasText: "routed away from humans" }).getByTestId("stat-value")).toHaveText("94%");
   await expect(tiles.filter({ hasText: "Model cost per change" }).getByTestId("stat-value")).toHaveText("$0.68");
-  await expect(page.getByTestId("provenance")).toContainText("PR #11");
+  await expect(page.getByTestId("provenance")).toContainText("final pipeline");
   await expect(page.getByTestId("provenance")).toContainText("simulated human");
   await expect(page.getByTestId("stat-tile").first()).toHaveAttribute("title", /Cold run, empty ledger/);
 

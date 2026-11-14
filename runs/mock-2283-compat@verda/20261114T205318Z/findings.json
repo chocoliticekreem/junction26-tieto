@@ -1,0 +1,194 @@
+[
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "Deleting the byte.MaxValue arm changes TryWriteUInt32 for values 128 through 255 from the compact uint8 encoding (0xCC plus one byte) to uint16 encoding (0xCD plus two bytes). This changes established serialized bytes and increases their size, and is unrelated to the referenced-assembly collector crash.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:477",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add or run a MessagePackPrimitives writer unit test calling TryWriteUInt32 for 128 and 255. Assert the bytes are CC 80 and CC FF respectively, with bytesWritten equal to 2; the head implementation instead emits CD 00 80 and CD 00 FF with bytesWritten equal to 3."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "Positional record properties no longer produce MsgPack005 when their Key attribute contains null. A positional record property is declared by ParameterSyntax rather than PropertyDeclarationSyntax, so GetPropertyIdentifierLocation returns null even though the property is in source. ReportIfLocatedInCompilation then silently drops the diagnostic. For example, `[MessagePackObject] public partial record R([property: Key(null)] string P);` should report MsgPack005 but does not.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add a VerifyCS analyzer test with LanguageVersion.Latest for `[MessagePackObject] public partial record R([property: Key(null)] string {|MsgPack005:P|});` and TestBehaviors.SkipGeneratedSourcesCheck. On head, the expected MsgPack005 is absent because the property's declaring syntax is a ParameterSyntax and the new location filter drops the Location.None diagnostic."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "UInt32 values from 128 through 255 are no longer encoded with the one-byte uint8 prefix. For example, writing 200u now emits `cd 00 c8` instead of the previous canonical `cc c8`, increasing the payload and breaking existing byte-level expectations and two-byte-destination behavior.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:474",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.UInt32WriterEncodingReceiptTests.ByteSizedUInt32UsesUInt8Encoding: use MessagePackWriter with an ArrayBufferWriter<byte>, write and flush 200u, and assert the bytes are cc c8. It passes on base and fails on head with cd 00 c8."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "Unsigned integer values from 128 through 255 are now always emitted with the uint16 marker (0xcd) instead of the previous uint8 marker (0xcc). This changes serialized bytes and adds a byte for those values, even though the requirement only concerns generator/analyzer crashes, so existing consumers observe an unrelated wire-format change without opting in.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:477",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Using base-built and head-built assemblies, serialize the uint values 127, 128, 200, 255, and 256 with MessagePackSerializer.Serialize<uint> and compare the bytes. Base should encode 128, 200, and 255 as cc 80, cc c8, and cc ff respectively, while head encodes them as cd 00 80, cd 00 c8, and cd 00 ff; 127 and 256 should remain unchanged."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "The unrelated primitive-writer edit changes the wire encoding of ushort values 128–255: they previously used the one-byte UInt8 payload (0xcc), but now fall through to UInt16 encoding (0xcd), increasing output size and altering bytes produced for existing inputs. This regression is unrelated to the referenced-assembly generic-type crash.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Using base-built and head-built MessagePackPrimitives, write ushort values 127, 128, 255, and 256 and compare the emitted bytes. The head build encodes 128 and 255 with the UInt16 marker 0xcd instead of the base build's UInt8 marker 0xcc."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The metadata-location fix for BothStringAndIntKeyAreNull is not exercised. All three new metadata fixtures either have valid keys or reach MemberNeedsKey, so restoring the unguarded DeclaringSyntaxReferences[0] access on this path would still crash without any new test noticing.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 remove-guard: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because none of the added metadata fixtures has a member with a null key, so none reaches BothStringAndIntKeyAreNull. Add a closed generic metadata struct member using [Key(null)] and assert that analysis completes without AD0001/CS8785."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The new diagnostic filter is tested only for dropping metadata diagnostics, not for retaining diagnostics located in the current compilation. Negating its condition would suppress every reported diagnostic while all added tests continued to pass.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (!(diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))); expected to survive because every added analyzer assertion expects zero diagnostics. Add a positive control with an unkeyed member declared in usageSource and require MsgPack004/MemberNeedsKey."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The MessagePackPrimitives writer change has no test coverage in this change. In particular, no added test pins UInt32 values from 128 through 255 to the one-byte UInt8 representation, despite the deleted branch changing them to UInt16 encoding.",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:477",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack/MessagePackPrimitives.Writers.cs:477 off-by-one: case <= ushort.MaxValue -> case <= byte.MaxValue; expected to survive because none of the changed tests invokes MessagePackPrimitives or checks serialized bytes. Add writer tests asserting exact output bytes for UInt32 values 127, 128, 255, 256, and 65535."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-2",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L12] area=analyzer, generator: Types that come from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly. In `TypeCollector.CollectCore`, after the custom-formatter, enum and generic checks, a non-generic type whose symbol is metadata-only exits with a bare `if (type.Locations[0].IsInMetadata) { return; }` (TypeCollector.cs:367-370), so no MsgPack003/004/005 diagnostic and no generated formatter appear for it. The defining assembly owns validating and formatting its own types (rationale inferred: the code has no comment). A missing diagnostic or formatter for such a type is not a defect. (source: src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367) (would-be finding: Suppressing diagnostics for members of metadata-only types and documenting that their defining assembly reports those diagnostics matches the recorded product decision; it is not an unintended loss of analyzer coverage.)",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1437",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L12] Types from referenced assemblies are deliberately not analysed by the consuming compilation; the defining assembly owns validation, so missing member diagnostics there are not defects."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m5",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects linq-first at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation(); -> private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.First()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation();"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m6",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects logical-operator at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (diagnostic.Location.IsInSource || this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-suite-only-TypeCollector",
+    "lens": "test-quality",
+    "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239, 985, 1448; the existing suite does",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "TypeCollector.cs:239 negate-condition: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> this.reportDiagnostic = reportAnalyzerDiagnostic is not null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic);; TypeCollector.cs:239 delete-statement: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> (statement deleted); TypeCollector.cs:985 delete-statement: this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull, GetPropertyIdentifierLocation(item), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name)); -> (statement deleted); TypeCollector.cs:1448 delete-statement: report(diagnostic); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compat-break",
+    "lens": "compatibility",
+    "claim": "compatibility break: 5 sample(s) serialize to different bytes",
+    "location": "src/MessagePack/MessagePackPrimitives.Writers.cs",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Compatibility bytes: 5/124 cases differ, 0 base payloads fail to read on head, public API +0/-0"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "compat-bytes"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

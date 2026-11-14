@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The reportDiagnostic wrapper (ReportIfLocatedInCompilation) is the actual guard against metadata-symbol diagnostics. If its condition is negated or removed, tests would likely not notice. The tests only assert that no diagnostics are produced and the resolver exists. Every diagnostic from the metadata type has a null location after the other hunks, and Diagnostic.Create with a null location yields Location.None. Because the type is metadata-only, the filter is partly redundant with the null-location changes, so the mutants likely survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:1443 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(...)) -> if (!(...)); expected to survive because the metadata-type tests only assert no diagnostics. Also run delete-statement on report(diagnostic) to check that in-source diagnostics (MsgPack004 etc.) are still emitted, since no test here asserts a positive diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test verifies that diagnostics are still reported for same-assembly types after the reportDiagnostic wrapper change. A bug in the filter that drops valid in-source diagnostics (e.g. SyntaxTree not contained in the compilation) would be missed by the tests in this diff. The new tests only cover the no-diagnostic path. A regression where MsgPack003/004/AOTDerivedKeyAttribute stop being reported would pass these tests.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:239 replace the wrapper with a lambda that drops all diagnostics (delete-statement on the report call); the new tests in GenericsFormatterTests still pass, and only the pre-existing analyzer tests could catch it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The edited MemberNeedsKey path (FirstOrDefault()?) is the one the third test claims to cover (ClosedGenericStruct_FromMetadataReference_UnkeyedMember), but it may not be reached. Metadata types exit early in CollectCore or are handled by the closed-generic branch, and the unkeyed public member may not hit that line. With the wrapper filter also in place, reverting FirstOrDefault()? to [0] would crash only if the line is reached. No test demonstrates that the specific line is hit. The BothStringAndIntKeyAreNull path (GetPropertyIdentifierLocation) has no test at all, because there is no metadata property with a Key attribute that has a null key.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:1077 revert FirstOrDefault()? to [0] (remove-guard); confirm ClosedGenericStruct_FromMetadataReference_UnkeyedMember fails. Also mutate GetPropertyIdentifierLocation at line 985 back to the [0] cast; expected to survive because no test makes a metadata property hit the BothStringAndIntKeyAreNull branch."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "An unrelated source change in MessagePackPrimitives.Writers.cs removes the `case <= byte.MaxValue` branch, so values 128..255 are now written as uint16 (0xcd) instead of uint8 (0xcc). This changes the wire format and is not covered by any test in the diff, so this regression would go undetected by the change's own tests. The output is non-minimal and breaks byte-exact expectations. This change is also unrelated to the requirement.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize the value 200 (uint) with base-built and head-built MessagePackPrimitives.TryWriteUInt; base gives CC C8, head gives CD 00 C8. Existing writer tests that check 128..255 should fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests use SkipGeneratedSourcesCheck and a separate manual generator run that checks only the resolver hint name. They do not verify that the resolver content is correct, e.g. that it includes a formatter for Cmd or MyObject. A generator that emits an empty resolver would pass. The ledger (L16) leaves open whether a formatter for Item<int> should appear, so this cannot be asserted strictly.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:621",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Mutate the generator to emit an empty resolver body; expected to survive because only the hint name is asserted, not the contents."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12680,
+  "output_tokens": 1797,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

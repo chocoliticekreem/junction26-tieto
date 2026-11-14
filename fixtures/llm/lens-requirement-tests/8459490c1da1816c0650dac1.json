@@ -1,0 +1,60 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change does not implement the core fix: no hunk enables analysis of types marked SuppressSourceGeneration = true. The TypeCollector edits only change mixed-key and duplicate-key handling, while the README newly promises continued validation. Consequently, a suppressed type with a public member lacking [Key] or [IgnoreMember] still lacks the required MsgPack004 diagnostic.",
+        "location": "README.md:1626",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerTests.SuppressedTypeStillReportsMsgPack004. It compiles a [MessagePackObject(SuppressSourceGeneration = true)] type with an unannotated public property and expects MsgPack004; it fails on base and also fails on head if suppression still disables analysis."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "When SuppressSourceGeneration = true, must generator-only diagnostics MsgPack011, MsgPack016, and MsgPack017 still be reported?",
+        "options": [
+          "Only runtime-contract diagnostics are required; omit MsgPack011/016/017 as the README describes.",
+          "Report every applicable MsgPack0xx diagnostic, including MsgPack011/016/017, just as in version 3.1.0."
+        ],
+        "why_it_matters": "The first answer makes the README's diagnostic carve-out compliant; the second makes that carve-out a requirement violation and requires preserving those additional analyzer paths for suppressed types.",
+        "area": "docs",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests\n{\n    [Fact]\n    public async Task SuppressedTypeStillReportsMsgPack004()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                public int {|MsgPack004:Value|} { get; set; }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(source);\n        await test.RunAsync();\n    }\n\n    [Fact]\n    public async Task UnsuppressedTypeStillReportsMsgPack004()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public partial class MyObject\n            {\n                public int {|MsgPack004:Value|} { get; set; }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(source);\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "SuppressedTypeStillReportsMsgPack004",
+          "UnsuppressedTypeStillReportsMsgPack004"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Suppression disables only formatter generation and generator-only diagnostics. The analyzer must run for runtime-contract rules such as MsgPack003/004/005/012/015, while MsgPack011/016/017 are intentionally skipped, matching the new README text."
+      },
+      {
+        "label": "B",
+        "summary": "Suppression must leave analyzer behavior fully equivalent to version 3.1.0: every applicable MsgPack0xx diagnostic remains enabled, including MsgPack011/016/017, while only emitted formatter source is suppressed. This requires removing the README carve-out and retaining those diagnostic paths."
+      }
+    ]
+  },
+  "input_tokens": 5400,
+  "output_tokens": 6150,
+  "ms": 78177,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.10845
+}

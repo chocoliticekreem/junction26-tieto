@@ -1,0 +1,48 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "A formatted type's own MessagePack attributes are ignored unless the caller duplicates its contract in a surrogate. In the no-surrogate path, the collector unconditionally builds members with CreateContractlessMembers. For example, a type with [MessagePackObject(SuppressSourceGeneration = true)], [Key(0)] on Value, and [IgnoreMember] on Ignored gets a contractless string-key formatter that serializes Ignored, instead of the required [Key]/[IgnoreMember] behaviour.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:103",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.Req2129ReceiptTests.GeneratedFormatterHonoursMessagePackAttributes. It generates a formatter for an attributed type and fails on head because generated source still contains the [IgnoreMember] property. A runtime companion can serialize the same object and show that Ignored is written and that string keys are used instead of the declared integer key."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The timestamp32 eligibility mask was inverted. nanoseconds shifted left by 34 always leaves the low 32 bits clear, so every positive-subsecond timestamp whose Unix seconds value is zero now takes the timestamp32 branch and loses its subsecond component. For example, 1970-01-01T00:00:00.500Z round-trips as 1970-01-01T00:00:00Z; a seconds value of 2^32 is likewise truncated by the 32-bit encoding.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.Req2129ReceiptTests.TimestampAtEpochWithSubsecondsRoundTrips. It serializes and deserializes 1970-01-01T00:00:00.500Z using MessagePackSerializer and fails on head because the result is the epoch without the 500 milliseconds. Also assert that an integral timestamp at Unix second 0 uses timestamp32 while a subsecond timestamp at that second uses timestamp64."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/Req2129ReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing MessagePack;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class Req2129ReceiptTests\n{\n    [Fact]\n    public async Task GeneratedFormatterHonoursMessagePackAttributes()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class AttributedPoco\n            {\n                [Key(0)]\n                public int Value { get; set; }\n\n                [IgnoreMember]\n                public int Ignored { get; set; }\n            }\n\n            [GeneratedMessagePackFormatter]\n            public partial class AttributedPocoGeneratedFormatter : IMessagePackFormatter<AttributedPoco>;\n            \"\"\";\n\n        ImmutableArray<MetadataReference> frameworkReferences = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        ImmutableArray<MetadataReference> references = frameworkReferences.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"GeneratedFormatterAttributeReceipt\",\n            new SyntaxTree[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Enable));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation outputCompilation, out _);\n\n        outputCompilation.GetDiagnostics()\n            .Where(d => d.Severity == DiagnosticSeverity.Error)\n            .Should().BeEmpty();\n\n        string generated = string.Join(\n            Environment.NewLine,\n            driver.GetRunResult().Results\n                .SelectMany(result => result.GeneratedSources)\n                .Select(generatedSource => generatedSource.SourceText.ToString()));\n\n        generated.Should().Contain(\"AttributedPocoGeneratedFormatter\");\n        generated.Should().NotContain(\"Ignored\", \"[IgnoreMember] on the formatted type must be honoured\");\n    }\n\n    [Fact]\n    public void TimestampAtEpochWithSubsecondsRoundTrips()\n    {\n        DateTime value = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc).AddMilliseconds(500);\n\n        byte[] bytes = MessagePackSerializer.Serialize(value);\n        DateTime roundTripped = MessagePackSerializer.Deserialize<DateTime>(bytes);\n\n        roundTripped.Should().Be(value);\n    }\n}\n",
+        "test_names": [
+          "GeneratedFormatterHonoursMessagePackAttributes",
+          "TimestampAtEpochWithSubsecondsRoundTrips"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 11738,
+  "output_tokens": 12791,
+  "ms": 160244,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.227079
+}

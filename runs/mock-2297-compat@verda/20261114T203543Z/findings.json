@@ -1,0 +1,176 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The conditional emission excludes netstandard2.0 and .NET Framework even though ExcludeFromCodeCoverageAttribute is available on both. Generated code for those supported targets therefore has no active attribute, contrary to the requirement that all generated code be decorated; conditional emission is only justified where the attribute is unavailable.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run generator tests with parse options defining NETSTANDARD2_0 and NETFRAMEWORK, compiling against netstandard2.0 and net462 reference assemblies respectively, and assert that every generated class has an active ExcludeFromCodeCoverage attribute. On HEAD the guarded attributes are absent. In the same target compilations, compile a source class directly decorated with ExcludeFromCodeCoverageAttribute to establish that removing the guard is valid."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "An unrelated change formats decimals with StandardFormat('F'). Fixed-point formatting without an explicit precision rounds to the framework's default number of decimal places, so values such as 0.001m can be serialized as \"0.00\" and 1.234m as \"1.23\", losing data and changing the stable wire representation. This is outside the code-coverage feature.",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:147",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Using base-built and head-built MessagePack assemblies, serialize 0.001m and 1.234m with MessagePackSerializer.Serialize<decimal> under the same default options, compare the MessagePack string payload bytes, and round-trip the HEAD payload. BASE preserves \"0.001\" and \"1.234\"; HEAD emits fixed-format rounded strings and round-trips different numeric values."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The new fixed-point StandardFormat('F') has no explicit precision, so decimal formatting uses the fixed-point default of two fractional digits. Consequently, serializing 123.456m produces a string rounded to 123.46, and deserialization returns a different value instead of preserving the decimal.",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:147",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.DecimalFixedPointFormattingReceiptTests.DecimalSerializationPreservesFractionalValue in tests/MessagePack.SourceGenerator.Tests/Receipts/DecimalFixedPointFormattingReceiptTests.cs. It round-trips 123.456m through MessagePackSerializer and asserts equality; on head the rounded fixed-point representation fails the assertion."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "The decimal formatter now uses the fixed-point 'F' format without a precision specifier, whose default is two fractional digits. Values such as 123.456m therefore serialize as \"123.46\" instead of \"123.456\", changing the established wire bytes and losing data on deserialization; this unrelated change is not required by the code-coverage feature.",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:147",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Using otherwise identical serializers built from base and head, serialize decimal values 123.456m, 0.005m, and 1.2300m with DecimalFormatter (via MessagePackSerializer.Serialize<decimal> under the standard resolver). Compare the MessagePack string bytes and deserialize each head payload to confirm that 123.456m becomes 123.46m."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "The new target-framework guard suppresses ExcludeFromCodeCoverage on netstandard2.0 and .NET Framework even though the attribute is available there, so generated code on those supported targets is not decorated as required. The README also incorrectly describes those targets as lacking the attribute.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Compile generated output for netstandard2.0 and a supported .NET Framework target with the attribute emitted unconditionally; demonstrate that System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute resolves on both, then show that the current #if removes it from those compilations."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-2",
+    "lens": "product-context",
+    "claim": "An unrelated change to DecimalFormatter switches from general formatting to fixed-point 'F' formatting without a precision. This can round fractional decimal values (for example, 1.234m to 1.23), changing the serialized representation and losing information, and is outside the code-coverage feature.",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Serialize 1.234m with the base and head builds and compare bytes; decode both outputs and verify that the head output is rounded. Revert the StandardFormat('F') argument and verify the original representation is preserved."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The serializer behavior change for decimal formatting has no test in the diff. In particular, nothing verifies that decimals requiring more than the default fixed-point precision still round-trip without losing fractional digits.",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148 delete-statement: TryFormat(value, dest.Slice(1, MessagePackRange.MaxFixStringLength), out var written, new System.Buffers.StandardFormat('F')) -> TryFormat(value, dest.Slice(1, MessagePackRange.MaxFixStringLength), out var written); expected to survive because no test in the change exercises DecimalFormatter.Serialize or asserts decimal round-trip fidelity. Add a round-trip test using a value such as 1.234567m and compare the result with the original decimal."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The new tests check only that each generated file contains at least one guarded attribute, so they do not verify the stated per-type requirement for files containing multiple generated types. Removing the attribute from a resolver's FormatterCache<T> or GetFormatterHelper would leave both tests green.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:78",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:55 delete-statement: #if !NETSTANDARD2_0 && !NETFRAMEWORK\\n\\t[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]\\n#endif -> removed; expected to survive because AllGeneratedTypesAreExcludedFromCodeCoverage only calls text.Contains once per file and ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable only compares counts of remaining attributes and guards. Parse the generated resolver and assert the attribute on the resolver, FormatterCache<T>, and GetFormatterHelper declarations."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The target-framework test validates preprocessor text but never compiles the generated output for either an unavailable-attribute target or an available-attribute target, so it does not test the acceptance criterion that generated code still compiles on every supported target framework.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:87",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run the generator with preprocessor symbols NETSTANDARD2_0 and NETFRAMEWORK, respectively, and assert successful compilation against corresponding reference assemblies without ExcludeFromCodeCoverage; also compile without those symbols against a modern reference set. The current ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable test would not detect compilation errors that occur despite the expected guard text."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "The newline fix for constrained nesting types has no regression test: the new test input contains no nested generic type with constraints and does not assert generator compilation diagnostics.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: writer(anyConstraints ? \"{\\r\\n\" : \" {\\r\\n\") -> writer(anyConstraints ? \"{\" : \" {\\r\\n\"); expected to survive because CodeCoverageExclusionTests uses only non-generic top-level test types and never checks output compilation diagnostics. Add a generation-and-compilation test for a MessagePackObject nested in a generic type with a type parameter constraint."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m1",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects negate-condition at src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (System.Buffers.Text.Utf8Formatter.TryFormat(value, dest.Slice(1, MessagePackRange.MaxFixStringLength), out var written, new System.Buffers.StandardFormat('F'))) -> if (!(System.Buffers.Text.Utf8Formatter.TryFormat(value, dest.Slice(1, MessagePackRange.MaxFixStringLength), out var written, new System.Buffers.StandardFormat('F'))))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compat-break",
+    "lens": "compatibility",
+    "claim": "compatibility break: 2 sample(s) serialize to different bytes",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Compatibility bytes: 2/124 cases differ, 0 base payloads fail to read on head, public API +0/-0"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "compat-bytes"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

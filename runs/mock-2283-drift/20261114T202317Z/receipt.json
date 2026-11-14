@@ -1,0 +1,404 @@
+{
+  "change_id": "mock-2283-drift",
+  "requirement_id": "REQ-2283",
+  "requirement_title": "Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly",
+  "requirement_text": "# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]` type has a member whose type is a closed generic value type defined in a referenced assembly.\n\nBecause the generator then \"will not contribute to the output\", the compiling assembly silently ends up with no generated resolver at all. It is only a warning, so a normal build looks fine, but trimmed and NativeAOT apps fail at runtime.\n\nRepro: two projects. `lib`:\n\n```csharp\nusing MessagePack;\nnamespace Lib;\n\n[MessagePackObject]\npublic partial record struct Item<T>([property: Key(0)] string Key);\n```\n\n`app`, with a `ProjectReference` to `lib`:\n\n```csharp\nusing MessagePack; using Lib;\nnamespace App;\n\n[MessagePackObject]\npublic sealed partial record Cmd([property: Key(0)] string Scope)\n{\n    [Key(1)] public Item<int> Member { get; init; }\n}\n```\n\nThen `dotnet build` on `app`.\n\nExpected: a clean build, with a generated resolver in `app`.\n\nActual:\n\n```\nCSC : warning CS8785: Generator 'MessagePackGenerator' failed to generate source. It will not\ncontribute to the output and compilation errors may occur as a result. Exception was of type\n'IndexOutOfRangeException' with message 'Index was outside the bounds of the array.'.\nCSC : warning AD0001: Analyzer 'MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer'\nthrew an exception of type 'System.IndexOutOfRangeException' with message 'Index was outside the\nbounds of the array.'.\n```\n\n`app.dll` contains no `GeneratedMessagePackResolver`. Version used: MessagePack 3.1.8.\n\nWhat triggers it (`Item` declared in `lib`, `Cmd` in `app`):\n\n| `Item` declared as | result |\n|---|---|\n| `record struct Item<T>` | crash |\n| `struct Item<T>` | crash |\n| `struct Item` | ok |\n| `record struct Item` | ok |\n| `class Item<T>` | ok |\n| `record class Item<T>` | ok |\n\nIt needs all three of: generic, value type, from a referenced assembly. Moving the identical `Item<T>` declaration into `app` makes the crash disappear.\n\nReporter's analysis: `CollectGeneric` line 661 is the closed-generic branch that calls `GetObjectInfo` directly, so `GetObjectInfo` runs against a type that has no syntax. Several diagnostic paths inside it index `DeclaringSyntaxReferences[0]` directly (lines 735, 1009, 1101) instead of using `FirstOrDefault()` like the neighbouring `GetIdentifierLocation` / `GetLocation` / `GetParameterListLocation` helpers. That collection is empty for a metadata symbol. The reporter did not narrow down which of the three fires.\n\nWorkaround: `[MessagePackFormatter(typeof(ItemFormatter<>))]` on the generic value type short-circuits `CollectCore` before `GetObjectInfo` is reached.\n\n## Acceptance criteria\n\n- Building `app` from the repro produces no CS8785 warning. (derived)\n- Building `app` from the repro produces no AD0001 warning from `MsgPack00xMessagePackAnalyzer`. (derived)\n- `app.dll` contains a `GeneratedMessagePackResolver` (a generated resolver exists). (derived)\n- The generator and analyzer do not throw on a closed generic struct or record struct declared in a referenced assembly.\n- Closed generic classes, non-generic structs and types declared in the same assembly keep working as before (the \"ok\" rows in the table). (derived)\n- Diagnostics that need a source location do not crash when the offending symbol has no declaring syntax (metadata symbol). (derived)\n\n## Notes from discussion\n\nNo comments on the issue. The reporter points at `DeclaringSyntaxReferences[0]` being indexed unguarded at TypeCollector.cs lines 735, 1009 and 1101, and notes the neighbouring helpers use `FirstOrDefault()`. Possibly related: #2092 (CS8785 from the v3 generator, different inner exception, no repro).",
+  "run_ts": "20261114T202317Z",
+  "head_sha": "d39c9ae77e11633adff3a6b5fe1b31074927b17a",
+  "verdict": "blocked",
+  "verdict_reason": "verified high finding(s) backed by receipts: logic-edge-1",
+  "risk": 7,
+  "areas": [
+    "tests",
+    "type-collector"
+  ],
+  "area_trust": {
+    "tests": 3,
+    "type-collector": 3
+  },
+  "checked": [
+    {
+      "what": "Build base (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-base",
+      "result": "pass"
+    },
+    {
+      "what": "Build head (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on head: 170/170 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on base: 167/167 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-base",
+      "result": "pass"
+    },
+    {
+      "what": "Receipts/Req2283ReferencedGenericStructTests.cs: requirement test fails on base (4/4), passes on head (4/4)",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-1",
+      "result": "pass"
+    },
+    {
+      "what": "Receipts/MetadataGenericTypeArgumentTests.cs: edge-case test fails on head: 1/1 failed",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-2",
+      "result": "fail"
+    },
+    {
+      "what": "Mutation: 1 killed by the change's tests, 5 caught only by the existing suite, 5 survive the full suite, 0 compile errors, 0 timeouts (11 mutants on TypeCollector.cs)",
+      "by": "mutation",
+      "evidence_id": "mutation",
+      "result": "partial"
+    },
+    {
+      "what": "routed 9 hunks across 4 files",
+      "by": "rule+jev (auto)",
+      "evidence_id": "",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "logic-edge-1",
+      "lens": "logic-edge",
+      "claim": "The new early return in CollectGeneric (`type.OriginalDefinition.DeclaringSyntaxReferences.IsEmpty`) fires for every closed generic type whose definition comes from a referenced assembly. That includes generic classes, which are 'ok' rows in the requirement and must keep working as before. The return happens before the closed-generic branch walks `type.TypeArguments` with CollectCore. Concrete input: lib declares `[MessagePackObject] public class Item<T> { [Key(0)] public T Value {get;set;} }`. App declares `[MessagePackObject] class Cmd { [Key(0)] public Item<Bad> Member {get;set;} }`, where `Bad` is an unattributed app class. On base, Bad was reached and MsgPack003 was reported. On head, Bad is never visited, so the error disappears and no formatter is collected for it. The same skip drops source enums, multi-dimensional arrays and closed source generics used only as type arguments of a lib generic. The app resolver then lacks those formatters at AOT runtime, which is the failure mode the requirement is about. The fix should skip only GetObjectInfo or the formatter for the metadata type, and still collect its type arguments.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run Receipts.GeneratedTests.MetadataGenericTypeArgumentTests.UnattributedTypeArgumentOfReferencedGenericClass_StillReportsMsgPack003. It emits lib to a PE image, references it from app, runs all MessagePack analyzers and expects MsgPack003 for `Bad`. Head reports none."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-2"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-1",
+      "lens": "test-quality",
+      "claim": "The new early-return guard for generic types with no syntax is only partly pinned by the tests. If the guard is removed, GetObjectInfo would be reached for the metadata struct. The other fixes (GetPropertyIdentifierLocation, FirstOrDefault, and the ReportIfLocatedInCompilation wrapper) might still stop the crash. The tests may then pass or fail depending on which paths fire, and they do not assert that no formatter is generated for Item<int>.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640 remove-guard: if (type.OriginalDefinition.DeclaringSyntaxReferences.IsEmpty) return; -> deleted; expected to survive because the tests use SkipGeneratedSourcesCheck and only check that the resolver hint name exists, and the other null-safe changes may stop the crash on their own."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-4",
+      "lens": "test-quality",
+      "claim": "The UnkeyedMember test covers a generic struct from metadata with an unkeyed member. In the new code that type is handled by the early return, so the changed FirstOrDefault() MemberNeedsKey line and the BothStringAndIntKeyAreNull property-location line are not exercised. Mutating either of them would survive.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1083",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1083 and :991 revert to DeclaringSyntaxReferences[0]; expected to survive because the early return at 640 prevents the metadata type from reaching these lines, and no test reaches them with a metadata symbol (for example a non-generic derived type with an inherited unkeyed member from metadata)."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m7",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects linq-first at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1440",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1440",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation(); -> private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => (property.DeclaringSyntaxReferences.First()?.GetSyntax() as PropertyDeclarationSyntax)?.Identifier.GetLocation();"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m8",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects logical-operator at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1452",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1452",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (diagnostic.Location.IsInSource || this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m10",
+      "lens": "test-quality",
+      "claim": "no test in the suite detects remove-guard at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1452",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1452",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (true)"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-suite-only-TypeCollector",
+      "lens": "test-quality",
+      "claim": "the change's own tests do not catch mutants at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239, 991, 1452, 1454; the existing suite does",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "TypeCollector.cs:239 negate-condition: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> this.reportDiagnostic = reportAnalyzerDiagnostic is not null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic);; TypeCollector.cs:239 delete-statement: this.reportDiagnostic = reportAnalyzerDiagnostic is null ? null : diagnostic => ReportIfLocatedInCompilation(reportAnalyzerDiagnostic, diagnostic); -> (statement deleted); TypeCollector.cs:991 delete-statement: this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull, GetPropertyIdentifierLocation(item), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name)); -> (statement deleted); TypeCollector.cs:1452 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (!(diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))); TypeCollector.cs:1454 delete-statement: report(diagnostic); -> (statement deleted)"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "hunches": [
+    {
+      "id": "requirement-tests-2",
+      "lens": "requirement-tests",
+      "claim": "The new early return runs before the closed-generic branch does anything, including collecting the type arguments. For `Item<X>` where Item<T> comes from a referenced assembly and X needs a formatter from this compilation (for example an app-defined generic `Local<int>`), X is never collected or registered in the app's resolver. Base did collect it for the 'ok' row `class Item<T>`. That contradicts 'Closed generic classes ... keep working as before'.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Compile lib with `[MessagePackObject] public class Wrapper<T> { [Key(0)] public T Value { get; set; } }`. Compile app with `[MessagePackObject] public class Local<T> { [Key(0)] public T V { get; set; } }` and `[MessagePackObject] public class Holder { [Key(0)] public Wrapper<Local<int>> W { get; set; } }`. Run MessagePackGenerator on base and head. Assert the generated resolver registers `Local<int>`: present on base, missing on head."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "requirement-tests-3",
+      "lens": "requirement-tests",
+      "claim": "The change stops all collection of closed generic types whose definition lives in a referenced assembly, and that includes classes and record classes. Those are the 'ok' rows, which on base went through GetObjectInfo and contributed to the app's resolver. The app's generated resolver output for `class Item<T>` therefore changes, contrary to 'keep working as before'. Whether relying on lib's resolver is acceptable is not stated: L11 says 'No preference; follow the requirement'.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:641",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Build lib with `[MessagePackObject] public class Item<T> { [Key(0)] public string Key { get; set; } }`, and app with the repro's Cmd. Run MessagePackGenerator built from base and from head and diff the generated sources. Any loss of the Item<int> formatter or registration on head is the regression. Optionally byte-diff: serialize Cmd under NativeAOT-style resolver composition with each build."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": true
+    },
+    {
+      "id": "requirement-tests-4",
+      "lens": "requirement-tests",
+      "claim": "The wrapper around reportDiagnostic drops every diagnostic whose location is not in a source tree of this compilation, including Location.None. The new MsgPack004.md text says such members 'are reported by the project that defines that type'. That is false when the defining type is not a [MessagePackObject], for example a plain base class in lib whose public unattributed property is inherited by an app [MessagePackObject] type. Lib's analyzer never looks at it, and the app now silently drops MsgPack004.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1452",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Compile lib with `public class Base { public int X { get; set; } }` (no MessagePack attributes). Compile app with `[MessagePackObject] public class D : Base { [Key(0)] public int Y { get; set; } }`. Run MsgPack00xMessagePackAnalyzer on head and assert no MsgPack004 is reported anywhere and no AD0001 occurs. Compare with the claim in doc/analyzers/MsgPack004.md:51-52."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": true
+    },
+    {
+      "id": "logic-edge-2",
+      "lens": "logic-edge",
+      "claim": "The constructor now routes every analyzer diagnostic through ReportIfLocatedInCompilation, which silently drops any diagnostic whose location is null or not in a compilation syntax tree. This affects MemberNeedsKey (MsgPack004, an Error per L2) when a [MessagePackObject] type declared in the app inherits a public member without [Key] from a base class in a referenced assembly. Base crashed in this case. Head now reports nothing, so the app type compiles cleanly even though a serialized member has no key. Reporting at the derived type's identifier would keep the error. This also suppresses any other existing diagnostic that was created with a null location for a source type.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Lib: `public class Base { public int X {get;set;} }` (emitted as image). App: `[MessagePackObject] public class D : Base { [Key(0)] public int Y {get;set;} }`. Run the analyzers and assert a MsgPack004 is produced. Head produces none."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": true
+    },
+    {
+      "id": "compatibility-1",
+      "lens": "compatibility",
+      "claim": "ReportIfLocatedInCompilation drops every diagnostic whose Location is not in source (Location.None or null location). Previously diagnostics created with a null/None location, such as MemberNeedsKey (MsgPack004) for an inherited member from a base type in a referenced assembly, or other reports using GetIdentifierLocation/GetLocation that can return null, were still reported. Now they are silently suppressed, so users stop seeing MsgPack003/004/005 etc. in their builds. That is a behavior change beyond the metadata-struct crash fix.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1448",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Analyzer test: a [MessagePackObject] class in the compiling assembly derives from a base class in a referenced assembly that has a public property without [Key]. Run on base and head and compare MsgPack004 diagnostics. Head should drop the diagnostic if it was previously reported with Location.None or a derived location."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": true
+    },
+    {
+      "id": "compatibility-2",
+      "lens": "compatibility",
+      "claim": "The new early return skips every generic type whose OriginalDefinition is in metadata, including those that previously went through CollectGeneric and registered closed generic formatters. Examples are generic [MessagePackObject] types from a referenced assembly, and generic types handled by the dynamic/resolver paths (for example ones with custom formatters or collection-like generics handled later). The return sits before the `type.IsDefinition` check, so it may also change which formatters or resolver entries are generated for closed generic classes from referenced assemblies, which the requirement says must keep working as before (the 'class Item<T> ok' rows). A generated resolver's output could change.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Run the generator snapshot tests, and add a case where a referenced assembly defines generic class Item<T> and the compiling assembly has a member of type Item<int>. Compare the generated resolver on base vs head for any dropped formatter registration or ResolverRegisterInfo."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-3",
+      "lens": "product-context",
+      "claim": "The new ReportIfLocatedInCompilation wrapper drops every diagnostic whose location is not in a syntax tree of the compilation, including diagnostics with Location.None. Previously such diagnostics were reported, for example a MsgPack004 or MsgPack003 on a type in the compiling assembly with an inherited member from a base type in a referenced assembly. This is a behaviour change beyond the crash fix, and the risk is a lost diagnostic (see L10, which warns about analyzer diagnostic changes).",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Add an analyzer test where a [MessagePackObject] class in the compiling assembly derives from a base class in a referenced assembly that has a public member without [Key]. Compare diagnostics at base and head."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": true
+    },
+    {
+      "id": "test-quality-2",
+      "lens": "test-quality",
+      "claim": "The tests skip the generated-sources check (SkipGeneratedSourcesCheck) and only assert that the resolver hint name exists. Nothing checks the resolver's contents, such as the formatter registration for Cmd or the absence of a bogus Item<int> formatter. A regression that produces a wrong resolver would pass.",
+      "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:630",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:630 delete-statement: the Assert.Contains on hint names has no content assertion; a mutant that emits an empty resolver named AppResolver survives."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-3",
+      "lens": "test-quality",
+      "claim": "The ReportIfLocatedInCompilation wrapper filters every analyzer diagnostic whose location is not in the compilation, including Location.None. Diagnostics that previously had no location are now dropped for source types as well. No test in the diff covers a source-declared type with a missing-key diagnostic (MsgPack003/004), so a mutant that makes the wrapper drop everything, or the opposite, would not be caught here. The tests only cover cases where no diagnostic is expected.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1449",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1449 negate-condition: if (diagnostic.Location.IsInSource && ContainsSyntaxTree) -> negated; expected to survive in the new tests because they assert zero diagnostics; only existing analyzer tests could kill it."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "requirement-tests-1",
+      "lens": "requirement-tests",
+      "claim": "The requirement names three unguarded `DeclaringSyntaxReferences[0]` sites: base lines 735, 1009 and 1101. The diff guards only 1009 and 1101. Base line 735 (about head line 741) is untouched. Both struct rows crash even though every member has a [Key], so the BothStringAndIntKeyAreNull and MemberNeedsKey paths are not what fires there. That suggests 735 is the value-type path that actually throws. The change avoids it only because the new early return keeps metadata generic types out of GetObjectInfo. The criterion 'Diagnostics that need a source location do not crash when the offending symbol has no declaring syntax' is therefore met only by avoidance. Any other route into GetObjectInfo with a metadata value type, such as a base or member type reached another way, can still throw.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:741",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "Read head TypeCollector.cs around line 741 (base 735) and confirm it still indexes DeclaringSyntaxReferences[0]. Then mutate: delete the early return at line 641 and run Receipts.GeneratedTests.Req2283ReferencedGenericStructTests on head. If it still throws IndexOutOfRangeException, the third site is unfixed."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "security-1",
+      "lens": "security",
+      "claim": "ReportIfLocatedInCompilation drops every diagnostic whose location is not in source (including Location.None). Diagnostics that fire with a null or None location are now silently suppressed, e.g. MemberNeedsKey (MsgPack004) when FirstOrDefault() returns null. Only a hunk-local concern for security: the filter now sits in front of all reportDiagnostic calls, so any configuration-protecting diagnostic raised with a null location is lost. Whether this matters depends on whether such diagnostics exist; no MessagePackSecurity, UntrustedData or depth-limit diagnostic is affected in the shown hunks.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1451",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "Read all this.reportDiagnostic?.Invoke call sites in TypeCollector.cs and confirm none protect security settings (MessagePackSecurity.UntrustedData, MaximumObjectGraphDepth) and that none rely on Location.None to be reported."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-2",
+      "lens": "product-context",
+      "claim": "The README section and the MsgPack004 doc say diagnostics for referenced-assembly types are reported by the defining assembly. The README also says such types 'can be used', but with the early return no formatter is generated for Item<int> in the consuming resolver. The docs do not say that the user or the defining assembly's resolver must supply the formatter, and at runtime (trimmed or AOT) this could still fail for an unregistered formatter.",
+      "location": "README.md:1639",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "Read the new README paragraph against the early return at TypeCollector.cs:640. Nothing documents that the consuming resolver does not include Item<int>, or how to register the defining assembly's resolver."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "unconfirmed-product-context-1",
+      "lens": "product-context",
+      "claim": "suppressed by unconfirmed context entry: [L8] area=analyzer, generator: Types that come from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly. In `TypeCollector.CollectCore`, after the custom-formatter, enum and generic checks, a non-generic type whose symbol is metadata-only exits with a bare `if (type.Locations[0].IsInMetadata) { return; }` (TypeCollector.cs:367-370), so no MsgPack003/004/005 diagnostic and no generated formatter appear for it. The defining assembly owns validating and formatting its own types (rationale inferred: the code has no comment). A missing diagnostic or formatter for such a type is not a defect. (source: src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367); [L11] area=type-collector by bench-oracle (simulated human): Q: For a closed generic [MessagePackObject] struct from a referenced assembly, should the consuming assembly's generated resolver include a formatter for it (e.g. Item<int>), or rely on the defining assembly's resolver and the user to register it? A: No preference; follow the requirement (would-be finding: Closed generic types from a referenced assembly now exit CollectCore early with no formatter and no diagnostics. This is consistent with the L8 convention for non-generic metadata types, so it is checked and acceptable.)",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "ledger-citation",
+        "detail": "[L8] types from referenced assemblies are deliberately not analysed and get no formatter from the compiling assembly; a missing formatter or diagnostic is not a defect. [L11] states no preference and says to follow the requirement."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "refused": [],
+  "not_checked": [
+    {
+      "what": "compatibility byte diff (base vs head serialized bytes)",
+      "why": "no runtime/public API change; byte diff not needed"
+    },
+    {
+      "what": "tests/MessagePack.Tests and other runtime test suites",
+      "why": "not built or run in the sandbox; only the source generator test project is in scope"
+    },
+    {
+      "what": "NativeAOT, Unity and non-net8.0 target frameworks",
+      "why": "the sandbox builds and tests net8.0 only"
+    }
+  ],
+  "residual_risk": "This change touches 4 files (0 generated) in tests, type-collector; the highest routed risk is 7/10. 1 file(s) were routed for deep review, 3 for light review and 0 to the regeneration check. The existing source generator tests ran on head: 170 of 170 passed, 0 failed. 13 unverified hunch(es) remain without an executed receipt. 3 thing(s) were not checked, including compatibility byte diff (base vs head serialized bytes); tests/MessagePack.Tests and other runtime test suites; NativeAOT, Unity and non-net8.0 target frameworks. By signing off, the signer accepts any defect that only those unchecked paths would have revealed. The change is blocked; signing off is not offered until the blocker is fixed.",
+  "routing": {
+    "README.md": "light",
+    "doc/analyzers/MsgPack004.md": "light",
+    "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs": "deep",
+    "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs": "light"
+  },
+  "counts": {
+    "source": 1,
+    "test": 1,
+    "docs": 2,
+    "generated": 0,
+    "template": 0,
+    "total": 4,
+    "not_generated": 4
+  },
+  "questions": [
+    "q-mock-2283-drift-product-context-1"
+  ],
+  "interpretations": [],
+  "narrative": "",
+  "mock_llm": false
+}

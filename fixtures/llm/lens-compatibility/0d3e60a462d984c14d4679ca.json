@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The timestamp writer mask was changed from 0xffffffff00000000 to 0x00000000ffffffff. This is unrelated to the requirement and breaks the wire format. Timestamps with nanoseconds==0 and seconds<2^32 should use the 4-byte timestamp32 form, but now take the 8-byte path or are mis-encoded. Timestamps with nonzero nanoseconds can hit the 6-byte branch and lose data. This changes serialized bytes for every DateTime and DateTimeOffset user.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize DateTime(2020,1,1,0,0,0,Utc) and DateTime(2020,1,1,0,0,0,Utc).AddTicks(1230) with base-built and head-built MessagePack, then compare bytes. Base gives d6 ff + 4 bytes; head gives a different encoding. Also run the existing Timestamp round-trip tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "New analyzer errors MsgPack019-022 are added to SupportedDiagnostics, but the AnalyzerReleases.Unshipped.md hunk is missing. The RS2000 release-tracking analyzer will flag the unlisted IDs, which breaks builds that treat warnings as errors. The new diagnostics are reported only by the generator and are never wired into the analyzer.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:381",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build MessagePack.SourceGenerator and check for RS2000 errors for MsgPack019-022. Also run the analyzer tests that enumerate SupportedDiagnostics against the release-tracking file."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generator passes IsUserDeclaredFormatter output through the shared templates, which emit 'partial class Name' with no accessibility modifier. They also emit the type's nesting and namespace wrappers. If the user's class is declared 'public partial class' or 'sealed', the generated half does not conflict, but the resolver registration and the generated resolver still reference the formatter. A user-declared formatter with its own members, such as a Serialize method, will collide. Existing source-generated formatters are unchanged, but the shared templates were modified. Snapshot output for existing types must be verified byte-identical.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests for existing [MessagePackObject] types and confirm that the output is identical, including the whitespace produced by the changed template line."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless mode emits string keys but sorts members alphabetically and ignores read-only members, so wire order differs from ContractlessStandardResolver (declaration order, including getter-only members with constructors). Users who switch from the dynamic contractless resolver to this formatter get different map key order and a different member set.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:166",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with public properties Zeta and Alpha, plus a get-only property, using ContractlessStandardResolver and the generated formatter. Compare the bytes."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18531,
+  "output_tokens": 1275,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

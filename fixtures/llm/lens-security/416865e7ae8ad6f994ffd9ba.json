@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Generated formatters for [GeneratedMessagePackFormatter] get no depth or security handling beyond what the existing templates emit. The contractless members are built with a hard-coded ObjectSerializationInfo.Create(... nestedFormatterRequired:false ...) and CustomFormatter:null, so the formatter relies on the resolver for nested members. Recursive types (A.Self of type A) are only protected if the template calls options.Security.DepthStep. This is unverified.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:96",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test for a self-referential type formatted through [GeneratedMessagePackFormatter] and check that the generated Deserialize contains options.Security.DepthStep(ref reader) and reader.Depth--."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new generator pipeline runs GeneratedFormatterCollector.Collect twice, once for the model and once for diagnostics. Collect reads attacker-independent compile-time symbols only, but a throwing path such as GetMemberType's ArgumentOutOfRangeException or the cast `(INamedTypeSymbol)context.TargetSymbol` could throw inside the generator and silently drop generation without a diagnostic. This is a compile-time robustness problem, not a runtime security hole.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:112",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the new ForAttributeWithMetadataName transform and the SelectMany diagnostics block. Neither wraps Collect in a try/catch, so an unexpected symbol shape would throw and disable generation."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18213,
+  "output_tokens": 658,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

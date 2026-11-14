@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The MessagePackSecurity.UntrustedData MaximumObjectGraphDepth change from 500 to 5000 is unrelated to the requirement and weakens the stack-depth protection. No test in the diff asserts the depth value, so a revert or mutation of it would go unnoticed.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack/MessagePackSecurity.cs:38 off-by-one: 5000 -> 500 (or 5001); expected to survive because no test in the diff references MaximumObjectGraphDepth or UntrustedData"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new ReportIfLocatedInCompilation filter wraps every analyzer diagnostic. No test covers a negative case. There is no test that a diagnostic on an in-compilation type (e.g. MsgPack004 or MsgPack003 on a source type) is still reported, and the tests only assert no diagnostics. If the guard were mutated to always drop diagnostics, every new test would still pass. Existing analyzer tests might catch it, but nothing in this diff does.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:1443 negate-condition: if (diagnostic.Location.IsInSource && ...) -> if (!(diagnostic.Location.IsInSource && ...)); or delete the report(report) statement; check that the new tests fail. They are expected to survive because they only assert the absence of diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change at line 1077 (MemberNeedsKey, FirstOrDefault()?.GetSyntax().GetLocation()) is only exercised by ClosedGenericStruct_FromMetadataReference_UnkeyedMember if that test actually reaches the diagnostic path. It asserts no diagnostics, so it passes whether the crash is fixed by FirstOrDefault or by the ReportIfLocatedInCompilation filter alone. Reverting the FirstOrDefault change would still pass the test if the exception is not thrown at that spot. The test also does not exercise the BothStringAndIntKeyAreNull path (line 985, GetPropertyIdentifierLocation) at all: there is no metadata-type test with a [Key] whose value is null.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:985 delete-statement: revert GetPropertyIdentifierLocation(item) to ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no test builds a metadata property with a null int and string key"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests use TestBehaviors.SkipGeneratedSourcesCheck, so the generated content is not verified. Only the resolver hint name is checked. Nothing asserts that a formatter for Item<int> or MyGenericStruct<int> is present or absent, so regressions in generated output for closed generic metadata types go undetected. The ledger leaves this choice open (L12), but the existing contents still go unchecked.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:632",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests with generated-source verification enabled for the three new tests; they currently skip the check, so output changes are invisible"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new tests pass on the base only if they actually reproduce the crash. The metadata reference is added via TestState.AdditionalReferences, and the generator is run separately on a compilation with the image reference. Nothing asserts that the symbol really has empty DeclaringSyntaxReferences, but this is plausible. Still, the first and third tests use a non-record `struct` with LanguageVersion CSharp7_3 and a file-scoped-namespace-free source, and no test covers a closed generic class from metadata, which is the 'ok' row in the requirement, as a regression guard.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:499",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test with `public class MyGenericClass<T>` from a metadata reference and assert the resolver is generated with no diagnostics; run it on both base and head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12476,
+  "output_tokens": 1675,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]",
+  "batch_id": "msgbatch_01AM7eMUqZVNKTdqH4MtdHor"
+}

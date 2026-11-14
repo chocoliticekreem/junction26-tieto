@@ -1,0 +1,47 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change deletes the Str8 branch of the string-header writer. Strings of 32-255 UTF-8 bytes would then be written with a 3-byte Str16 header (0xDA) instead of the 2-byte Str8 header (0xD9). That changes the serialized bytes of every such string. The requirement is about the analyzer under SuppressSourceGeneration and asks for no serializer runtime change, so this is an unrelated wire-format change.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:916",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Build base and head and run MessagePackSerializer.Serialize(new string('a', 100)) on each. Base starts with 0xD9 0x64; head starts with 0xDA 0x00 0x64. Also run the existing MessagePackWriter/Primitives string-header unit tests on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "None of the type-collector hunks refer to SuppressSourceGeneration. They only add `continue` after DoNotMixStringAndIntKeys and ContainsKey guards against duplicate keys. Nothing visible re-enables analysis of types marked SuppressSourceGeneration = true. The README promises that such types still get MsgPack003/004/005/012/015, but the shown code does not show that this happens, so the core requirement may be unmet.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerReceiptTests.MsgPack004ReportedWhenSourceGenerationSuppressed and MsgPack005ReportedWhenSourceGenerationSuppressed on head. Each must find its MsgPack00x diagnostic and no AD0001."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Reflection;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerReceiptTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public SuppressSourceGenerationAnalyzerReceiptTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task MsgPack004ReportedWhenSourceGenerationSuppressed()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class SuppressedObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                public int B { get; set; }\n            }\n            \"\"\";\n\n        ImmutableArray<Diagnostic> diagnostics = await RunAnalyzersAsync(source);\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack004\");\n    }\n\n    [Fact]\n    public async Task MsgPack005ReportedWhenSourceGenerationSuppressed()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class SuppressedDuplicateKeys\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                [Key(0)]\n                public int B { get; set; }\n            }\n            \"\"\";\n\n        ImmutableArray<Diagnostic> diagnostics = await RunAnalyzersAsync(source);\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n        Assert.Contains(diagnostics, d => d.Id == \"MsgPack005\");\n    }\n\n    private async Task<ImmutableArray<Diagnostic>> RunAnalyzersAsync(string source)\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = new List<MetadataReference>(framework);\n        foreach (MetadataReference r in ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n        {\n            references.Add(r);\n        }\n\n        SyntaxTree tree = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest));\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsAssembly\",\n            new[] { tree },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        Diagnostic[] compileErrors = compilation.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToArray();\n        foreach (Diagnostic d in compileErrors)\n        {\n            this.logger.WriteLine(\"compile: \" + d.ToString());\n        }\n\n        Assert.Empty(compileErrors);\n\n        Assembly analyzerAssembly = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly;\n        ImmutableArray<DiagnosticAnalyzer> analyzers = analyzerAssembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetCustomAttributes(typeof(DiagnosticAnalyzerAttribute), false).Length > 0 && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n        Assert.NotEmpty(analyzers);\n\n        ImmutableArray<Diagnostic> diagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n        foreach (Diagnostic d in diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        return diagnostics;\n    }\n}\n",
+        "test_names": [
+          "MsgPack004ReportedWhenSourceGenerationSuppressed",
+          "MsgPack005ReportedWhenSourceGenerationSuppressed"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 11572,
+  "output_tokens": 6509,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_01LRnr97VeVc8UU8nVuQdTKz"
+}

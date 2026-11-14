@@ -1,0 +1,188 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "Diagnostics without a location are still reported. `ReportIfLocatedInCompilation` reports whenever `!diagnostic.Location.IsInSource`. For a metadata member, MemberNeedsKey (line 1077) and BothStringAndIntKeyAreNull (via `GetPropertyIdentifierLocation`) are now built with a null location, which becomes Location.None and passes the filter. So a public unkeyed member of a closed generic struct from a referenced assembly produces MsgPack004 (an Error per L2) with no location in the consuming project. This contradicts L8 (referenced types are not analysed by the consumer), the new README text, and the new MsgPack004.md text ('Members of a type defined in a referenced assembly are reported by the project that defines that type').",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ReferencedGenericStructMemberDiagnosticTests.UnkeyedPublicMemberOfReferencedGenericStruct_IsNotReportedInConsumer. On head it should fail with an unexpected MsgPack004 at Location.None; the expected result per L8 and the docs is no diagnostic."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The new filter does not drop diagnostics for metadata members, despite what its remarks say. `ReportIfLocatedInCompilation` only drops diagnostics that are in source but belong to another syntax tree. Changing the MemberNeedsKey site to `FirstOrDefault()?.…` gives a null location (Location.None) for a metadata member, and `!Location.IsInSource` is true, so the diagnostic is still reported. Example: a referenced lib built without the analyzer has `[MessagePackObject] public struct Item<T> { [Key(0)] public string Key; public int Extra; }`. A consumer that uses `Item<int>` now gets a location-less MsgPack004 error about a type it does not own. That breaks its build, where before it only got an AD0001 warning. This contradicts L8: types from a referenced assembly are deliberately not analysed.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataGenericStructDiagnosticsTests.cs (ClosedGenericStructFromReferencedAssembly_WithUnkeyedPublicField_ReportsNothingInConsumer). It compiles the lib in memory, references it from the app, and expects no diagnostics. On head an unexpected MsgPack004 with no location is reported."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "The new ReportIfLocatedInCompilation wrapper is applied to every diagnostic the TypeCollector reports, not only the ones that were crashing. It drops any diagnostic whose location is in a source tree that is not part of the current compilation. A diagnostic with Location.None (IsInSource is false) is still reported. The change is therefore broader than the crash fix. Diagnostics that previously surfaced in users' builds could now disappear. Before the change, a MsgPack diagnostic on a member inherited from a base type in a referenced assembly would crash or report with no location. After the change, some of those cases are silently suppressed.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Analyzer test: a [MessagePackObject] class in the compiling assembly derives from a base class in a referenced assembly, and the base has a public property with no [Key]. Run it on base and head and compare the reported MsgPack004 diagnostics. Also test a type declared in the same assembly with a missing key, and assert that the diagnostic is still reported at head."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "compatibility-2",
+    "lens": "compatibility",
+    "claim": "The MemberNeedsKey diagnostic now passes a null location when the member is declared in metadata. Diagnostic.Create(descriptor, null, ...) yields Location.None. For an inherited public member with no [Key], MsgPack004 will therefore be reported with no location, which is a user-visible warning/error that was not there before (the old code crashed). The location is not anchored to the derived type's identifier. The error-severity diagnostic cannot be navigated to or suppressed in source.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Analyzer test: a source type inherits a keyless public property from a metadata base class. Assert the MsgPack004 location, and check that the build output has a diagnostic with no file or line."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The reportDiagnostic wrapper filter (ReportIfLocatedInCompilation) is not pinned by any test. The tests only assert no AD0001/CS8785 and no diagnostics. Removing the filter, or inverting the condition so it drops legitimate in-source diagnostics, would not fail any added test. No test confirms that diagnostics for types in the compiling assembly are still reported, which is the 'ok rows keep working' criterion.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239 negate-condition: `!diagnostic.Location.IsInSource || ContainsSyntaxTree(...)` -> `diagnostic.Location.IsInSource || ...`; expected to survive because the added tests only assert zero diagnostics, and existing analyzer tests are not shown covering this path."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The BothStringAndIntKeyAreNull path (GetPropertyIdentifierLocation) has no test. The new tests use [Key] on all keyed members and never reach intKey==null && stringKey==null on a metadata property. Reverting this line to DeclaringSyntaxReferences[0] would not be detected. There is also no source-declared positive test confirming the location is still reported.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 delete-statement: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no added test has a metadata property with a [Key] whose int and string values are both null."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The test ClosedGenericStruct_FromMetadataReference_UnkeyedMember may not exercise the MemberNeedsKey FirstOrDefault fix. The unkeyed member is public and the type is a metadata struct, and which branch fires is unconfirmed (the reporter did not narrow it down). The test would pass on base if that branch is never reached, or if the metadata-only check exits earlier. Because the wrapper filter also drops the diagnostic, reverting the FirstOrDefault change may be masked: the null-conditional NRE still occurs, and the test could still fail only if the line is reached.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:553",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 delete-statement: `.FirstOrDefault()?` -> `[0]`; run ClosedGenericStruct_FromMetadataReference_UnkeyedMember to check it fails; if it survives the test does not cover this line."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "The reporter names three unguarded `DeclaringSyntaxReferences[0]` sites (base lines 735, 1009, 1101). The diff visibly replaces only two (the BothStringAndIntKeyAreNull and MemberNeedsKey sites). If the third site (base ~735) is still indexed directly, any path through GetObjectInfo that reaches it for a metadata symbol still throws IndexOutOfRangeException. The location-filtering wrapper does not help, because the exception happens while the Diagnostic arguments are evaluated.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "grep `DeclaringSyntaxReferences\\[0\\]` in TypeCollector.cs on head. Also run the ReferencedClosedGenericStructTests tests (record struct and struct variants) to confirm there is no AD0001 or CS8785."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "The change fixes only two of the three unguarded `DeclaringSyntaxReferences[0]` sites the requirement names. The hunks touch base lines 985 and 1077, which map to the reporter's 1009 and 1101 at a consistent offset of 24. The reporter's line 735 (about base line 711) is untouched. The new `ReportIfLocatedInCompilation` wrapper cannot protect it, because the indexing happens while the Diagnostic argument is evaluated, before the wrapper runs. Any closed generic struct from metadata that reaches that path still throws IndexOutOfRangeException (AD0001 from the analyzer; CS8785 from the generator if the site is evaluated eagerly). That fails the acceptance criterion that location-needing diagnostics do not crash for metadata symbols.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "grep TypeCollector.cs on head for `DeclaringSyntaxReferences[0]`. Any remaining hit inside GetObjectInfo (the reporter's line 735, about 711 in base) is still reachable for metadata symbols through the closed-generic branch of CollectGeneric."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "security-1",
+    "lens": "security",
+    "claim": "ReportIfLocatedInCompilation drops diagnostics whose location is in a syntax tree outside the compilation, and only diagnostics with Location.None or in-compilation locations pass through. Today's security-relevant diagnostics, such as MsgPack analyzers that warn about insecure configuration, are not suppressed by this for in-source types. Metadata-type diagnostics were already deliberately not reported (L8). There is no deserialization-safety regression, because no MessagePackSecurity, depth-limit, or size-check code is touched.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1441",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Read ReportIfLocatedInCompilation: the filter applies only to Diagnostic.Location.SourceTree membership in the compilation. The diff touches no MessagePackSecurity/UntrustedData/MaximumObjectGraphDepth code, so there is no security-relevant change to verify."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "The tests assert only the absence of diagnostics and the presence of a resolver hint name, with SkipGeneratedSourcesCheck. They never check that the resolver output is correct, or whether it includes or excludes a formatter for the closed generic Item<int>. The test would not detect a resolver that is generated but wrong. No negative test confirms that a real MsgPack003/004 on a source-declared closed generic type is still reported.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:632",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "RunWithMetadataReferenceAsync sets TestBehaviors.SkipGeneratedSourcesCheck and only asserts Assert.Contains(hintName) and no warnings; no content assertion."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-1",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L8] area=analyzer, generator: Types that come from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly. In `TypeCollector.CollectCore`, after the custom-formatter, enum and generic checks, a non-generic type whose symbol is metadata-only exits with a bare `if (type.Locations[0].IsInMetadata) { return; }` (TypeCollector.cs:367-370), so no MsgPack003/004/005 diagnostic and no generated formatter appear for it. The defining assembly owns validating and formatting its own types (rationale inferred: the code has no comment). A missing diagnostic or formatter for such a type is not a defect. (source: src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367) (would-be finding: Diagnostics for a metadata-only closed generic struct are now silently dropped (MemberNeedsKey, BothStringAndIntKeyAreNull etc.) rather than reported. This matches the recorded deliberate behavior that referenced-assembly types are not analysed and the defining assembly owns validation. Checked and fine.)",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L8] Types from a referenced assembly are deliberately not analysed; a missing diagnostic for such a type is not a defect."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "unconfirmed-product-context-2",
+    "lens": "product-context",
+    "claim": "suppressed by unconfirmed context entry: [L8] area=analyzer, generator: Types that come from a referenced assembly are deliberately not analysed and get no formatter from the compiling assembly. In `TypeCollector.CollectCore`, after the custom-formatter, enum and generic checks, a non-generic type whose symbol is metadata-only exits with a bare `if (type.Locations[0].IsInMetadata) { return; }` (TypeCollector.cs:367-370), so no MsgPack003/004/005 diagnostic and no generated formatter appear for it. The defining assembly owns validating and formatting its own types (rationale inferred: the code has no comment). A missing diagnostic or formatter for such a type is not a defect. (source: src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367) (would-be finding: The new README section and MsgPack004 doc say diagnostics for referenced-assembly types are reported by the defining assembly. This is consistent with the L8 convention. However, the ReportIfLocatedInCompilation filter is applied to every diagnostic, so it also drops source-located diagnostics whose tree is in another compilation. The docs do not mention this broader suppression.)",
+    "location": "README.md:1639",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "ledger-citation",
+      "detail": "[L8] Defining assembly owns validating its own types; the doc statement matches the recorded rationale."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  }
+]

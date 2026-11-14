@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change's tests encode the opposite of the requirement. Every SuppressSourceGeneration=true test asserts that NO diagnostics are reported (MemberWithoutKeyIsNotReported, AllowPrivateRequiredIsNotReported, MemberTypeMustBeMessagePackObjectIsNotReported). None asserts that MsgPack003/004/005 are still reported for a suppressed type. The early `return null` for suppressed types is therefore pinned by tests, and the analyzer still produces no diagnostics for those types. Ledger L17 says validation diagnostics should still apply and only MsgPack011/016/017 are skipped. A mutant that removes the early return would make these tests fail, and the tests would pass on a wrong fix.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:19",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:713 remove-guard: `if (suppressSourceGeneration is true) { return null; }` -> guard removed; expected to be caught only by the wrong-direction tests, so no test would verify that MsgPack004 is still reported for a suppressed type. Add a test with `{|MsgPack004:...|}` on a suppressed type."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test checks that MsgPack003 (type must be a MessagePackObject) or MsgPack004 is reported with SuppressSourceGeneration=true, which is the core of the requirement. Nor is there any test of the diagnostics 3.1.0 reported for suppressed types. The mixed-key and duplicate-key tests only assert that nothing is reported, not that MsgPack005/MsgPack006-style diagnostics still appear.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:96",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test: `[MessagePackObject(SuppressSourceGeneration = true)]` with a public member lacking [Key], expecting {|MsgPack004:...|}. It fails on head because the early return suppresses the diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` and the ContainsKey guards are not tested in non-suppressed mode. The only non-suppressed test is for duplicate int keys, and it covers one of the two guarded call sites. The ContainsKey guard on string keys and the `continue` on mixed keys for non-suppressed types have no test that would fail if they were deleted. The suppressed-type tests do not reach this code, because the early return fires first.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:1014 delete-statement: `continue;` -> removed; expected to survive because MixedKeyKindsDoNotFailAnalyzer uses a suppressed type and returns early, and no non-suppressed mixed-key test exists. Likewise `!stringMembers.ContainsKey(...)` -> true survives, since no non-suppressed duplicate-string-key test exists."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "SuppressedTypeRoundTripsThroughDynamicResolver and NoFormatterIsGeneratedForSuppressedType would likely pass on base too. Neither exercises the analyzer or TypeCollector diagnostics path that the bug is about.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:20",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressedSourceGenerationTests on the base build; expect both to pass, so they do not reproduce the bug."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10402,
+  "output_tokens": 1406,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_017et3Dgn8iwp9LornCVKyzc"
+}

@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The timestamp writer mask in WriteTimestamp was changed from 0xffffffff00000000L to 0x00000000ffffffffL. The timestamp32 branch (6 bytes) is now chosen when the low 32 bits are zero rather than when the high 32 bits are zero. Seconds-only values (nanoseconds == 0) get routed to the 8-byte timestamp64 format, and values whose low 32 bits are zero are written as timestamp32 with the seconds truncated. This is an unrelated change to the serializer runtime that silently corrupts DateTime/timestamp data. It can also cause wrong data to be accepted or emitted across trust boundaries. The change has nothing to do with REQ-2129.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Serialize DateTime values such as 1970-01-01T00:00:01Z (seconds=1, ns=0) and a value with seconds=0x100000000-ish (low 32 bits zero) with the base-built and head-built code. Compare the bytes. A round-trip test of the timestamp32 and timestamp64 boundaries fails on head. Also assert that the first value is still encoded as timestamp32 (0xd6)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated-formatter collector builds ObjectSerializationInfo without applying the MessagePackSecurity-related collision protections or the existing analyzer checks for members. Contractless mode serializes every public read-write member, including members of the third-party type that are not intended for serialization. Deserialization into types with callbacks or setters is reachable from untrusted data. This is the same exposure as ContractlessStandardResolver, but it is opt-in and documented, so it is only a low concern.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:96",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read CreateContractlessMembers and Collect. Members are emitted without any depth or untrusted-data hooks, relying on the generated template to call options.Security.DepthStep. Confirm this by regenerating a snapshot for a [GeneratedMessagePackFormatter] class and checking for DepthStep and Deserialize."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18516,
+  "output_tokens": 832,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), ",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

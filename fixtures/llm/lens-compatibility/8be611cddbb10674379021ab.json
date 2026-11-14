@@ -1,0 +1,65 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The attribute is emitted only inside `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. The `#if` is evaluated in the user's compilation, so on netstandard2.0, net472 and similar targets the formatters stay un-excluded and the attribute is missing. ExcludeFromCodeCoverage exists on net472 and netstandard2.0, so the guard is unnecessary, and the requirement says all generated code should be decorated. The condition also wrongly assumes those symbols are defined. Legacy projects that don't define NETFRAMEWORK, and multi-target projects, will get inconsistent results.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Build a netstandard2.0 or net472 consumer project with a [MessagePackObject] type. Inspect the generated formatter: the attribute is compiled out, so coverage is not excluded. Compare with a net8.0 build."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same guard on the enum, union and string-key templates leaves them un-excluded on netstandard2.0 and .NET Framework targets. The resolver and other generated types are not decorated in any visible hunk, so 'all generated code' is not covered. That includes the resolver, `GeneratedMessagePackResolver`, and the helper types the generator emits.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the snapshot tests, then grep the generated outputs for classes lacking ExcludeFromCodeCoverage: the resolver template and any other emitted types."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The nesting-brace change from `{` to `{\\r\\n` alters the generated output for every formatter nested in a constrained generic or partial type. This is a whitespace-only change, but it shifts line positions and changes snapshots that users may check in. It is unrelated to the requirement. The `#if` directives are also emitted starting at column 0, directly after the `{`. If a preceding `{` had no newline, that would put `#if` mid-line and fail to compile. This fix is needed for that, but it shows the risk is real.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests for nested generic types with constraints. Confirm the nested-type snapshots changed only by the added newline and that the output compiles."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Formatters are now decorated with an attribute that is unavailable on very old targets, and they are no longer byte-identical in generated output for users who check in or snapshot generated files. That diff is the explicit purpose of the requirement. However, `#if` directives in the output could trigger user-side analyzers or style rules (e.g. indentation or directive formatting), producing new warnings in builds with warnings-as-errors.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile the generated output under TreatWarningsAsErrors with the default analyzers across net472, netstandard2.0 and net8.0, and check that no new diagnostics appear."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the ExcludeFromCodeCoverage attribute be emitted on every target framework, including netstandard2.0 and .NET Framework, or only on newer ones?",
+        "options": [
+          "Emit unconditionally, since the attribute exists on netstandard2.0 and net472",
+          "Keep the conditional guard, accepting that legacy targets stay in coverage"
+        ],
+        "why_it_matters": "If the attribute must cover all targets, the `#if` guard is a defect that fails the requirement on legacy targets. If legacy exclusion is acceptable, the guard is fine.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 6880,
+  "output_tokens": 1442,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "batch_id": "msgbatch_01EH1yrWCFLdEXrxgWge3iNK"
+}

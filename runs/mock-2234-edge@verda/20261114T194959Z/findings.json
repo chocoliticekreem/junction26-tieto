@@ -1,0 +1,92 @@
+[
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "The new `continue` changes generator behavior even when `SuppressSourceGeneration` is false: after reporting the mixed-key diagnostic, a mismatched-key member is no longer added to the collected member maps or processed for formatter metadata. Consequently, checked-in/generated formatter output for such types changes, although the requirement limits the fix to making analysis work while generation is suppressed and explicitly requires unchanged behavior when suppression is false.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Run generator snapshot tests with base and head for a source-generated [MessagePackObject] containing one [Key(0)] member and one [Key(\"name\")] member, with SuppressSourceGeneration=false. Verify MsgPack006 is reported in both builds and compare generated formatter source; the head build skips the string-keyed member after the new continue. Repeat for the string-key-first loop with an int-keyed mismatch."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "MsgPack017 is incorrectly classified as source-generation-only. Its warning about an init property initializer being discarded also applies when the suppressed type is serialized through the dynamic resolver, so omitting it loses a relevant runtime diagnostic and changes the documented suppressed-type behavior.",
+    "location": "README.md:1634",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add an analyzer test for [MessagePackObject(SuppressSourceGeneration = true)] containing a keyed init property with a non-default initializer, marked with an expected MsgPack017 diagnostic. The test should fail with the changed suppression behavior; ledger [L6] describes the diagnostic as a deserialization behavior, not a formatter-generation-only check."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The new continue in the inherited-member collection path is not exercised: every added analyzer test uses a single flat class, so none mixes key kinds between a derived type and its serializable base type.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148 delete-statement: continue; -> removed; expected to survive because no added test has an inherited [MessagePackObject] member whose key kind differs from the other members."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The duplicate-key guard for inherited string-keyed members has no covering test. The added duplicate-string-key case declares both members on the same class and therefore does not exercise a collision between base and derived members.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176 remove-guard: if (!stringMembers.ContainsKey(member.StringKey)) -> unconditional stringMembers.Add(member.StringKey, (member, item.Type)); expected to survive because no added test uses duplicate string keys across an inheritance hierarchy."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m7",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects negate-condition at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (!stringMembers.ContainsKey(member.StringKey)) -> if (!(!stringMembers.ContainsKey(member.StringKey)))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m9",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects delete-statement at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1178",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1178",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "stringMembers.Add(member.StringKey, (member, item.Type)); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

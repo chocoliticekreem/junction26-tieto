@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Compatibility regression for generated output and bytes: with SuppressSourceGeneration unset/false, the new `continue` after DoNotMixStringAndIntKeys changes the member set. Previously a mismatched-key member fell through and was added to intMembers/stringMembers, so generated formatters still included it, though the project already had an error diagnostic. Now it is silently dropped. Since MsgPack diagnostics are Errors, the build usually fails, but the analyzer-only or diagnostic-suppressed case now produces a different formatter. This conflicts with the acceptance criterion 'behaviour with unset/false does not change'.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1013",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a [MessagePackObject] type mixing [Key(0)] and [Key(\"a\")] members. Run the generator snapshot tests on base and head with SuppressSourceGeneration unset, and diff the generated formatter output."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate keys are now silently deduplicated by keeping the first member (ContainsKey guard) instead of throwing ArgumentException from Add. Behaviour for unset/false changes: a duplicate [Key] type previously crashed the collector or generator, and now generates a formatter that drops the later member. The duplicate-key diagnostic (MsgPack006 or similar) is not shown to be guaranteed to fire in every case, so a formatter with missing members could be generated and shipped. The wire format of an affected type changes without any opt-in.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1028",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the collector on a type with two members using [Key(0)], and another with two members using [Key(\"a\")], with SuppressSourceGeneration both unset and true. Assert that MsgPack006 (duplicate key) is reported and that no formatter is emitted or the build fails. Compare against base behaviour, which was an exception."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "With SuppressSourceGeneration=true, members carrying a derived (custom) Key attribute are now skipped via `continue` before the type-collection and diagnostics logic. Any MsgPack diagnostics that previously ran for these members, such as the missing-attribute check or the check for no Key/IgnoreMember, are no longer reported. This could make the analyzer miss problems in the suppressed mode that the requirement wants fixed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test with SuppressSourceGeneration=true. Use a [MessagePackObject] type with a member bearing an attribute derived from KeyAttribute and an otherwise-violating member. Assert that the expected MsgPack00x diagnostics are reported, and compare with the base behaviour."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5763,
+  "output_tokens": 1094,
+  "ms": 0,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment",
+  "batch_id": "msgbatch_013vn4HdKSamdQc5bDDkh8Mh"
+}

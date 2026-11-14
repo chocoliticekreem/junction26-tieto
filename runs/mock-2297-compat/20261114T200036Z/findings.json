@@ -1,0 +1,320 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "The change modifies the decimal wire format in StandardClassLibraryFormatter by passing StandardFormat('F') to Utf8Formatter.TryFormat. This has nothing to do with REQ-2297, which is about attributes on generated code. With no explicit precision, the 'F' format is believed to use a fixed default number of fractional digits (2) instead of the round-trip 'G' form. If so, decimals such as 1.2345m would serialize as \"1.23\", silently losing data, and the bytes written for many decimal values would change.",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Serialize 1.2345m, 0.000001m, 79228162514264337593543950335m and -1.5m with MessagePackSerializer using base-built and head-built MessagePack.dll and compare the bytes. Then deserialize the head bytes and assert each round-trips to the original value; expect 1.2345m to come back as 1.23m on head."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "The requirement says all generated code gets the attribute. Every emitted attribute is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, so consumers compiling for netstandard2.0 or .NET Framework get no attribute at all. ExcludeFromCodeCoverageAttribute exists on both targets (netstandard2.0 and .NET Framework 4.0+) and allows AttributeTargets.Class there, so the guard is unnecessary. It leaves a large class of projects without the requested behaviour.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run ExcludeFromCodeCoverageDownlevelTargetsTests.GeneratedFormattersAreDecoratedWhenTargetingDownlevelFrameworks (NETSTANDARD2_0 and NETFRAMEWORK defined). It fails on head because no generated formatter carries the attribute. Also compile the generated code against netstandard2.0 reference assemblies with the #if removed to show it builds."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The decimal formatter now passes StandardFormat('F') with no precision to Utf8Formatter.TryFormat. For 'F', Utf8Formatter defaults to 2 fractional digits, so serialized decimals are rounded. For example, 1.2345m is written as \"1.23\" and 0.001m as \"0.00\", which deserializes to 0. Scale also changes: 1.5m is written as \"1.50\" instead of \"1.5\". This silently corrupts data. The change is unrelated to REQ-2297 and alters the wire format.",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.DecimalFormatPrecisionTests.DecimalRoundTripsExactly(\"1.2345\" / \"0.001\") and DecimalPreservesScale. These serialize with MessagePackSerializer and deserialize back. On head they produce 1.23, 0 and \"1.50\". A byte-diff of Serialize(1.2345m) between base and head would also show \"1.2345\" vs \"1.23\"."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "The resolver templates now put [ExcludeFromCodeCoverage] on the user's own `partial class` (the [GeneratedMessagePackResolver] / [CompositeResolver] type). ExcludeFromCodeCoverageAttribute has AllowMultiple=false. A user who already annotated their resolver partial with [ExcludeFromCodeCoverage], the obvious workaround before this change, now gets CS0579 (duplicate attribute), and the project stops compiling.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageDuplicateTests.UserAnnotatedGeneratedResolverStillCompiles and UserAnnotatedCompositeResolverStillCompiles. On head the generated resolver output produces CS0579 'Duplicate ExcludeFromCodeCoverage attribute'."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-4"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-3",
+    "lens": "logic-edge",
+    "claim": "The attribute is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, so it is omitted for consumers targeting netstandard2.0 and every .NET Framework TFM. ExcludeFromCodeCoverageAttribute exists in both (.NET Framework 4.0+ mscorlib, netstandard2.0) and is valid on classes there. Generated code compiled for those targets is still not excluded from coverage, so 'All generated code is decorated' is not met for a large share of users.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Drive CSharpGeneratorDriver over a [MessagePackObject] type plus a [GeneratedMessagePackResolver] partial, with CSharpParseOptions.WithPreprocessorSymbols(\"NETSTANDARD2_0\") (and separately \"NETFRAMEWORK\"). Then call RunGeneratorsAndUpdateCompilation and assert the generated formatter's INamedTypeSymbol.GetAttributes() contains System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute. It is absent on head."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "DecimalFormatter.Serialize now passes StandardFormat('F') to Utf8Formatter.TryFormat. The default format for decimal is 'G', which can emit exponent notation or differ from 'F' for some values (e.g. very small values or values with trailing zero scale). This changes serialized bytes for decimals, unrelated to the ExcludeFromCodeCoverage requirement. Existing users and peers reading stored or on-the-wire data would see different strings. 'F' also has different max length behavior (a 28-digit decimal with sign and point can exceed MaxFixStringLength 31?), so TryFormat may fail and fall to a different path.",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Serialize decimal values 0m, 1.50m, 1E-10m (0.0000000001m), -79228162514264337593543950335m, 1.0000000000000000000000000001m, 12345678901234567890.123456789m with base-built and head-built MessagePackSerializer and compare bytes; also check the fallback path when TryFormat returns false."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-2",
+    "lens": "compatibility",
+    "claim": "The attribute is emitted under #if !NETSTANDARD2_0 && !NETFRAMEWORK, but the generated code is compiled in the user's project. Users targeting netstandard2.1, netcoreapp2.x, or other TFMs would not define those symbols. ExcludeFromCodeCoverage exists on netstandard2.0 and .NET Framework 4.0+, so the guard needlessly skips them and fails the 'all generated code' criterion for those targets. Conversely, on TFMs such as net35 or other old targets that lack the type, the guard does not exclude them, so the guard is both too broad and too narrow, risking CS0234/CS0246 compile errors.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Compile generated output in a test project targeting netstandard2.0, net472, net8.0, and an older TFM (e.g. net35 or similar), and verify the attribute presence and that it compiles on each; rerun snapshot tests."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-3",
+    "lens": "compatibility",
+    "claim": "The attribute is added only to formatters, resolvers, and nested helper classes. Other generated types (for example, the GetFormatterHelper or any other generated members/types not covered by these templates) may remain undecorated, so 'all generated code' may not be met. Also, the attribute is placed on a type emitted via EmitNestingTypesAndNamespaces, but the nested partial wrapper types are not decorated, which is fine for coverage. The scope decision is ambiguous.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Rerun generator snapshots and grep the outputs for class/struct declarations without a preceding ExcludeFromCodeCoverage attribute."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "compatibility-4",
+    "lens": "compatibility",
+    "claim": "The TransformUtilities change from \"{\" to \"{\\r\\n\" for nesting types with constraints alters generated output whitespace for every generated file with constrained nested generic types. Users who check in or snapshot generator output will see a diff; it is functionally harmless.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Rerun snapshot tests for generic nested types with constraints and diff the outputs against base."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "Unrelated serializer-format change: DecimalFormatter.Serialize now passes StandardFormat('F') to Utf8Formatter.TryFormat. This is outside REQ-2297 (attribute on generated code) and changes the bytes written for decimals (e.g. no exponent notation, trailing zeros/scale handling). Ledger L8 says numeric serialization is bug-prone. Wire-format drift is possible for existing data.",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Serialize a set of decimals (0, 1.0m, 1.50m, 1e-10m, decimal.MaxValue, decimal.MinValue, 79228162514264337593543950335m) with the base-built and head-built MessagePack and compare the bytes; also check that the existing decimal tests pass."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-2",
+    "lens": "product-context",
+    "claim": "Requirement says all generated code should be decorated, but the README says only 'all generated formatters and resolvers'. The diff adds the attribute to the formatter, resolver, and nested helper types, but the generated MessagePackAssemblyAttribute or other generated pieces (e.g. nesting partial types, any other templates) may not be covered. The new test only checks that the attribute string appears at least once per file, not once per emitted type.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:63",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "Remove the attribute from the nested FormatterCache<T> or GetFormatterHelper in one template; the test still passes because other occurrences in the same file satisfy Contains. Run the mutant against CodeCoverageExclusionTests."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-3",
+    "lens": "product-context",
+    "claim": "The README states the attribute is not emitted for netstandard2.0/.NET Framework, so coverage is still skewed for those consumers. This partially falls short of 'all generated code', while the guard is needed for compilation. The guard symbols (NETSTANDARD2_0, NETFRAMEWORK) are also incomplete: netstandard2.1/.NET Core 2.x/netcoreapp3.1 coverage is mixed, and the attribute exists in netstandard2.1 and netcoreapp2.0+, but older frameworks (e.g. netstandard1.x, Xamarin/Unity profiles) would not compile.",
+    "location": "README.md:1639",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Compile generated output against netstandard1.6, a Unity-like profile, and a TFM with no ExcludeFromCodeCoverage, and check for CS0234 errors."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-4",
+    "lens": "product-context",
+    "claim": "The TransformUtilities change from '{' to '{\\r\\n' alters the output for every generated nesting type with constraints. It is unrelated to the requirement but needed so the preprocessor #if starts at a line start. Worth recording as a deliberate formatting fix.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Rerun the snapshot tests for nested generic types with constraints and confirm only whitespace and attribute diffs."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The new test only checks `text.Contains(ExcludeAttribute)` per generated file. A file with several types, such as the resolver with FormatterCache and GetFormatterHelper, or a file with nested formatters, passes if just one carries the attribute. Deleting the attribute from FormatterCache<T> or GetFormatterHelper in ResolverTemplate would survive in this test. The guard test would also pass, since it only compares counts of occurrences against guarded occurrences.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:68",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:64 delete-statement: remove the '[ExcludeFromCodeCoverage]' lines before 'private static class <Resolver>GetFormatterHelper' -> mutated; expected to survive because the test only requires one attribute per file and the guard test only compares counts."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "Guard test: if the attribute were removed from all but one type, or the guard dropped from one, the counts could still match. Only occurrences that are present are compared against guarded ones, so a missing attribute is not caught. The test also never compiles the generated code on a netstandard2.0 or .NET Framework target, so the 'compiles on every supported TFM' criterion is not exercised. It only checks the text of the #if lines.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:82",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 swap-boolean: change guard '#if !NETSTANDARD2_0 && !NETFRAMEWORK' to '#if NETSTANDARD2_0' in one template; the string-based guard test would fail only if the exact string differs, and no test compiles with a netstandard2.0 target, so a wrongly-spelled symbol in one template would still be missed if the Guard constant were updated in the same way."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The TransformUtilities change ('{' -> '{\\r\\n' when constraints exist) is a behavior change in nesting-type emission with no dedicated test. The new test source has no nested types or generic constraints, so the changed branch is never exercised by the new tests. Only the withheld snapshots could cover it.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: revert '{\\r\\n' to '{'; expected to survive in CodeCoverageExclusionTests because TestSource has no nested generic types with constraints; only snapshots can kill it."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "The decimal serialization change adds StandardFormat('F') in StandardClassLibraryFormatter. It is unrelated to the requirement and has no test hunk in this change. A wire-format change (it avoids exponent notation) is untested.",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Serialize decimal values such as 1E-10, 1.5m, and decimal.MaxValue with base-built and head-built MessagePack and compare bytes; also mutate line 148 by removing the StandardFormat('F') argument and run the test suite to see that nothing fails."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-5",
+    "lens": "test-quality",
+    "claim": "The test does not cover generic formatters, nested types, or the CompositeResolver template. The CompositeResolverTemplate changes (2 attributes) have no test source that generates a composite resolver, so deleting them would survive.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27 delete-statement: remove the attribute from the partial class; expected to survive CodeCoverageExclusionTests because TestSource uses no [CompositeResolver]."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-3",
+    "lens": "requirement-tests",
+    "claim": "The README says the attribute is only emitted where it is available, 'not netstandard2.0 or .NET Framework'. This is factually wrong: the attribute is available on both targets. The docs therefore justify the coverage gap with an incorrect statement.",
+    "location": "README.md:1640",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "API docs for System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute list .NET Framework 4.0+ and .NET Standard 2.0 among the applies-to targets, contradicting README.md:1640."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-4",
+    "lens": "logic-edge",
+    "claim": "Because the attribute is applied to the user-declared partial resolver class rather than only to generator-owned types, it also excludes from coverage any members the user hand-writes in their own part of that class.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "CompositeResolverTemplate.tt:7-10 and ResolverTemplate.tt:14-17 emit the attribute on `partial class <#= ResolverName.Name #>`, which is the user's own type. Attributes on any partial declaration apply to the whole type."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "mutation-survivor-m1",
+    "lens": "test-quality",
+    "claim": "no test in the suite detects negate-condition at src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "if (System.Buffers.Text.Utf8Formatter.TryFormat(value, dest.Slice(1, MessagePackRange.MaxFixStringLength), out var written, new System.Buffers.StandardFormat('F'))) -> if (!(System.Buffers.Text.Utf8Formatter.TryFormat(value, dest.Slice(1, MessagePackRange.MaxFixStringLength), out var written, new System.Buffers.StandardFormat('F'))))"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compat-break",
+    "lens": "compatibility",
+    "claim": "compatibility break: 2 sample(s) serialize to different bytes",
+    "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Compatibility bytes: 2/124 cases differ, 0 base payloads fail to read on head, public API +0/-0"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "compat-bytes"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

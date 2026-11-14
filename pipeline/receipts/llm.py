@@ -259,6 +259,8 @@ def run_batch(requests: dict[str, dict], client=None, poll_s: float = 30.0,
 
     The batch id stays in <BATCH_DIR>/inflight.json until its results are written, so a run that
     dies while polling resumes the same batch instead of paying for a second one."""
+    from . import anthropic_spend
+
     report = BatchReport()
     if not requests:
         return report
@@ -276,14 +278,23 @@ def run_batch(requests: dict[str, dict], client=None, poll_s: float = 30.0,
                 f"{inflight} holds unfinished batch {state['batch_id']} for a different set of "
                 "requests. Its results stay retrievable for 29 days; delete the file to discard it.")
         report.batch_id = state["batch_id"]
+        rid = anthropic_spend.batch_reservation(report.batch_id)
         log(f"batch: resuming {report.batch_id} ({len(ids)} requests)")
     else:
-        batch = client.messages.batches.create(
-            requests=[{"custom_id": k, "params": requests[k]["params"]} for k in ids])
+        worst = round(sum(anthropic_spend.worst_usd(requests[k]["params"], batch=True)
+                          for k in ids), 6)
+        rid = anthropic_spend.reserve(worst, f"batch of {len(ids)}")
+        try:
+            batch = client.messages.batches.create(
+                requests=[{"custom_id": k, "params": requests[k]["params"]} for k in ids])
+        except Exception:
+            anthropic_spend.settle(rid, f"batch of {len(ids)} (not created)", 0.0)
+            raise
+        anthropic_spend.attach_batch(rid, batch.id)
         report.batch_id = batch.id
         config.BATCH_DIR.mkdir(parents=True, exist_ok=True)
         inflight.write_text(json.dumps({"batch_id": batch.id, "custom_ids": ids}))
-        log(f"batch: submitted {batch.id} ({len(ids)} requests)")
+        log(f"batch: submitted {batch.id} ({len(ids)} requests, worst case ${worst:.2f} reserved)")
     report.submitted = len(ids)
 
     while (status := client.messages.batches.retrieve(report.batch_id).processing_status) != "ended":
@@ -297,9 +308,16 @@ def run_batch(requests: dict[str, dict], client=None, poll_s: float = 30.0,
         report.errored.append(rec)
         _append_jsonl(failed_path(), rec)
 
+    billed = 0.0  # every succeeded result is billed, including replies that fail to parse
     for r in client.messages.batches.results(report.batch_id):
         cid = r.custom_id
-        if cid not in requests or cid in seen:
+        if cid in seen:
+            continue
+        if r.result.type == "succeeded":
+            u, m = r.result.message.usage, getattr(r.result.message, "model", "")
+            m = requests[cid]["params"]["model"] if cid in requests else m
+            billed += cost_usd(m, u.input_tokens, u.output_tokens) * BATCH_DISCOUNT
+        if cid not in requests:
             continue
         seen.add(cid)
         e = requests[cid]
@@ -322,8 +340,66 @@ def run_batch(requests: dict[str, dict], client=None, poll_s: float = 30.0,
     for cid in ids:
         if cid not in seen:
             fail(cid, "no result returned by the batch")
+    anthropic_spend.settle(rid, f"batch {report.batch_id}", billed, batch_id=report.batch_id,
+                           submitted=report.submitted, succeeded=report.succeeded,
+                           errored=len(report.errored))
     inflight.unlink(missing_ok=True)
     return report
+
+
+def run_batches(requests: dict[str, dict], client=None, log: Callable[[str], None] = print,
+                **kw) -> BatchReport:
+    """run_batch in chunks that each fit the Anthropic budget at their worst case.
+
+    Each chunk reserves its worst case (max_tokens out, at batch price) before it is submitted and
+    settles to the reported usage when its results arrive, so the next chunk sees the budget that
+    is really left. An unfinished batch from a dead run is resumed first. Requests that cannot fit
+    even one at a time are written to failed.jsonl with the budget reason (shown as not checked)."""
+    from . import anthropic_spend
+
+    total = BatchReport()
+    left = dict(requests)
+    inflight = config.BATCH_DIR / "inflight.json"
+    if inflight.exists():
+        ids = set(json.loads(inflight.read_text())["custom_ids"])
+        chunk = {k: v for k, v in left.items() if k in ids}
+        if chunk:
+            _merge(total, run_batch(chunk, client=client, log=log, **kw))
+            left = {k: v for k, v in left.items() if k not in ids}
+    while left:
+        avail = anthropic_spend.available_usd()
+        chunk, worst = {}, 0.0
+        for k in sorted(left):
+            w = anthropic_spend.worst_usd(left[k]["params"], batch=True)
+            if worst + w <= avail:
+                chunk[k], worst = left[k], worst + w
+        if not chunk:
+            reason = (f"budget: ${avail:.4f} left under ANTHROPIC_MAX_USD="
+                      f"{config.ANTHROPIC_MAX_USD:g}, not enough for the worst case of any of "
+                      f"{len(left)} remaining requests")
+            log(f"batch: {reason}")
+            for k, e in left.items():
+                rec = {"custom_id": k, "purpose": e["purpose"], "reason": reason}
+                total.errored.append(rec)
+                _append_jsonl(failed_path(), rec)
+            break
+        if len(chunk) < len(left):
+            log(f"batch: {len(chunk)} of {len(left)} requests fit the budget at their worst case "
+                f"(${worst:.2f} of ${avail:.2f} left); the rest go in a later chunk")
+        _merge(total, run_batch(chunk, client=client, log=log, **kw))
+        left = {k: v for k, v in left.items() if k not in chunk}
+    return total
+
+
+def _merge(total: BatchReport, rep: BatchReport) -> None:
+    total.batch_id = ",".join(x for x in (total.batch_id, rep.batch_id) if x)
+    total.submitted += rep.submitted
+    total.succeeded += rep.succeeded
+    total.errored += rep.errored
+    for mine, theirs in ((total.input_tokens, rep.input_tokens),
+                         (total.output_tokens, rep.output_tokens)):
+        for m, n in theirs.items():
+            mine[m] = mine.get(m, 0) + n
 
 
 # USD per million tokens (input, output), Anthropic first-party list prices; Jev per typesafe.ai;
