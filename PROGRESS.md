@@ -19,6 +19,10 @@
 - 07:10 Fix merged (PR #11): a change's own new test failing on head blocks; change ids kept out of lens prompts.
 - 07:11 Verified merge flow on real 2234 data against a scratch copy of the mock repo: no-name 400, blocked 2297 refused, 2234 A merged --no-ff (2 parents, author = named human) + decision record.
 - 07:12 Drafts on branch `deliverables`: decision log, lessons log, concept card, demo script (bench numbers pending).
+- 07:13 Adversarial reviewer (spec + code only) found 11 defects, 7 confirmed: findings verified by unrelated evidence, keys reaching dotnet, MOCK_LLM overridable by env file, re-asked questions, sign-off on blocked, raw diff in prompts, codegen not risky, inflated bench recall.
+- 08:08 Track H merged (PR #13): all pipeline/dashboard defects fixed with regression tests; four reviews re-recorded ($6.88); pytest 234 both modes; e2e 21/21.
+- 08:51 PR #14: MIT LICENSE, README, CHALLENGE.md (outranks SPEC on scope), lessons 11-13, decisions 13-15.
+- 09:03 Track I merged (PR #15): ambiguity = vote of 3 independent requirement readers (see only the requirement). 2297 3/3 and 2129 3/3 ambiguous, 2283 1/3, 2234 0/3. MOCK replay identical on all 8 runs.
 
 ## In progress (started ~05:38, parallel subagents in worktrees)
 | Track | Model | Scope |
@@ -31,9 +35,9 @@
 | F1 bench | opus | 36 deterministic plants, manifest, `bench generate` |
 
 ## Next
-- F2 phase 2 running since 07:10: full 36-case bench cold + warm with lenses, metrics T1-T6, trust.
-- Adversarial reviewer (spec + code only) running since 07:13.
-- Then: fill bench numbers into deliverables, fix review findings, dashboard Playwright on real data.
+- J running since 09:04: an agent playing the implementer pushes round-2 fix for 2297 (verified findings only); reviewer re-reviews; expect a mergeable A/B for the human.
+- F2 still on its first full bench run (pre-fix pipeline); after it ends: metrics fixes (blocked-verdict inflation, build/tests credit text, bait leakage), then re-run bench cold + warm on the final pipeline.
+- Then: numbers into concept card, docs/submission.md, self-check with evidence, final Playwright pass.
 - F2 (after D2): bench run cold + warm, metrics T1-T7, trust levels.
 - A/B on 2297, deliverables, adversarial review.
 
@@ -48,4 +52,4 @@
 - Docker daemon is not running; Docker is only needed for the SQL adapter (polish item 6), so no impact on the definition of done.
 
 ## Time elapsed
-- 07:13 — 1 h 41 m
+- 09:05 — 3 h 33 m. Minimum 3 h reached at 08:32; definition of done not yet met (bench cold/warm + metrics, A/B merge by Anson, question cold/warm), so work continues.
