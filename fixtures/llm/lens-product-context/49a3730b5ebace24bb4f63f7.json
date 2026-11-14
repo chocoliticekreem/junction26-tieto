@@ -1,0 +1,45 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new README section and MsgPack004.md section state that diagnostics for members of referenced-assembly types are reported by the defining assembly and must be fixed there. This is a behavior claim; the change silently drops all such diagnostics through ReportIfLocatedInCompilation. Also, the README says generics from other assemblies can be used. No analyzer docs cover other diagnostics that are now suppressed, and no ledger entry records this as a deliberate policy.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the README.md hunk and the ReportIfLocatedInCompilation remarks in TypeCollector.cs. Confirm no ledger entry or docs for other MsgPack00x diagnostics describe the suppression of metadata-type diagnostics."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The reportDiagnostic wrapper now filters every analyzer diagnostic by whether its location is in source and in the compilation. This is broader than the three crash sites. Diagnostics with Location.None or a location in another compilation that were previously reported (for example, ones attached to the caller or an attribute) are now silently dropped for all code paths, not just the generic-struct-from-metadata case.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer test where a diagnostic is expected with Location.None or an otherwise non-source location (for example, MessagePackObject on a type whose diagnostic location is null) and verify it is still reported. Run the existing analyzer test suite for regressions."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In ReportIfLocatedInCompilation, the diagnostic.Location.SourceTree is passed to ContainsSyntaxTree without a null check. The new unkeyed-member test only covers a struct with a keyed member; the MemberNeedsKey path with FirstOrDefault() produces a null location (Location.None), which is dropped silently. The BothStringAndIntKeyAreNull path is not covered by any test for a metadata type.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:580",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Revert GetPropertyIdentifierLocation to the indexed DeclaringSyntaxReferences[0] at the BothStringAndIntKeyAreNull site and check that no new test fails, since the tests only exercise the MemberNeedsKey path."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 10561,
+  "output_tokens": 943,
+  "ms": 7966,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\nGenerator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\n#### Bug description\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]` type has a member whose type is a **closed generic value type defined in a referenced assemb"
+}

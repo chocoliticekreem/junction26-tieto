@@ -1,0 +1,57 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The issue names three direct `DeclaringSyntaxReferences[0]` indexings inside GetObjectInfo, at 3.1.8 lines 735, 1009 and 1101. The diff fixes only two of them, now at head lines 985 and 1077, which are 24 lines earlier than the reported 1009 and 1101. The site reported at line 735 (about line 711 on head) has no hunk, so it presumably still indexes [0]. For a metadata symbol that path would still throw IndexOutOfRangeException. That would mean the CS8785/AD0001 crash and the missing resolver are not fully fixed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "grep -n 'DeclaringSyntaxReferences\\[0\\]' src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs on head. Any remaining hit inside GetObjectInfo is reachable for a metadata closed generic. Then run ReferencedGenericValueTypeMemberTests: if that site is on the repro's path, both tests still fail on head with CS8785/AD0001."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new reportDiagnostic wrapper drops every diagnostic whose Location is not in source, including Location.None. The requirement only asks to stop the crash. With FirstOrDefault() alone, diagnostics about members of a referenced type would still be reported at Location.None, which analyzers are allowed to do. The wrapper silently suppresses them, and any other TypeCollector diagnostic whose location helper returns null. README and MsgPack004.md now document that consumers never see these problems, which the requirement does not ask for.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build a lib whose generic struct has an unattributed public property (MsgPack004 condition) and reference it from an app member Item<int>. Run the analyzers on the app: on head no diagnostic is reported; with only the FirstOrDefault fixes, MsgPack004 appears at Location.None. Whether this is a defect depends on the question below."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "When a closed generic type from a referenced assembly has a member problem (for example a public member with no [Key], MsgPack004), should the consuming project still see a diagnostic?",
+        "options": [
+          "No - drop it silently; the defining project reports it (what the change and the new docs do)",
+          "Yes - report it in the consumer at Location.None or on the consuming member, without crashing"
+        ],
+        "why_it_matters": "With option 1 the ReportIfLocatedInCompilation filter and the README/MsgPack004.md text are correct, and the low-severity finding is withdrawn. With option 2 the filter is a defect, because it hides real problems. The fix would then be only the FirstOrDefault/null-location changes, without wrapping reportDiagnostic, and the docs would be wrong.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ReferencedGenericValueTypeMemberTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.IO;\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ReferencedGenericValueTypeMemberTests(ITestOutputHelper logger)\n{\n    private const string LibSource = \"\"\"\n        using MessagePack;\n\n        namespace Lib\n        {\n            [MessagePackObject]\n            public struct Item<T>\n            {\n                [Key(0)]\n                public string Key { get; set; }\n            }\n        }\n        \"\"\";\n\n    private const string AppSource = \"\"\"\n        using MessagePack;\n        using Lib;\n\n        namespace App\n        {\n            [MessagePackObject]\n            public sealed class Cmd\n            {\n                [Key(0)]\n                public string Scope { get; set; }\n\n                [Key(1)]\n                public Item<int> Member { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            partial class AppResolver\n            {\n            }\n        }\n        \"\"\";\n\n    private static async Task<List<MetadataReference>> GetBaseReferencesAsync()\n    {\n        var refs = new List<MetadataReference>();\n        refs.AddRange(await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None));\n        refs.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        return refs;\n    }\n\n    private static async Task<MetadataReference> BuildLibAsync()\n    {\n        List<MetadataReference> refs = await GetBaseReferencesAsync();\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(LibSource) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        using var ms = new MemoryStream();\n        var emit = lib.Emit(ms);\n        emit.Success.Should().BeTrue(string.Join(Environment.NewLine, emit.Diagnostics));\n        return MetadataReference.CreateFromImage(ms.ToArray());\n    }\n\n    [Fact]\n    public async Task ClosedGenericStructFromReferencedAssembly_NoGeneratorOrAnalyzerCrash()\n    {\n        MetadataReference libRef = await BuildLibAsync();\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.ReferenceAssemblies = ReferenceAssemblies.Net.Net80;\n        test.TestState.Sources.Add(AppSource);\n        test.TestState.AdditionalReferences.Add(libRef);\n        await test.RunAsync();\n    }\n\n    [Fact]\n    public async Task ClosedGenericStructFromReferencedAssembly_ResolverIsGenerated()\n    {\n        MetadataReference libRef = await BuildLibAsync();\n        List<MetadataReference> refs = await GetBaseReferencesAsync();\n        refs.Add(libRef);\n        CSharpCompilation app = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(AppSource) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(app, out Compilation output, out ImmutableArray<Diagnostic> generatorDiagnostics);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n\n        foreach (Diagnostic d in generatorDiagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        result.Results.Should().ContainSingle();\n        result.Results[0].Exception.Should().BeNull();\n        generatorDiagnostics.Should().NotContain(d => d.Id == \"CS8785\");\n        result.GeneratedTrees.Should().Contain(t => t.GetText(CancellationToken.None).ToString().Contains(\"partial class AppResolver\"));\n    }\n}\n",
+        "test_names": [
+          "ClosedGenericStructFromReferencedAssembly_NoGeneratorOrAnalyzerCrash",
+          "ClosedGenericStructFromReferencedAssembly_ResolverIsGenerated"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 10167,
+  "output_tokens": 9856,
+  "ms": 87964,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\nGenerator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\n#### Bug description\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]` type has a member whose type is a **closed generic value type defined in a referenced assemb"
+}

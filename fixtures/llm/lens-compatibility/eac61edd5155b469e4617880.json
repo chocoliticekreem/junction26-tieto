@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new wrapper drops every diagnostic whose location is not in a syntax tree of the current compilation. This includes diagnostics created with a null/Location.None location. Diagnostics previously reported with no location (e.g. via GetIdentifierLocation returning null on a metadata type, or null locations for parameters/constructors) were still delivered to users as project-level warnings. They are now silently suppressed. A user with a warning currently shown (or warnings-as-errors) will see it disappear, and a generic non-source diagnostic never surfaces.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: [MessagePackObject] type in the compiling assembly whose member references a type that yields a diagnostic with null/Location.None (e.g. a diagnostic built with GetIdentifierLocation/GetLocation returning null). Assert on base that the diagnostic is reported and on head that it is not."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Filtering applies to all diagnostics, including those on a type from a different compilation that has a MessagePackObject with a real problem (e.g. missing Key / both keys null, or invalid union) and is used by the compiling assembly. Previously those would be reported (at a location in another tree) or crash. Now they are dropped, so a user relying on the consuming assembly to report errors for a referenced type no longer sees them. The requirement only asked for no crash.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Two-compilation analyzer test: a referenced-assembly MessagePackObject with a member lacking [Key], used from the app. Compare diagnostics from base (reported) with head (suppressed)."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The generator path may also pass a reportDiagnostic; the fix only guards the diagnostics sites changed. Other sites still index DeclaringSyntaxReferences[0] (the issue mentions line 735 in addition to the two changed). If line 735 is reachable for metadata generic structs, the crash persists, so the requirement is not fully met.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generator and analyzer tests with a two-project repro (generic struct Item<T> in referenced lib, used in app). Also try variants with a property with no key, a field member, and a ctor with no matching parameter, and assert there is no exception. Also grep for remaining DeclaringSyntaxReferences[0] usages."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 6066,
+  "output_tokens": 982,
+  "ms": 9846,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\nGenerator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\n#### Bug description\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]` type has a member whose type is a **closed generic value type defined in a referenced assemb"
+}
