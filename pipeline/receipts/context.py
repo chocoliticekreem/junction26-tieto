@@ -331,7 +331,7 @@ def entries_for_areas(areas: list[str]) -> list[str]:
             e = LedgerEntry.model_validate_json(raw)
             if _matches(e.area, areas):
                 out.append(f"- [area: {e.area}] Q: {e.question} A: {e.answer} "
-                           f"(source: ledger, answered by {e.answered_by}, change {e.change_id})")
+                           f"(source: ledger, answered by {e.answered_by})")
     return out
 
 
@@ -372,7 +372,7 @@ def append_ledger(entry: LedgerEntry) -> None:
         return
     text = md.read_text()
     summary = (f"- [area: {entry.area}] Q: {entry.question} A: {entry.answer} "
-               f"(source: ledger, answered by {entry.answered_by}, change {entry.change_id}, {entry.ts[:10]})")
+               f"(source: ledger, answered by {entry.answered_by}, {entry.ts[:10]})")
     heading = f"## {DECISIONS_HEADING}"
     if heading not in text:
         text = text.rstrip("\n") + f"\n\n{heading}\n\n"

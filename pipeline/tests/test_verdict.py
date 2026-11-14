@@ -118,6 +118,25 @@ def test_existing_test_regression_blocks(high_trust):
     assert r.verdict == "blocked" and "T.A" in r.verdict_reason
 
 
+def test_new_test_failing_on_head_blocks(high_trust):
+    base = models.TestRun(receipt_id="test-base-existing", side="base", compiled=True, total=1, passed=1,
+                   cases=[models.TestCase(name="T.A", outcome="passed")])
+    head = models.TestRun(receipt_id="test-head-existing", side="head", compiled=True, total=2, passed=1,
+                   failed=1, cases=[models.TestCase(name="T.A", outcome="passed"),
+                                    models.TestCase(name="T.New", outcome="failed")])
+    r = compose(_inputs("type-collector", tests=[base, head]))
+    assert r.verdict == "blocked" and "T.New" in r.verdict_reason
+
+
+def test_failure_already_red_on_base_does_not_block(high_trust):
+    base = models.TestRun(receipt_id="test-base-existing", side="base", compiled=True, total=1, failed=1,
+                   cases=[models.TestCase(name="T.Flaky", outcome="failed")])
+    head = models.TestRun(receipt_id="test-head-existing", side="head", compiled=True, total=1, failed=1,
+                   cases=[models.TestCase(name="T.Flaky", outcome="failed")])
+    r = compose(_inputs("type-collector", tests=[base, head]))
+    assert r.verdict != "blocked"
+
+
 def test_not_checked_never_empty_even_when_everything_ran(high_trust):
     r = compose(_inputs("type-collector"))
     assert r.not_checked

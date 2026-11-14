@@ -103,3 +103,15 @@ def test_llm_entries_drop_unknown_sources(monkeypatch):
     monkeypatch.setattr(context.llm, "call_json", lambda *a, **k: Res())
     got = context.llm_entries(SOURCES)
     assert [e.text for e in got] == ["Real."]
+
+
+def test_ledger_lines_for_prompts_never_carry_change_ids(tmp_path, monkeypatch):
+    from receipts import config, context
+    from receipts.models import LedgerEntry
+
+    monkeypatch.setattr(config, "CONTEXT", tmp_path)
+    (tmp_path / "REVIEW_CONTEXT.md").write_text("# Review context\n\n## Decisions\n")
+    context.append_ledger(LedgerEntry(question="Q?", answer="A.", area="analyzer",
+                                      answered_by="x", change_id="mock-2283-bait"))
+    lines = context.entries_for_areas(["analyzer"])
+    assert lines and not any("mock-2283-bait" in line or "bait" in line for line in lines)
