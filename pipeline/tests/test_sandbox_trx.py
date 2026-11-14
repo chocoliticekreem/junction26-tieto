@@ -14,3 +14,12 @@ def test_parse_trx_counts_and_messages():
     assert by_name["GenericsFormatterTests.Fails"].outcome == "failed"
     assert "expected 1, actual 2" in by_name["GenericsFormatterTests.Fails"].message
     assert by_name["GenericsFormatterTests.Skipped"].outcome == "notexecuted"
+
+
+def test_portable_scrubs_lowercased_home_paths():
+    from pathlib import Path
+
+    from receipts.runstore import portable
+
+    home = str(Path.home())
+    assert portable(f'storage="{home.lower()}/x/y.dll"') == 'storage="~/x/y.dll"'

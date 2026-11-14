@@ -9,6 +9,9 @@ runs/<change-id>/<run-ts>/
     findings.json      list[Finding] (all lens output, verified or not)
     mutants.json       list[Mutant]
     questions.json     list[Question]
+    context.json       ContextUsed: context status, the entries the lenses were given ([L1].. order),
+                       the findings that context withdrew / suppressed / cited, and how many ledger
+                       answers the requirement readers got. SQL runs write it with entries [] (no lens)
     receipt.json       TrustReceipt  (written last; its presence marks the run complete)
     logs/<id>.log      raw command logs, cited by CommandReceipt.log_path
     generated/         files the lenses wrote (e.g. requirement tests), cited by evidence
@@ -18,6 +21,7 @@ Pending questions = questions.json entries whose id has no context/ledger.jsonl 
 """
 
 import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -31,8 +35,9 @@ def portable(text: str) -> str:
     prefixes = {str(config.RUNS): "<RUNS>", str(config.WORK): "<WORK>",
                 str(config.MOCK_REPO): "<MOCK_REPO>", str(config.ROOT): "<ROOT>",
                 str(Path.home()): "~"}
+    # Case-insensitive: dotnet writes lowercased paths into TRX storage= attributes.
     for prefix in sorted(prefixes, key=len, reverse=True):
-        text = text.replace(prefix, prefixes[prefix])
+        text = re.sub(re.escape(prefix), lambda _m, p=prefix: prefixes[p], text, flags=re.IGNORECASE)
     return text
 
 

@@ -28,8 +28,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .models import (
-    CommandReceipt, Evidence, Finding, Interpretation, IntakeReport, Mutant, NotChecked, Question,
-    Refusal, RoutingReport, TestRun,
+    CommandReceipt, ContextCitation, ContextUsed, Evidence, Finding, Interpretation, IntakeReport,
+    Mutant, NotChecked, Question, Refusal, RoutingReport, TestRun,
 )
 
 
@@ -138,6 +138,33 @@ def _citation_evidence(citations: list[Finding], ledger: list[dict],
     return out, hunches
 
 
+def _context_used(touched: list[str], ledger: list[dict], lens_out,
+                  readers_used: int) -> ContextUsed:
+    """context.json: the entries the lenses got (in [L1].. order) and every finding they changed.
+    A ledger-citation is withdrawn against a confirmed context and only suppressed (shown as a
+    hunch) against a draft; any other finding naming an [Ln] cites the context in support."""
+    from . import context as review_context
+
+    entries = [review_context.used_entry(e) for e in ledger]
+    confirmed = review_context.is_confirmed()
+
+    def cited_text(f: Finding) -> str:
+        text = f"{f.claim} {f.location} {f.receipt_plan.detail}"
+        refs = dict.fromkeys(int(n) for n in re.findall(r"\[L(\d+)\]", text))
+        return "; ".join(entries[n - 1].text for n in refs if 0 < n <= len(entries))
+
+    citations = [ContextCitation(lens=f.lens, claim=f.claim,
+                                 entry=cited_text(f) or f.receipt_plan.detail,
+                                 effect="withdrawn" if confirmed else "suppressed-unconfirmed")
+                 for f in lens_out.citations]
+    citations += [ContextCitation(lens=f.lens, claim=f.claim, entry=entry, effect="cited")
+                  for f in lens_out.findings + lens_out.hunches if (entry := cited_text(f))]
+    return ContextUsed(
+        status="confirmed" if confirmed else "draft", confirmed_by=review_context.confirmed_by(),
+        areas=review_context.context_tags(touched), entries=entries, citations=citations,
+        readers_used_ledger=readers_used)
+
+
 def run_lenses(ctx: ReviewContext) -> StageResult:
     """[4] Six independent lenses (lenses.run_all_lenses), each with minimal context, then the
     requirement-reading panel (lenses.readers), whose vote alone decides ambiguity."""
@@ -157,6 +184,8 @@ def run_lenses(ctx: ReviewContext) -> StageResult:
     panel = run_panel(ctx.requirement_id, ctx.requirement_text, ledger, ctx.intake.hunks,
                       areas_by_file)
     runstore.write(ctx.run_dir, "readers.json", panel.to_json())
+    runstore.write(ctx.run_dir, "context.json",
+                   _context_used(touched, ledger, out, panel.ledger_answers))
     refusals = [r for r in out.refusals if "(A or B)" not in r.what]
     if panel.refusal is not None:
         refusals.append(panel.refusal)

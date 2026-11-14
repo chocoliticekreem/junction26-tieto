@@ -30,7 +30,8 @@ def _ctx(tmp_path, change="ju26-issue-2297") -> stages.ReviewContext:
 
 @pytest.fixture
 def fake_lenses(tmp_path, monkeypatch):
-    """Every lens proposes the same intent question; product-context also cites [L1]; the
+    """Every lens proposes the same intent question; product-context also cites [L1] as a
+    ledger-citation and logic-edge quotes [L1] in a code-citation hunch; the
     requirement-tests lens writes one test and a finding that does not name it."""
     monkeypatch.setattr(config, "CONTEXT", tmp_path / "context")
     config.CONTEXT.mkdir()
@@ -53,7 +54,10 @@ def fake_lenses(tmp_path, monkeypatch):
                                           "expects": "new-api"}],
                      "ambiguity": False, "interpretations": []}
         elif purpose == "lens-logic-edge":
-            data |= {"generated_tests": []}
+            data |= {"generated_tests": [],
+                     "findings": [{"claim": "nested types also need it, per [L1]", "location": FILE,
+                                   "severity": "low", "verdict_depends_on_intent": False,
+                                   "receipt_plan": {"kind": "code-citation", "detail": FILE}}]}
         elif purpose == "lens-product-context":
             data |= {"ambiguity": False, "interpretations": [],
                      "findings": [{"claim": "no attribute on netstandard2.0", "location": FILE,
@@ -156,3 +160,79 @@ def test_ab_refusal_quotes_the_requirement_only_when_the_quote_is_real():
     assert '"I do not feel like a setting is needed"' in r.why and "will not pick" in r.why
     r = ab.refusal_for("REQ-2297", req, interps, "an invented quote")
     assert "invented" not in r.why and "supports both readings" in r.why
+
+
+def _context_json(ctx) -> dict:
+    import json
+
+    from receipts.models import ContextUsed
+
+    raw = json.loads((ctx.run_dir / "context.json").read_text())
+    ContextUsed.model_validate(raw)
+    return raw
+
+
+def test_context_json_records_what_the_lenses_were_given(tmp_path, fake_lenses):
+    (config.CONTEXT / "REVIEW_CONTEXT.md").write_text(
+        "# Review context\n\n## Deliberate conventions\n\n"
+        "- [area: codegen-templates] Generated code targets netstandard2.0 too (source: README.md)\n"
+        "- [area: analyzer, generator] Metadata types are skipped (rationale inferred). "
+        "(source: src/TypeCollector.cs:367) <!-- seeded convention for the bait bench case -->\n"
+        "- [area: security] Not for this change (source: README.md)\n")
+    (config.CONTEXT / "ledger.jsonl").write_text(LedgerEntry(
+        question=QUESTION, answer=ANSWER, area=AREA, answered_by="Anson",
+        change_id="x").model_dump_json() + "\n")
+    (config.CONTEXT / "status.json").write_text('{"status": "draft", "confirmed_by": null}')
+    ctx = _ctx(tmp_path)
+    stages.run_lenses(ctx)
+    c = _context_json(ctx)
+    assert c["status"] == "draft" and c["confirmed_by"] is None
+    assert c["areas"] == ["codegen-templates", "generator"]
+    assert c["entries"] == [
+        {"text": "Generated code targets netstandard2.0 too", "area": "codegen-templates",
+         "source": "README.md", "kind": "context"},
+        {"text": "Metadata types are skipped (rationale inferred).", "area": "analyzer, generator",
+         "source": "src/TypeCollector.cs:367", "kind": "context"},
+        {"text": f"Q: {QUESTION} A: {ANSWER}", "area": AREA, "source": "ledger: answered by Anson",
+         "kind": "ledger"},
+    ]
+    assert c["readers_used_ledger"] == 1
+    assert c["citations"] == [
+        {"lens": "product-context", "claim": "no attribute on netstandard2.0",
+         "entry": "Generated code targets netstandard2.0 too", "effect": "suppressed-unconfirmed"},
+        {"lens": "logic-edge", "claim": "nested types also need it, per [L1]",
+         "entry": "Generated code targets netstandard2.0 too", "effect": "cited"},
+    ]
+
+
+def test_context_json_confirmed_citation_is_withdrawn(tmp_path, fake_lenses):
+    (config.CONTEXT / "status.json").write_text('{"status": "confirmed", "confirmed_by": "Anson"}')
+    ctx = _ctx(tmp_path)
+    stages.run_lenses(ctx)
+    c = _context_json(ctx)
+    assert c["status"] == "confirmed" and c["confirmed_by"] == "Anson"
+    assert [(x["lens"], x["effect"]) for x in c["citations"]] == [
+        ("product-context", "withdrawn"), ("logic-edge", "cited")]
+    assert c["readers_used_ledger"] == 0
+
+
+def test_recording_context_leaves_prompts_byte_identical(tmp_path, fake_lenses):
+    """Golden hashes captured before context.json existed: recorded fixtures still replay."""
+    import hashlib
+
+    stages.run_lenses(_ctx(tmp_path))
+    digest = {k: hashlib.sha256(v.encode()).hexdigest()[:16] for k, v in fake_lenses.items()}
+    for lens in ("compatibility", "logic-edge", "product-context", "requirement-tests",
+                 "security", "test-quality"):
+        assert digest[f"lens-{lens}"] == "c1007aa4a2e8da1d"
+    assert digest["readers"] == "ef6693d1624ea60f"
+
+
+def test_sql_runs_record_no_context_honestly(tmp_path, monkeypatch):
+    from receipts.review_sql import sql_context_used
+
+    monkeypatch.setattr(config, "CONTEXT", tmp_path)
+    (tmp_path / "status.json").write_text('{"status": "draft", "confirmed_by": null}')
+    c = sql_context_used()
+    assert (c.status, c.entries, c.citations, c.readers_used_ledger) == ("draft", [], [], 0)
+    assert "no lens" in c.note

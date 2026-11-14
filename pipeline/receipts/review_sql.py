@@ -7,10 +7,10 @@ any other change. Deterministic: no LLM call, no lens; the verdict composer says
 import time
 from pathlib import Path
 
-from . import adapters, config, runstore
+from . import adapters, config, context, runstore
 from .gitutil import rev_parse
 from .intake import run_intake
-from .models import NotChecked, RouteResult, RoutingReport
+from .models import ContextUsed, NotChecked, RouteResult, RoutingReport
 from .review import load_requirement
 from .verdict import VerdictInputs, compose
 
@@ -34,6 +34,13 @@ def route(intake) -> RoutingReport:
         if depth.get(h.file) != "deep":
             depth[h.file] = d
     return RoutingReport(router="sql-rule", routes=routes, depth_by_file=depth)
+
+
+def sql_context_used() -> ContextUsed:
+    return ContextUsed(
+        status="confirmed" if context.is_confirmed() else "draft",
+        confirmed_by=context.confirmed_by(), areas=[], entries=[],
+        note="The SQL adapter runs no lens, so no product context was looked up or used.")
 
 
 def run_review_sql(repo: Path, change: str, req: str, base: str = "main") -> int:
@@ -80,6 +87,7 @@ def run_review_sql(repo: Path, change: str, req: str, base: str = "main") -> int
     runstore.write(run_dir, "findings.json", result.findings)
     runstore.write(run_dir, "mutants.json", [])
     runstore.write(run_dir, "questions.json", [])
+    runstore.write(run_dir, "context.json", sql_context_used())
     runstore.write(run_dir, "adapter.json", {"adapter": kind, "wall_s": wall, **result.extra})
     runstore.write(run_dir, "receipt.json", receipt)
     runstore.mark_latest(run_dir)
