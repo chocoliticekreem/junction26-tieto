@@ -1,0 +1,45 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The README states that MsgPack011/016/017 are not reported for suppressed types and that the dynamic resolver handles them. This matches the recorded decision, so it is deliberate and not a defect. The test SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed encodes the same behaviour.",
+        "location": "README.md:1632",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L12] Generation-only diagnostics (MsgPack011, MsgPack016, MsgPack017) are deliberately not reported for SuppressSourceGeneration types; no formatter is generated for them."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The string-key branch in the second collection path uses `if (stringMembers.ContainsKey(...)) Add`, with the condition inverted relative to the other three sites. Add runs only when the key already exists, so it throws ArgumentException for duplicates. Unique keys are never added, so string-keyed members vanish from the member list. This breaks string-key analysis and generation, and it contradicts the requirement that behaviour be unchanged when the option is unset or false.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the analyzer and generator on a [MessagePackObject] type with unique [Key(\"a\")] members through the path at line ~1176 (likely the field/property-less or ctor path). It should throw or drop members. Rerun the generator snapshot tests with string keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test covers the actual regression: the analyzer producing its diagnostics when SuppressSourceGeneration=true. TypeCollector.cs has no hunk that removes an early return for suppressed types, so the fix for the reported bug may be missing from the diff. The diff only dedups dictionary adds and adds `continue`. The tests that expect MsgPack004/015/003 for suppressed types may fail if the collector still skips those types.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests.MemberWithoutKeyIsReported against the head build and check that MsgPack004 is reported."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 9616,
+  "output_tokens": 877,
+  "ms": 7445,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

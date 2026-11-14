@@ -1,0 +1,75 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The requirement says all generated code should carry ExcludeFromCodeCoverage, but only formatter classes (enum, object, string-key, union templates) are decorated. The generated resolver (GeneratedMessagePackResolver / ResolverTemplate) and any other emitted types, such as the checked-in resolver templates, are not touched. The README claims only 'all generated formatters', which narrows the requirement's 'all generated code'.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator over a source containing [GeneratedMessagePackResolver] and assert that every generated type, including the resolver class from ResolverTemplate, has ExcludeFromCodeCoverage. The existing test filters to files starting with 'Formatters.', so it never checks the resolver output."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is suppressed on netstandard2.0 and .NET Framework, so generated code in those targets is still counted in coverage. The README documents this. Ledger L7 says there is no preference and to follow the requirement, so it is not recorded as deliberate. The requirement only demands that the code compile, which the guard achieves.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L7] says to follow the requirement for netstandard2.0 and .NET Framework. The requirement's derived criterion allows 'conditionally emitted', so the guard is acceptable."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The preprocessor guard `#if !NETSTANDARD2_0 && !NETFRAMEWORK` depends on the consumer project defining these symbols. A project targeting an older netcoreapp or netstandard1.x, or using a custom TFM without those symbols, may lack the attribute and fail to compile. The README says the attribute is only emitted where available, which overstates what the guard checks.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "The guard is a TFM-symbol check, not an attribute-existence check. Compile the generated output against netstandard2.1 or netcoreapp2.x references and confirm it builds."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "TransformUtilities changes the nesting-type brace emission from \"{\" to \"{\\r\\n\" when constraints exist. This is a behavior change outside the stated feature, and it alters the generated output for nested types with constraints. Ledger L4 notes that the generator has seen many fixes around nested types and constraints, so this change is risky.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests covering nested generic types with constraints and check that the diffs are only whitespace. The newline is probably required so that the '#if' lands at the start of a line."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should generated code be decorated unconditionally (no setting), or should an opt-out setting be added?",
+        "options": [
+          "Unconditional, no setting (as implemented)",
+          "Add an opt-out MSBuild/attribute option, default on"
+        ],
+        "why_it_matters": "The requirement says a setting is not needed but would be acceptable. If the maintainers want to allow opt-out, the change is incomplete. Otherwise it is fine as is.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Decorate only the generated formatter classes (object, string-key, enum, union) unconditionally, with a TFM guard. No setting, README documents it."
+      },
+      {
+        "label": "B",
+        "summary": "Decorate every generated type, including the resolver class and any helper types. Optionally add an opt-out setting (such as an MSBuild property) that suppresses emission of the attribute."
+      }
+    ]
+  },
+  "input_tokens": 10119,
+  "output_tokens": 1443,
+  "ms": 10719,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

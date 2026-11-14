@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `continue` on mixed int/string key members changes generated output for types that violate DoNotMixStringAndIntKeys. Previously the mismatched member fell through and was added to the member maps (or threw), so the formatter included it. Now that member is silently dropped from the generated formatter. Users who build with warnings downgraded, or who have such types in already-compiling code, get a formatter with different bytes (a member missing) and different generated code.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests on base and head for a [MessagePackObject] type that mixes [Key(0)] and [Key(\"a\")] members. Compare the generated formatter: head omits the mismatched member, base includes it."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Duplicate keys are now silently dropped (first member wins) via `ContainsKey` guards instead of throwing on `Add`. For types with duplicate [Key] values, the generated formatter now omits the later member. Wire bytes differ from what the dynamic formatter or earlier behavior produced, and this relies on a duplicate-key diagnostic being reported elsewhere. If a duplicate-key diagnostic is not reported in every path, such as the `SuppressSourceGeneration` path, the member loss is silent.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Sample type: [MessagePackObject] class with [Key(0)] int A and [Key(0)] int B (also string key variant \"x\" twice). Compile with base and head generators, serialize A=1,B=2, and compare bytes and generated source. Also confirm a duplicate-key diagnostic is emitted on head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5000,
+  "output_tokens": 694,
+  "ms": 6609,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

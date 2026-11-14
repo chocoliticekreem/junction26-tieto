@@ -1,0 +1,36 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "For a `SuppressSourceGeneration = true` type, a member with a KeyAttribute-derived key now hits `continue` before any further processing. That skips the member's type collection and the later per-member checks: the [MessagePackFormatter] lookup, the serializability check (MsgPack003) and the accessibility checks (MsgPack012/015). The README added in this change says the analyzer still validates these types, including that member types are serializable (MsgPack003). Ledger L14 exempts only MsgPack011/016/017. A derived-key member whose type is not serializable (for example a plain class without [MessagePackObject]) would therefore get no MsgPack003. That contradicts the documented contract and the requirement that the analyzer still reports its MsgPack0xx diagnostics for these types.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:922",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a VerifyCS test with SkipGeneratedSourcesCheck. Declare `class MyKeyAttribute : KeyAttribute { public MyKeyAttribute(int x) : base(x) {} }`, `public class NotSerializable {}`, and `[MessagePackObject(SuppressSourceGeneration = true)] public class C { [MyKey(0)] public NotSerializable {|MsgPack003:Value|} { get; set; } }`. Expect MsgPack003. On head the diagnostic is missing because of the `continue` at TypeCollector.cs:922/1085, so the test fails."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerTests\n{\n    [Fact]\n    public async Task SuppressedType_WithDerivedKeyAttributes_AnalyzerRunsWithoutErrors()\n    {\n        string testSource = \"\"\"\n            using MessagePack;\n\n            public class MyKeyAttribute : KeyAttribute\n            {\n                public MyKeyAttribute(int x) : base(x) { }\n            }\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [MyKey(0)]\n                public int A { get; set; }\n\n                [MyKey(1)]\n                public int B { get; set; }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(testSource);\n        await test.RunAsync();\n    }\n\n    [Fact]\n    public async Task SuppressedType_WithDerivedKeyAttributes_StillReportsMissingKey()\n    {\n        string testSource = \"\"\"\n            using MessagePack;\n\n            public class MyKeyAttribute : KeyAttribute\n            {\n                public MyKeyAttribute(int x) : base(x) { }\n            }\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [MyKey(0)]\n                public int A { get; set; }\n\n                [MyKey(1)]\n                public int B { get; set; }\n\n                public int {|MsgPack004:C|} { get; set; }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(testSource);\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "SuppressedType_WithDerivedKeyAttributes_AnalyzerRunsWithoutErrors",
+          "SuppressedType_WithDerivedKeyAttributes_StillReportsMissingKey"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 10305,
+  "output_tokens": 5217,
+  "ms": 47010,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

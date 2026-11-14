@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "DepthStep now uses `>` instead of `>=`, so the depth limit is off by one. With MaximumObjectGraphDepth = N, a reader already at depth N can step into level N+1 without an exception, which weakens the stack-depth guard (L9). The change is unrelated to REQ-2234, which is about analyzer diagnostics under SuppressSourceGeneration. Concrete input: WithMaximumObjectGraphDepth(3), reader.Depth = 3, then DepthStep throws on base and does not throw on head.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeyAndDepthReceiptTests.DepthStep_AtMaximumDepth_Throws. It sets reader.Depth to the configured maximum, calls DepthStep and expects InsufficientExecutionStackException. Expected: passes on base, fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new ContainsKey guards silently drop a second member that uses an already-used [Key(n)] or [Key(\"s\")]. Before, Dictionary.Add threw, so the failure was at least loud. Now no diagnostic is raised at this point. The generated formatter serializes only the first member, so the second member's data is lost on round-trip, and the dynamic resolver rejects the same type at run time. Concrete input: [MessagePackObject] class with [Key(0)] int FirstValue and [Key(0)] int SecondValue.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeyAndDepthReceiptTests.DuplicateIntKeys_AreReportedOrBothMembersSerialized. It runs MessagePackGenerator and all MessagePack analyzers on the duplicate-key type, then asserts that either an Error-severity MsgPack diagnostic is reported or the generated code references both members. Expected to fail on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same silent-drop guard is applied to string keys and to the second member loop: two members with an equal [Key(\"x\")], or equal int keys in the second loop, leave the second member out of the generated formatter without any diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Write a variant of DuplicateIntKeys_AreReportedOrBothMembersSerialized that uses [Key(\"x\")] on both members, plus a variant for the second loop's member kind. Assert that a MsgPack error is reported or that both members appear in the generated formatter."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeyAndDepthReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeyAndDepthReceiptTests\n{\n    [Fact]\n    public void DepthStep_AtMaximumDepth_Throws()\n    {\n        MessagePackSecurity security = MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(3);\n        var reader = new MessagePackReader(new ReadOnlyMemory<byte>(new byte[] { 0xc0 }));\n        reader.Depth = 3;\n        bool threw = false;\n        try\n        {\n            security.DepthStep(ref reader);\n        }\n        catch (InsufficientExecutionStackException)\n        {\n            threw = true;\n        }\n\n        Assert.True(threw, \"DepthStep must throw when the reader is already at MaximumObjectGraphDepth.\");\n    }\n\n    [Fact]\n    public async Task DuplicateIntKeys_AreReportedOrBothMembersSerialized()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace Repro\n            {\n                [MessagePackObject]\n                public class Dup\n                {\n                    [Key(0)]\n                    public int FirstValue { get; set; }\n\n                    [Key(0)]\n                    public int SecondValue { get; set; }\n                }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver\n                {\n                }\n            }\n            \"\"\";\n\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        IEnumerable<MetadataReference> refs = Enumerable.Concat<MetadataReference>(framework, ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReproAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out ImmutableArray<Diagnostic> generatorDiagnostics);\n        GeneratorDriverRunResult run = driver.GetRunResult();\n        string generated = string.Join(\"\\n\", run.GeneratedTrees.Select(t => t.ToString()));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n        ImmutableArray<Diagnostic> analyzerDiagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n\n        bool msgPackError = generatorDiagnostics.Concat(run.Diagnostics).Concat(analyzerDiagnostics)\n            .Any(d => d.Severity == DiagnosticSeverity.Error && d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal));\n        bool bothMembersGenerated = generated.Contains(\"FirstValue\") && generated.Contains(\"SecondValue\");\n\n        Assert.True(\n            msgPackError || bothMembersGenerated,\n            \"Duplicate [Key(0)] members must either be reported as a MsgPack error or both be serialized; instead SecondValue was silently dropped. Generated:\\n\" + generated);\n    }\n}\n",
+        "test_names": [
+          "DepthStep_AtMaximumDepth_Throws",
+          "DuplicateIntKeys_AreReportedOrBothMembersSerialized"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8657,
+  "output_tokens": 11022,
+  "ms": 97900,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

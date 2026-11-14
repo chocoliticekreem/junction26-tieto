@@ -1,0 +1,72 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The timestamp32 guard is inverted. It now tests the low 32 bits (`data64 & 0x00000000ffffffff`) instead of the high 32 bits. Example: `DateTime.UnixEpoch.AddTicks(1)` gives seconds=0 and nanoseconds=100, so data64 = 100<<34 and its low 32 bits are 0. The 4-byte timestamp32 branch then writes `(uint)data64` = 0, so the sub-second part is silently lost and the value deserializes as the Unix epoch. Conversely, whole-second values such as `UnixEpoch.AddSeconds(1)` should use the 6-byte timestamp32 form but now fall through to the 10-byte timestamp64 form. That changes the wire bytes for almost every DateTime.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.TimestampWriterReceiptTests. SubSecondTimeAtUnixEpochRoundTrips should fail on head (the 100 ns are lost). WholeSecondsUseTimestamp32 should fail on head (10 bytes instead of 6). A byte-diff of Serialize(DateTime.UnixEpoch.AddSeconds(1)) between base and head would also show the change."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MessagePack attributes on T are ignored, which breaks the requirement that they be honoured. When no surrogate is given, CreateContractlessMembers is used unconditionally, even if T carries [MessagePackObject], [Key], [IgnoreMember] or [DataContract]/[DataMember]. Example: a type with [MessagePackObject] and an [IgnoreMember] public read-write property still has that property serialized. Its [Key(0)] int keys are also replaced by name-sorted string keys.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:89",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterAttributeReceiptTests.IgnoreMemberOnFormattedTypeIsHonoured. The generated UserFormatterForMyObject source contains the [IgnoreMember] property IgnoredMemberXyz on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "IsPartial checks only the formatter declaration, not its containing types. A formatter nested inside a non-partial class (`class Outer { [GeneratedMessagePackFormatter] public partial class F : IMessagePackFormatter<T> {} }`) passes the MsgPack019 check. The generated file must then redeclare the nesting type, which yields a compiler error (CS0260 missing partial on Outer, or a duplicate type) instead of a MsgPack019 diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:47",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "IsPartial only inspects formatter.DeclaringSyntaxReferences, and the templates emit EmitNestingTypesAndNamespaces around `partial class F`. A VerifyCS test with a nested formatter in a non-partial Outer would show CS0260 rather than MsgPack019."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "If T is a source type with [MessagePackObject] and a [GeneratedMessagePackFormatter] also targets T, both the TypeCollector model and the new generated-formatter model are added to modelPerType. Nothing de-duplicates by data type, so the resolver may register two formatters for typeof(T), or AddSource may get a colliding hint name.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:70",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "The foreach over s.Left.Left.Right adds generatedModel unconditionally, with no check against ObjectInfos already collected for the same DataType. Running the generator on such a source and inspecting the resolver's type lookup would confirm whether a duplicate entry is emitted."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/TimestampWriterReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\n\nnamespace Receipts.GeneratedTests;\n\npublic class TimestampWriterReceiptTests\n{\n    [Fact]\n    public void SubSecondTimeAtUnixEpochRoundTrips()\n    {\n        DateTime value = DateTime.UnixEpoch.AddTicks(1);\n        byte[] bytes = global::MessagePack.MessagePackSerializer.Serialize(value);\n        DateTime result = global::MessagePack.MessagePackSerializer.Deserialize<DateTime>(bytes);\n        result.Ticks.Should().Be(value.Ticks);\n    }\n\n    [Fact]\n    public void WholeSecondsUseTimestamp32()\n    {\n        byte[] bytes = global::MessagePack.MessagePackSerializer.Serialize(DateTime.UnixEpoch.AddSeconds(1));\n        bytes.Length.Should().Be(6);\n    }\n}\n",
+        "test_names": [
+          "SubSecondTimeAtUnixEpochRoundTrips",
+          "WholeSecondsUseTimestamp32"
+        ],
+        "expects": "fail-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterAttributeReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterAttributeReceiptTests\n{\n    [Fact]\n    public async Task IgnoreMemberOnFormattedTypeIsHonoured()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace Demo\n            {\n                [MessagePackObject]\n                public class MyObject\n                {\n                    [Key(0)]\n                    public int Kept { get; set; }\n\n                    [IgnoreMember]\n                    public int IgnoredMemberXyz { get; set; }\n                }\n\n                [GeneratedMessagePackFormatter]\n                public partial class UserFormatterForMyObject : IMessagePackFormatter<MyObject> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n\n        CSharpParseOptions parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> references = new(framework);\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new ISourceGenerator[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGenerators(compilation);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n\n        SyntaxTree? formatterTree = result.GeneratedTrees.FirstOrDefault(t => t.ToString().Contains(\"class UserFormatterForMyObject\"));\n        formatterTree.Should().NotBeNull();\n        formatterTree!.ToString().Should().NotContain(\"IgnoredMemberXyz\");\n    }\n}\n",
+        "test_names": [
+          "IgnoreMemberOnFormattedTypeIsHonoured"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 21959,
+  "output_tokens": 14634,
+  "ms": 129834,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

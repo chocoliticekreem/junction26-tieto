@@ -1,0 +1,35 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The duplicate-key guard was added to the property loop for both int and string keys. It was added to the field loop only for string keys. The field loop's `intMembers.Add(member.IntKey, ...)` (near TypeCollector.cs:1160) is not shown as changed, so it is still unguarded. Two inputs reach it: a `[MessagePackObject(SuppressSourceGeneration = true)]` type with two fields both marked `[Key(0)]`, or a property `[Key(0)]` plus a field `[Key(0)]` (the property is added first, then the field Add throws). Either should make Dictionary.Add throw ArgumentException inside TypeCollector. The analyzer then crashes with AD0001 and reports nothing, which is the REQ-2234 symptom. Without SuppressSourceGeneration, the generator crashes with CS8785.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1173",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.FieldDuplicateIntKeyTests. AnalyzerDoesNotThrow_DuplicateIntKeyFields_Suppressed and AnalyzerDoesNotThrow_PropertyAndFieldSameIntKey_Suppressed assert that no AD0001 is reported. GeneratorDoesNotThrow_DuplicateIntKeyFields asserts that GeneratorRunResult.Exception is null. All three are expected to fail on head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/FieldDuplicateIntKeyTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class FieldDuplicateIntKeyTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public FieldDuplicateIntKeyTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    private static async Task<CSharpCompilation> CreateCompilationAsync(string source)\n    {\n        ImmutableArray<MetadataReference> frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> refs = new List<MetadataReference>(frameworkRefs);\n        foreach (var r in ReferencesHelper.GetReferences(ReferencesSet.MessagePack))\n        {\n            refs.Add(r);\n        }\n\n        return CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n    }\n\n    private static ImmutableArray<DiagnosticAnalyzer> GetAnalyzers()\n    {\n        return typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n    }\n\n    private async Task AssertNoAnalyzerCrashAsync(string source)\n    {\n        CSharpCompilation compilation = await CreateCompilationAsync(source);\n        ImmutableArray<DiagnosticAnalyzer> analyzers = GetAnalyzers();\n        Assert.NotEmpty(analyzers);\n        ImmutableArray<Diagnostic> diagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n        foreach (Diagnostic d in diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        Assert.DoesNotContain(diagnostics, d => d.Id == \"AD0001\");\n    }\n\n    [Fact]\n    public async Task AnalyzerDoesNotThrow_DuplicateIntKeyFields_Suppressed()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class DupFields\n            {\n                [Key(0)]\n                public int A;\n\n                [Key(0)]\n                public int B;\n            }\n            \"\"\";\n        await this.AssertNoAnalyzerCrashAsync(source);\n    }\n\n    [Fact]\n    public async Task AnalyzerDoesNotThrow_PropertyAndFieldSameIntKey_Suppressed()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class DupPropField\n            {\n                [Key(0)]\n                public int P { get; set; }\n\n                [Key(0)]\n                public int F;\n            }\n            \"\"\";\n        await this.AssertNoAnalyzerCrashAsync(source);\n    }\n\n    [Fact]\n    public async Task GeneratorDoesNotThrow_DuplicateIntKeyFields()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class DupFields2\n            {\n                [Key(0)]\n                public int A;\n\n                [Key(0)]\n                public int B;\n            }\n            \"\"\";\n        CSharpCompilation compilation = await CreateCompilationAsync(source);\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGenerators(compilation);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n        foreach (Diagnostic d in result.Diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        Assert.All(result.Results, r => Assert.Null(r.Exception));\n        Assert.DoesNotContain(result.Diagnostics, d => d.Id == \"CS8785\");\n    }\n}\n",
+        "test_names": [
+          "AnalyzerDoesNotThrow_DuplicateIntKeyFields_Suppressed",
+          "AnalyzerDoesNotThrow_PropertyAndFieldSameIntKey_Suppressed",
+          "GeneratorDoesNotThrow_DuplicateIntKeyFields"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8046,
+  "output_tokens": 8506,
+  "ms": 69748,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

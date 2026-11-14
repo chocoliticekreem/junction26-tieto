@@ -147,7 +147,35 @@ def test_ledger_scope_warm_keeps_only_oracle_and_restores_on_crash(tmp_path, mon
         with bench.LedgerScope("warm"):
             assert (tmp_path / "ledger.jsonl").read_text().splitlines() == [ans]
             raise RuntimeError("case crashed")
-    assert (tmp_path / "ledger.jsonl").read_text().splitlines() == [real, ans]
+    # after warm: the real ledger is back, the oracle's answers are archived for the record
+    assert (tmp_path / "ledger.jsonl").read_text().splitlines() == [real]
+    assert (tmp_path / "ledger.bench-oracle.jsonl").read_text().splitlines() == [ans]
+    # a repeated warm run takes the oracle's answers from the archive
+    with bench.LedgerScope("warm"):
+        assert (tmp_path / "ledger.jsonl").read_text().splitlines() == [ans]
+
+
+def test_ledger_scope_strips_oracle_decisions_from_context_md(tmp_path, monkeypatch):
+    from receipts import oracle
+
+    monkeypatch.setattr(config, "CONTEXT", tmp_path)
+    md = tmp_path / "REVIEW_CONTEXT.md"
+    md.write_text(f"## Decisions\n- [area: x] Q: a A: b (source: ledger, answered by sonion)\n"
+                  f"- [area: x] Q: c A: d (source: ledger, answered by {oracle.ORACLE}, 2026)\n")
+    with bench.LedgerScope("cold"):
+        pass
+    assert oracle.ORACLE not in md.read_text() and "answered by sonion" in md.read_text()
+
+
+def test_strip_restores_placeholder_when_no_decision_left(tmp_path, monkeypatch):
+    from receipts import context, oracle
+
+    monkeypatch.setattr(config, "CONTEXT", tmp_path)
+    md = tmp_path / "REVIEW_CONTEXT.md"
+    md.write_text(f"# Ctx\n\n## {context.DECISIONS_HEADING}\n"
+                  f"- [area: x] Q: c A: d (source: ledger, answered by {oracle.ORACLE}, 2026)\n")
+    bench._strip_oracle_decisions()
+    assert md.read_text() == f"# Ctx\n\n## {context.DECISIONS_HEADING}\n\n{context.NO_DECISIONS}\n"
 
 
 def test_summary_merges_partial_reruns(tmp_path, monkeypatch):
@@ -165,7 +193,13 @@ def test_summary_merges_partial_reruns(tmp_path, monkeypatch):
 def test_leak_scan_flags_labels(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "RUNS", tmp_path)
     monkeypatch.setattr(config, "FIXTURES_LLM", tmp_path / "fx")
-    (tmp_path / "fx").mkdir()
+    monkeypatch.setattr(config, "ROOT", tmp_path)
+    monkeypatch.setattr(config, "CONTEXT", tmp_path / "ctx")
+    (tmp_path / "fx" / "lens-x").mkdir(parents=True)
+    # a model reply may use the word; only the prompt side counts
+    (tmp_path / "fx" / "lens-x" / "a.json").write_text(json.dumps(
+        {"prompt_preview": "<requirement>add a guard</requirement>",
+         "data": {"findings": [{"claim": "the .tt and .cs files can drift"}]}}))
     d = tmp_path / "mock-2283-bait" / "ts"
     d.mkdir(parents=True)
     (d / "intake.json").write_text(json.dumps({"hunks": [{"file": "a.cs", "text": "+int x = 1;"}]}))
@@ -174,3 +208,22 @@ def test_leak_scan_flags_labels(tmp_path, monkeypatch):
                                                           "text": "+// see mock/2283/bait"}]}))
     hits = bench.leak_scan(0, [d])
     assert {h["pattern"] for h in hits} >= {r"mock[/-]\d{4}", r"\bbait\b"}
+    (tmp_path / "ctx").mkdir()
+    (tmp_path / "ctx" / "ledger.jsonl").write_text(json.dumps(
+        {"question": "Is the planted guard intended?", "answer": "No preference"}) + "\n")
+    assert any(h["source"].startswith("context/ledger.jsonl") for h in bench.leak_scan(0, []))
+
+
+def test_prune_raw_drops_trx_keeps_logs(tmp_path):
+    (tmp_path / "logs" / "mutant-1-results").mkdir(parents=True)
+    (tmp_path / "logs" / "mutant-1-results" / "mutant-1.trx").write_text("x" * 100)
+    (tmp_path / "logs" / "mutant-1.log").write_text("log")
+    (tmp_path / "compat" / "harness-base" / "out").mkdir(parents=True)
+    (tmp_path / "compat" / "harness-base" / "out" / "H.dll").write_text("y" * 50)
+    (tmp_path / "compat" / "harness-base" / "Program.cs").write_text("src")
+    (tmp_path / "compat" / "base-bytes.json").write_text("{}")
+    assert bench.prune_raw(tmp_path) == 150
+    assert not (tmp_path / "logs" / "mutant-1-results").exists()
+    assert not (tmp_path / "compat" / "harness-base" / "out").exists()
+    for kept in ("logs/mutant-1.log", "compat/harness-base/Program.cs", "compat/base-bytes.json"):
+        assert (tmp_path / kept).exists(), kept

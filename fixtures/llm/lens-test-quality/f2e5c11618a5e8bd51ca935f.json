@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The test only asserts that the generated formatter is registered and round-trips with default options. No test covers a [GeneratedMessagePackFormatter] class that has no body and whose type is declared in a separate assembly with the output actually emitted; however the ExecutionTests do this. The missing piece is the negative case: the IsUserDeclaredFormatter flag in the template is never tested for the false path alongside it, but the existing snapshot tests cover that. A real gap is the GeneratorUtilities exclusion guard: if it were removed, the formatter would be registered twice, and no test checks for duplicate registration or for compile errors beyond the IsType assertion.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:35",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:36 remove-guard: && !symbol.GetAttributes().Any(...GeneratedMessagePackFormatterAttributeName) -> removed; expected to survive because GeneratedFormattersAreRegisteredInGeneratedResolver only asserts the returned formatter type, and a duplicate custom-formatter registration may be masked by resolver ordering"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test covers a contractless type that carries its own MessagePack attributes ([MessagePackObject]/[DataContract]), which the requirement says must be honoured. The collector ignores type attributes entirely, and no test would notice. The same applies to the requirement that contractless be used only when no attributes are present.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:92",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an external or local type with [MessagePackObject] and [Key(n)] members and a [GeneratedMessagePackFormatter] for it; assert integer-key array output. It would fail because the collector always uses string-key contractless members."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The collector's contractless path (CreateContractlessMembers, with its IsPublicReadWrite filter and ordinal sorting) is only checked via round-trip and Doubled exclusion. Mutating the ordering, or the public-field handling, would survive since no test has public fields, inherited members, or ordering assertions. Surrogate integer-key mapping, the claimedKeys duplicate check (KeysMustBeUnique) and the MemberNeedsKey error path have no test either.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:171",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:171 swap-boolean/delete-statement: remove the `!field.IsReadOnly && !field.IsConst` check or the claimedKeys.Add duplicate guard; expected to survive because no test uses fields or duplicate surrogate keys"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The diagnostic tests do not cover MsgPack021 for an inaccessible or generic type, for a struct, or for a class lacking a default constructor (NoDeserializingConstructor), and the reportDiagnostic path is separate from the model path. The abstract case alone does not exercise the generic or accessibility conditions, so mutating those conditions survives.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:64",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:64 negate-condition: remove `!compilation.IsSymbolAccessibleWithin(type, formatter)` or `IsGenericType: false`; expected to survive because only an abstract type is tested"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No generator snapshot test covers the generated output of a user-declared formatter (partial class template branch). The tests only run diagnostics, and the execution tests do not inspect the emitted text, so changing \"partial class\" in the templates, or the int-key template's variant, is only caught indirectly. Also the diagnostics-only tests give Members by hand, so the successful generation path in a unit test project has no snapshot.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with a [GeneratedMessagePackFormatter] class and rerun the generator snapshot tests; currently none would change on mutation of the template ternary."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25774,
+  "output_tokens": 1650,
+  "ms": 12446,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

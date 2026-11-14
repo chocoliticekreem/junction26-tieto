@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The ReportIfLocatedInCompilation filter has no negative test. Nothing shows that diagnostics located in metadata or in another compilation are dropped, or that real in-source diagnostics (MsgPack003/004/BothStringAndIntKeyAreNull) still get reported. Mutating the condition so it always reports, or never reports, would likely survive. With `always report`, a null-location diagnostic is still produced and the new tests would only fail if a diagnostic actually surfaced. With `never report`, analyzer diagnostics disappear. The new tests only cover a clean scenario, and existing analyzer tests might catch the second case but nothing in this diff does.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1444",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1444 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (!(...)); expected to survive in the new tests because the tests only assert that no diagnostics are produced; run the new tests with the mutant and see whether they fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new tests probably do not isolate which of the three fixed sites (BothStringAndIntKeyAreNull at 985, MemberNeedsKey at 1077, and the wrapper) prevents the crash. The metadata struct has [Key] on every member, so the MemberNeedsKey and BothStringAndIntKeyAreNull branches are likely never reached. The delete-statement and revert mutations on those two lines would survive. The fix for the line 1077 `FirstOrDefault()?` change and for `GetPropertyIdentifierLocation` is untested. A metadata struct with a public member lacking [Key] would exercise the MemberNeedsKey path, and a metadata struct with a Key attribute whose value is null would exercise the BothStringAndIntKeyAreNull path.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 delete-statement: revert to item.DeclaringSyntaxReferences[0].GetSyntax().GetLocation(); and src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 revert to ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive if the tests never reach those branches because every metadata member has [Key]."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated resolver assertion only checks that the hint name exists. The tests run with SkipGeneratedSourcesCheck, and nothing checks that the resolver registers a formatter for the closed generic struct or contains the expected content. A resolver that silently omits the type would still pass.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:588",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Mutate the generator or TypeCollector so the closed generic metadata struct is dropped from the resolver output; Assert.Contains(expectedResolverHintName, hintNames) still passes, so the mutant survives."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10212,
+  "output_tokens": 1278,
+  "ms": 9170,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

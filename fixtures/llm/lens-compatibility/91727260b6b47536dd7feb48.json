@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetEqualityComparer for untrusted data now returns EqualityComparer<T>.Default instead of throwing TypeAccessException for types with no hash-resistant comparer. This silently disables the hash-collision DoS protection for UntrustedData, a security regression unrelated to the requirement. The hunk contradicts the file's own comment, which says non-whitelisted types must not be allowed as hash keys.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Deserialize a Dictionary<CustomKeyType,int> with MessagePackSecurity.UntrustedData. Base throws TypeAccessException; head succeeds with the default comparer. Assert that TypeAccessException is thrown."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement says that if T carries [MessagePackObject]/[Key]/[DataContract] attributes they are honoured. The collector never reads attributes on T. It always uses contractless name-sorted mode, or the surrogate. A T with [Key(n)] int keys or [IgnoreMember] gets a different wire format than the standard generated formatter.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:96",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Take T with [MessagePackObject] and [Key(0)] on its members. Serialize with the existing generated formatter (array form), then with a [GeneratedMessagePackFormatter] class for T. Compare the bytes; they differ (map vs array)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode skips get-only members, includes only public read-write members, and sorts them by name. This differs from ContractlessStandardResolver, which uses declaration order and handles read-only members. Anyone already serializing with the contractless resolver would see a different wire order and fewer members after switching to the generated formatter. Ledger L22 accepts this.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:176",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "L22 accepts name-sorted, read-write-only output, so this is not a defect."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "New Error-severity diagnostics MsgPack019-022 are added to SupportedDiagnostics. However, the analyzer never reports them. They are reported only from a generator through RegisterSourceOutput. AnalyzerReleases.Unshipped.md is not updated, so RS2000 release-tracking warnings fire. Because the diagnostics come from the generator, the analyzer descriptors are also inconsistent. No help docs exist for the new ids.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:318",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build the SourceGenerator project and check for RS2000 (analyzer release tracking) warnings on MsgPack019-022. Run the analyzer tests on a non-partial [GeneratedMessagePackFormatter] class and assert that the diagnostic is reported."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generator filter uses a string comparison on the attribute class's ToDisplayString. This is fine, but the generator now also treats any class with the attribute as non-hand-written. For existing users nothing changes unless they opt in. A rejected formatter that is silently dropped from the resolver could also drop a working hand-written formatter registration.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read GeneratorUtilities.cs:35-40. A class with [GeneratedMessagePackFormatter] that fails validation is excluded from both paths."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 19251,
+  "output_tokens": 1415,
+  "ms": 11287,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

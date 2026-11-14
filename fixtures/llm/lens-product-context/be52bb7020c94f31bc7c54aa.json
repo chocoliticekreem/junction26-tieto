@@ -1,0 +1,45 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Not reporting MsgPack011/016/017 for SuppressSourceGeneration types differs from 3.1.0 behaviour that the acceptance criteria point to, but the ledger records this as deliberate. The README paragraph and the SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed test are consistent with it.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:170",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L19] Generation-only diagnostics (MsgPack011, MsgPack016, MsgPack017) are deliberately not reported for SuppressSourceGeneration = true types."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change removes the Str8 case (`<= byte.MaxValue`) from the string header writer in MessagePackPrimitives.Writers.cs. Strings of 32 to 255 bytes will now be written with a Str16 header (3 bytes) instead of Str8 (2 bytes). This changes the serialized bytes and is no longer the canonical, minimal MessagePack encoding. It has nothing to do with the analyzer bug in REQ-2234, and the requirement says serialization behaviour must not change when SuppressSourceGeneration is unset or false. Ledger entry L13 also notes that serializer numeric/format code is bug-prone.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:914",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a 40-byte ASCII string with base-built and head-built MessagePack. Base emits 0xD9 0x28 followed by the data. Head emits 0xDA 0x00 0x28 followed by the data. The bytes differ."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README adds a new section on opting out of source generation, with a list of diagnostics that are still reported. However, the diff does not show the analyzer-side change (outside TypeCollector) that stops the analyzer from skipping SuppressSourceGeneration types. The README therefore describes behaviour (MsgPack003/004/005/012/015 reported) that this change's visible hunks do not implement. Only TypeCollector duplicate-key guards and tests are present.",
+        "location": "README.md:1620",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests against head. If MsgPack004/015/003 are not reported for suppressed types, the README claim and the tests fail."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 10148,
+  "output_tokens": 952,
+  "ms": 7737,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

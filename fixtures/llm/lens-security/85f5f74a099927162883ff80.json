@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "MessagePackSecurity.UntrustedData raises MaximumObjectGraphDepth from 500 to 5000, a tenfold weakening of the recursion depth limit for untrusted data. It is unrelated to the generator/analyzer crash requirement. Deeply nested payloads (arrays or maps nested ~5000 levels) are now accepted, which raises stack-overflow and DoS risk, especially in recursive formatters or on small-stack threads. The ledger's L12 answer is only 'follow the requirement', and the requirement does not mention this setting, so it is out of scope.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Deserialize a payload nested 1000 levels deep (e.g. arrays of arrays) with MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData). On base this throws InsufficientExecutionStackException/MessagePackSerializationException because the limit is 500. On head it succeeds. At ~5000 nesting, run on a small-stack thread to check for a crash."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "ReportIfLocatedInCompilation wraps every reportDiagnostic call and silently drops any diagnostic whose location is not in a syntax tree of the compilation. This includes diagnostics created with a null location from FirstOrDefault()?.GetSyntax().GetLocation(), such as MemberNeedsKey (MsgPack004). Diagnostics that warn about insecure or invalid configurations are no longer reported for symbols without source. This is consistent with ledger L8 (referenced-assembly types are deliberately not analysed), so the impact is low. The filter is broad, though: any other diagnostic created with Location.None would also be dropped silently.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] type in the compilation that triggers a diagnostic built with a null/None location (for example the AOT-derived-key or other non-syntax-located diagnostics). Verify it is still reported on head as on base."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7576,
+  "output_tokens": 812,
+  "ms": 6745,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

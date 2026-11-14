@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The Str8 case is removed from the string header writer, so strings of 32 to 255 bytes now get the Str16 header (3 bytes) instead of Str8. Output is still decodable, but bytes change and are non-canonical. Writers elsewhere (e.g. a size estimator or a string-header length calculation that assumes Str8) may now under-allocate against the real header size. This is an unrelated change to the SuppressSourceGeneration fix and is a wire-format regression. Any size check or buffer reservation that assumes a 2-byte header for 32-255 byte strings would cause a mismatch.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:914",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a 100-byte ASCII string with base-built and head-built MessagePack. Compare bytes: base starts 0xD9 0x64, head starts 0xDA 0x00 0x64. Also run the MessagePackPrimitives TryWriteStringHeader tests and the existing string-length boundary tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate-key handling now silently drops the second member, so no exception is thrown. If MsgPack00x duplicate-key diagnostics (e.g. DuplicateKeys/MsgPack006) are only reported on the analyzer path, then with SuppressSourceGeneration=true the generator no longer fails loudly. Which member wins is by declaration order, and the other member is silently omitted from serialization. This is a compile-time analyzer matter with low security impact, but dropping a member could leave a field unvalidated or unserialized.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer test with a type that has two members with the same [Key(0)]. Assert MsgPack006 is still reported and the generator does not throw."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5948,
+  "output_tokens": 711,
+  "ms": 6312,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

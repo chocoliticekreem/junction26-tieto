@@ -1,0 +1,45 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change adds new analyzer behavior that is not recorded in the ledger: MsgPack011, 016 and 017 are suppressed for SuppressSourceGeneration types, with README prose and a test. Ledger [L7] says MsgPack008/016 exist because generated formatters differ from dynamic ones, which is consistent with this. Checked and it appears deliberate/consistent.",
+        "location": "README.md:1620",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L7] Source generated formatters do not support everything dynamic formatters do, which is why MsgPack008 and MsgPack016 exist; skipping AOT-only checks for suppressed types fits."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README claims MsgPack003/004/005/012/015 are still reported for suppressed types, but the diff shows no analyzer change that routes suppressed types into TypeCollector, and no test covers MsgPack012. The README's MsgPack012 claim and the acceptance of 'matches 3.1.0' are therefore unbacked within this diff.",
+        "location": "README.md:1628",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer test with an inaccessible (e.g. private nested) member type on a SuppressSourceGeneration=true type and assert MsgPack012; fails if the docs claim is wrong."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The dedup guards (ContainsKey) silently drop duplicate-key members instead of failing, and the 'continue' on mixed key kinds skips the member. This changes TypeCollector behaviour for generated types too, which [L9]/[L10] flag as a regression-prone area. The new generated-type test covers only the duplicate-key case, not mixed key kinds or the string-key duplicate for non-suppressed types.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1005",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshot tests (tests/MessagePack.SourceGenerator.Tests) and add mixed-key and duplicate-string-key cases for non-suppressed [MessagePackObject]; confirm no snapshot or diagnostic change."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 9295,
+  "output_tokens": 836,
+  "ms": 7185,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

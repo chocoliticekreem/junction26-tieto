@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetEqualityComparer fallback changed from throwing TypeAccessException to returning EqualityComparer<T>.Default. Under UntrustedData, hash-based collections with non-whitelisted key types are now silently allowed, defeating the hash-collision protection. This is unrelated to the requirement. Existing users who relied on the exception, or on the secure-by-default behaviour, are affected without opting in.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "With MessagePackSecurity.UntrustedData, deserialize a Dictionary<CustomKeyType,int> where CustomKeyType is not whitelisted. Base throws TypeAccessException; head succeeds. Assert that the exception is thrown."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new Error diagnostics MsgPack019-022 are registered in SupportedDiagnostics, but the diff does not add them to AnalyzerReleases.Unshipped.md or to doc/analyzers. This breaks RS2000 tracking. The helpLinkUri values point to docs that do not exist.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:318",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Build the SourceGenerator project and look for RS2000 (release tracking) warnings. Check that doc/analyzers/MsgPack019.md through MsgPack022.md exist."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "GeneratedFormatterCollector runs with reportDiagnostic: null in the model pipeline, but the diagnostics pipeline calls Collect again. Diagnostics such as MsgPack019-022 are reported only through the generator's RegisterSourceOutput. The analyzer never invokes them, so they are not reported in the IDE live analysis path. When Collect returns null, nothing is generated, but the user's partial class still compiles without the interface implementation. The user will see only CS0535 errors if the diagnostics are suppressed.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:115",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read MsgPack00xMessagePackAnalyzer.Initialize: it has no registration for GeneratedMessagePackFormatterAttribute, so the new descriptors are never reported by the analyzer."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In contractless mode the generated string-key formatter emits members ordered by name, with IntKey set to the index. It excludes public get-only properties, readonly fields and init-only members, which ContractlessStandardResolver includes. A user who moves from the dynamic contractless resolver to this generated formatter would get a different wire map. The generated formatter is also opt-in, so the impact is limited to this feature.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:161",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a class with public get-only property Id and read-write Name using ContractlessStandardResolver and the generated formatter. Compare the map keys; the generated output omits Id."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 19114,
+  "output_tokens": 1179,
+  "ms": 8879,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new GeneratedMessagePackFormatterAttribute is a plain public class without [Conditional(\"NEVERDEFINED\")]. Analyzer/generator-only attributes are deliberately marked that way (L14) so they are not emitted into user assemblies. Applying it to a user class now leaves attribute metadata in the compiled assembly and adds a public API surface.",
+        "location": "src/MessagePack.Annotations/Attributes.cs:164",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare with MessagePackKnownFormatterAttribute and MessagePackAssumedFormattableAttribute declarations, which carry [Conditional(\"NEVERDEFINED\")]. Compile a sample class using [GeneratedMessagePackFormatter] and inspect IL/metadata for the attribute. Also check that PublicAPI.Unshipped.txt lists the new type."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Generated contractless wire format differs from ContractlessStandardResolver: members are sorted by name and read-only members are skipped, so a type formatted by this generated formatter is byte-incompatible with an existing contractless/dynamic formatter for the same type, and read-only members are not serialized. Per L20 name-sorted read-write-only is accepted, so this is only a documentation risk when users migrate.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:166",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with properties {B,A} and a get-only property using ContractlessStandardResolver (base) vs the generated formatter (head), and compare the bytes."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The requirement says that if T has MessagePack attributes ([MessagePackObject]/[Key]), they are honoured. The collector never reads attributes on T: it always uses contractless mode or a surrogate. Types carrying [Key] or [MessagePackObject] will produce different bytes with this formatter than with the generated or dynamic formatter. L19 says to follow the requirement.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:84",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generator snapshot test: T has [MessagePackObject] with [Key(0)] and [Key(1)] on members, plus a partial formatter with [GeneratedMessagePackFormatter]. Assert the generated output uses int keys 0 and 1 rather than string keys by name."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new diagnostics MsgPack019-022 are Errors that fire in users' builds, but the diff shows no AnalyzerReleases.Unshipped.md entries and no docs. They only apply when the user opts in, so the impact is limited. Separately, the generator's RS2008 release-tracking check would fail the build if the entries are missing.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check AnalyzerReleases.Unshipped.md for MsgPack019-022 entries; build the generator project and look for RS2008."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18865,
+  "output_tokens": 1195,
+  "ms": 8536,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "EnumTemplate.cs uses the inverted guard `#if NETSTANDARD2_0 || NETFRAMEWORK`, while every other template uses `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. As a result, generated enum formatters do NOT get [ExcludeFromCodeCoverage] on net6/net8 and other modern TFMs, or in any compilation without those symbols. They get it only on netstandard2.0/.NET Framework, which is the opposite of every other generated type. This misses the 'all generated code' acceptance criterion for enum formatters.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageEnumGuardTests.EnumFormatter_HasExcludeFromCodeCoverage_OnModernTfm. It runs MessagePackGenerator through CSharpGeneratorDriver on a public enum used by a [MessagePackObject] member, with no preprocessor symbols. It then asserts that the generated class implementing IMessagePackFormatter<...MyEnum> has the attribute in its active AttributeLists. Expected to fail on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Only EnumTemplate.cs (the T4 output) is changed; the diff has no matching EnumTemplate.tt hunk, although every other template got both .tt and .cs edits. Regenerating the T4 templates will silently overwrite the enum change (the inverted guard included), so the enum attribute is not durable.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt on head with base. If it is unchanged, rerunning the T4 transform drops the `#if NETSTANDARD2_0 || NETFRAMEWORK` / ExcludeFromCodeCoverage lines from EnumTemplate.cs."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The guard `#if !NETSTANDARD2_0 && !NETFRAMEWORK` removes the attribute for consumers targeting netstandard2.0 or .NET Framework. Yet System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute exists there (.NET Framework 4.0+, netstandard2.0) and is valid on classes. The guard is wider than the compile-safety concern requires, so netstandard2.0/net472 libraries get undecorated formatters and resolvers, contrary to 'all generated code is decorated'.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageEnumGuardTests.ObjectFormatter_HasExcludeFromCodeCoverage_OnNetStandard20. It runs the generator with parse options defining NETSTANDARD2_0 and asserts that the generated IMessagePackFormatter<MyObject> class carries the attribute. Expected to fail on head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageEnumGuardTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageEnumGuardTests\n{\n    private const string Source = \"\"\"\n        using MessagePack;\n\n        namespace Test\n        {\n            public enum MyEnum { A, B }\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public MyEnum Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            partial class MyResolver { }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task EnumFormatter_HasExcludeFromCodeCoverage_OnModernTfm()\n    {\n        List<ClassDeclarationSyntax> formatters = await GenerateFormatterClassesAsync(Array.Empty<string>());\n        List<ClassDeclarationSyntax> enumFormatters = formatters.Where(c => c.BaseList!.ToString().Contains(\"MyEnum\")).ToList();\n        Assert.NotEmpty(enumFormatters);\n        foreach (ClassDeclarationSyntax c in enumFormatters)\n        {\n            Assert.True(HasExcludeFromCodeCoverage(c), $\"Enum formatter '{c.Identifier.Text}' lacks an active [ExcludeFromCodeCoverage] attribute when no TFM symbols are defined.\");\n        }\n    }\n\n    [Fact]\n    public async Task ObjectFormatter_HasExcludeFromCodeCoverage_OnNetStandard20()\n    {\n        List<ClassDeclarationSyntax> formatters = await GenerateFormatterClassesAsync(new[] { \"NETSTANDARD2_0\" });\n        List<ClassDeclarationSyntax> objectFormatters = formatters.Where(c => c.BaseList!.ToString().Contains(\"MyObject\")).ToList();\n        Assert.NotEmpty(objectFormatters);\n        foreach (ClassDeclarationSyntax c in objectFormatters)\n        {\n            Assert.True(HasExcludeFromCodeCoverage(c), $\"Formatter '{c.Identifier.Text}' lacks an active [ExcludeFromCodeCoverage] attribute under NETSTANDARD2_0, although the attribute exists in netstandard2.0.\");\n        }\n    }\n\n    private static bool HasExcludeFromCodeCoverage(ClassDeclarationSyntax c)\n    {\n        return c.AttributeLists.SelectMany(l => l.Attributes).Any(a => a.Name.ToString().Contains(\"ExcludeFromCodeCoverage\"));\n    }\n\n    private static async Task<List<ClassDeclarationSyntax>> GenerateFormatterClassesAsync(string[] preprocessorSymbols)\n    {\n        CSharpParseOptions parseOptions = new CSharpParseOptions(LanguageVersion.Latest, preprocessorSymbols: preprocessorSymbols);\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        IEnumerable<MetadataReference> references = frameworkRefs.Cast<MetadataReference>()\n            .Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack).Cast<MetadataReference>());\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(Source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGenerators(compilation);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n\n        Assert.Empty(result.Diagnostics.Where(d => d.Severity == DiagnosticSeverity.Error));\n\n        return result.GeneratedTrees\n            .SelectMany(t => t.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>())\n            .Where(c => c.BaseList is not null && c.BaseList.ToString().Contains(\"IMessagePackFormatter<\"))\n            .ToList();\n    }\n}\n",
+        "test_names": [
+          "EnumFormatter_HasExcludeFromCodeCoverage_OnModernTfm",
+          "ObjectFormatter_HasExcludeFromCodeCoverage_OnNetStandard20"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 11951,
+  "output_tokens": 8847,
+  "ms": 72684,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

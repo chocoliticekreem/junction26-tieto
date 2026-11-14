@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `ReportIfLocatedInCompilation` filter drops every diagnostic whose location is null, and `GetPropertyIdentifierLocation` returns null for any source property not declared by a `PropertyDeclarationSyntax`. A positional record parameter such as `record Cmd([property: Key(null)] string Scope)` is declared by a ParameterSyntax. So the BothStringAndIntKeyAreNull diagnostic for a property in the compiling assembly is now silently dropped. Base threw an InvalidCastException (AD0001) on the same input. The requirement only allows dropping location-less diagnostics for metadata symbols, not for source symbols.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.PositionalRecordNullKeyDiagnosticTests.NullKeyOnPositionalRecordPropertyIsStillReported. It compiles the record with all MessagePack analyzers and expects a non-AD0001 diagnostic on the `[property: Key(null)] string Scope` parameter. On head no diagnostic is reported there."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The reporter named three unguarded `DeclaringSyntaxReferences[0]` sites (issue lines 735, 1009, 1101). The hunks guard only the two property/member diagnostics (985, 1077). No hunk touches the first site, around base line 711-735 in GetObjectInfo. The generator path runs with a null reportDiagnostic, so `?.Invoke(...)` arguments are never evaluated there. If that first site indexes `[0]` outside a null-conditional invoke, the generator's CS8785 for `Item<T>` (record) struct from a referenced assembly may still occur. That would leave no resolver in app.dll.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read TypeCollector.cs around the GetObjectInfo start (base ~711-735) for remaining `DeclaringSyntaxReferences[0]` indexing. Then confirm with a two-compilation test: emit lib containing `[MessagePackObject] public partial record struct Item<T>([property: Key(0)] string Key);` to a MetadataReference, run CSharpGeneratorDriver with MessagePackGenerator over the app `Cmd` record, and assert GetRunResult().Results[0].Exception is null and a resolver source is generated."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/PositionalRecordNullKeyDiagnosticTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Linq;\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\nusing Microsoft.CodeAnalysis.Text;\n\nnamespace Receipts.GeneratedTests;\n\npublic class PositionalRecordNullKeyDiagnosticTests\n{\n    [Fact]\n    public async Task NullKeyOnPositionalRecordPropertyIsStillReported()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            namespace App\n            {\n                [MessagePackObject]\n                public partial record Cmd([property: Key(null)] string Scope);\n            }\n            \"\"\";\n\n        var framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var refs = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var tree = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest));\n        var compilation = CSharpCompilation.Create(\n            \"App\",\n            new[] { tree },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        var analyzers = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetCustomAttributes(typeof(DiagnosticAnalyzerAttribute), false).Length > 0)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t, nonPublic: true)!)\n            .ToImmutableArray();\n        analyzers.Should().NotBeEmpty();\n\n        var diagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n\n        diagnostics.Should().NotContain(d => d.Id == \"AD0001\");\n\n        int start = source.IndexOf(\"[property: Key(null)]\", StringComparison.Ordinal);\n        int end = source.IndexOf(\"Scope)\", StringComparison.Ordinal) + \"Scope\".Length;\n        var paramSpan = TextSpan.FromBounds(start, end);\n\n        diagnostics.Should().Contain(d => d.Id != \"AD0001\" && d.Location.IsInSource && d.Location.SourceSpan.IntersectsWith(paramSpan));\n    }\n}\n",
+        "test_names": [
+          "NullKeyOnPositionalRecordPropertyIsStillReported"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 9568,
+  "output_tokens": 7845,
+  "ms": 73071,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

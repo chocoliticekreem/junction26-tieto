@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys skips the member, whereas before it fell through and was added to intMembers/stringMembers (with a null key, which could crash or produce bad output). Generated output for projects with mixed key kinds changes, since the offending member is now dropped. Mixed keys are already an error (MsgPack005-type), so impact is limited to broken code, but the generated formatter content for such types differs.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate a formatter for a [MessagePackObject] type mixing [Key(0)] and [Key(\"a\")] with base and head; compare generated output and diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate keys were previously added with Dictionary.Add, which throws ArgumentException, so the generator crashed. Now the duplicate is silently dropped, the first member wins. This changes generator behaviour for user code with duplicate [Key] values. It only matters if the duplicate-key diagnostic (MsgPack006) is still reported. If it is not reported, generation would silently succeed with a member missing.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1029",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a [MessagePackObject] type with two members sharing [Key(0)] and assert MsgPack006 is still reported and the generator does not throw; repeat for string keys. Also run with SuppressSourceGeneration=true."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "For SuppressSourceGeneration=true types, members with KeyAttribute-derived keys are now skipped (`continue`). This means they are excluded from the analysis, so MsgPack004 (missing Key/IgnoreMember) and key-related diagnostics are no longer reported for them. This is consistent with L14 for generation-only diagnostics, but MsgPack004/006 are not generation-only, so a user may lose diagnostics they got in 3.1.0.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a type with SuppressSourceGeneration=true that has a member with a derived KeyAttribute duplicating another key, or another member lacking a Key. Assert whether MsgPack004/006 are reported at base and head."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 6224,
+  "output_tokens": 922,
+  "ms": 7263,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

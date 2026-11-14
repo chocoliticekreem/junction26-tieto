@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Early `return null` when SuppressSourceGeneration is true now skips the analysis of that type entirely, including diagnostics such as MsgPack003/004/005/DoNotMixStringAndIntKeys/duplicate keys that fired before. This is the opposite of the requirement (analyzer should still report diagnostics when SuppressSourceGeneration = true, matching 3.1.0). Users who had these diagnostics now silently lose them. Ledger L12 only blesses omitting generation-only diagnostics (011/016/017), not core validation rules.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:713",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: [MessagePackObject(SuppressSourceGeneration = true)] class C { public int P { get; set; } } (member lacking [Key]) should report MsgPack004; also a mixed int/string key case expecting the DoNotMixStringAndIntKeys diagnostic. Run on head; it fails because CollectCore returns null before member analysis."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The early return skips the check that the type is a [MessagePackObject] and the analysis of nested/member types, so types reachable only through a suppressed type are no longer collected and validated, and their generated formatters/diagnostics can disappear from users' builds. Unsuppressed types referenced from a suppressed type change behaviour even though the user did not opt in.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:713",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generator snapshot test: type A with [MessagePackObject(SuppressSourceGeneration=true)] has a property of type B, an ordinary [MessagePackObject] not otherwise referenced. Regenerate on base and head and compare the resolver output and diagnostics for B."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate-key handling changed: duplicate int/string keys used to throw ArgumentException in Dictionary.Add, but are now silently dropped, keeping the first member. Together with the new `continue` for mixed keys, generated formatters for invalid types may be emitted with members missing instead of failing. Behaviour changes for users with duplicate keys (generator output and build behaviour) without opting in, and the diagnostic for duplicates may not be reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1029",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run generator on [MessagePackObject] class D { [Key(0)] public int A; [Key(0)] public int B; } and on a mixed [Key(0)]/[Key(\"b\")] class, on base and head. Compare generated output and reported diagnostics (e.g. MsgPack006 duplicate key)."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5806,
+  "output_tokens": 1048,
+  "ms": 8442,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

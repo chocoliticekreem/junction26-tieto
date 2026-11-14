@@ -1,0 +1,75 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Ledger L7 records the decision \"Add an opt-out setting\", but the change emits the attribute unconditionally on non-netstandard2.0/non-.NET Framework targets with no opt-out setting or option anywhere in the diff.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L7] 'Add an opt-out setting' vs diff: no MessagePackGeneratorOptions or MSBuild property gates the attribute. Compare with the requirement, which says an opt-out is optional."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "README states the attribute is not emitted on netstandard2.0/.NET Framework, which matches the guard in the templates. However, the requirement says all generated code must be decorated. Consumers on those targets get no exclusion, so the acceptance criterion is only partly met. The ledger records the framework-conditional emission as a question but its answer is the opt-out setting, not a statement that skipping those targets is deliberate.",
+        "location": "README.md:1640",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "The #if !NETSTANDARD2_0 && !NETFRAMEWORK guard in every template skips the attribute on those targets. Requirement: 'All generated code is decorated'. [L7] asks about this scope and answers only 'Add an opt-out setting'."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The README does not document any opt-out setting, though L7 calls for one. Also, the 'SuppressSourceGeneration' sentence restates ledger-covered behaviour (L6): types with SuppressSourceGeneration deliberately get no generated formatter. The absence of ExcludeFromCodeCoverage for them is therefore fine.",
+        "location": "README.md:1641",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L6] SuppressSourceGeneration = true types get no generated formatter, so nothing to decorate; not a defect."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "A TransformUtilities change alters emitted brace output for nested types with constraints ('{' becomes '{\\r\\n'). This is unrelated to the requirement and changes the generated output for nested generic types, in an area with many recent fixes (L4). It is only needed to keep the new #if lines on their own line.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests, focusing on nested generic types with constraints. Confirm the output compiles and only whitespace differs. [L4] notes the area is fragile."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the ExcludeFromCodeCoverage attribute be omitted entirely on netstandard2.0/.NET Framework targets, or should it still be emitted there by some other route, such as a polyfill or a fully qualified type check?",
+        "options": [
+          "Skip on those targets (the current guard)",
+          "Emit on all targets, defining or conditionally referencing the attribute"
+        ],
+        "why_it_matters": "If skipping is accepted, the guard is correct and the README is sufficient. If all generated code must be excluded everywhere, as the requirement literally says, the guard is a requirement miss.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Emit [ExcludeFromCodeCoverage] unconditionally on every generated type (formatters, resolvers, nested helper classes) on targets where the attribute exists, guarded by #if !NETSTANDARD2_0 && !NETFRAMEWORK, with no opt-out setting."
+      },
+      {
+        "label": "B",
+        "summary": "Same decoration, but also add an opt-out setting, for example an MSBuild property or a generator option read by the templates, that suppresses the attribute. Per L7, every template would also check this option before emitting it."
+      }
+    ]
+  },
+  "input_tokens": 13602,
+  "output_tokens": 1416,
+  "ms": 10654,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

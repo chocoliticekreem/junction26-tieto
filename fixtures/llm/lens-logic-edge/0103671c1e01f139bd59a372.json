@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change only guards two diagnostic sites, and both sit inside `this.reportDiagnostic?.Invoke(...)`. The generator does not report diagnostics (I believe it passes a null reporter; not checked). With a null reporter, `?.Invoke` never evaluates its arguments, so those two sites cannot have caused CS8785. The reporter named three unguarded `DeclaringSyntaxReferences[0]` sites (735, 1009, 1101). The two fixed hunks match 1009 and 1101 (each offset by 27 lines). The third site, near old line ~708, has no hunk. It likely sits outside a `?.Invoke` and still throws when `GetObjectInfo` runs on a metadata `Item<int>`. If so, the generator still crashes and the app gets no resolver, so the requirement is not met.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:708",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ClosedGenericStructFromReferenceTests.GeneratorDoesNotThrowOnClosedGenericStructFromReferencedAssembly. It emits a lib containing `[MessagePackObject] public struct Item<T>` to an in-memory image, compiles an app whose `[MessagePackObject]` class has an `Item<int>` member, runs MessagePackGenerator through CSharpGeneratorDriver, and asserts that no generator result has an Exception and that sources were generated. It then runs MsgPack00xMessagePackAnalyzer and asserts there is no AD0001."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `ReportIfLocatedInCompilation` wrapper drops every diagnostic whose location is not in a source tree of this compilation. Some of these are about a type declared in source. Example: a source `[MessagePackObject]` class derives from a metadata base class that is not a `[MessagePackObject]` type and has a public property without `[Key]`. MemberNeedsKey for that inherited member now gets location null (Location.None) and is silently discarded. Before the change the analyzer crashed. Now the source type compiles with no MsgPack004, and no other compilation reports it, because the base type is not a MessagePackObject. A better fix would fall back to the formatted type's identifier location rather than drop the diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read TypeCollector.cs:1077 and 1445-1450. `FirstOrDefault()?.GetSyntax().GetLocation()` yields null for a metadata member, and `IsInSource` is false, so the diagnostic is dropped even though the formatted type is in source. A confirming test would emit a lib with `public class Base { public int X { get; set; } }`, then compile `[MessagePackObject] public class D : Base { [Key(0)] public int Y { get; set; } }` against it and expect MsgPack004 on D."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ClosedGenericStructFromReferenceTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.IO;\nusing System.Linq;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ClosedGenericStructFromReferenceTests(ITestOutputHelper logger)\n{\n    private const string LibSource = \"\"\"\n        using MessagePack;\n        namespace Lib\n        {\n            [MessagePackObject]\n            public struct Item<T>\n            {\n                [Key(0)]\n                public string Key { get; set; }\n            }\n        }\n        \"\"\";\n\n    private const string AppSource = \"\"\"\n        using MessagePack;\n        using Lib;\n        namespace App\n        {\n            [MessagePackObject]\n            public class Cmd\n            {\n                [Key(0)]\n                public string Scope { get; set; }\n\n                [Key(1)]\n                public Item<int> Member { get; set; }\n            }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task GeneratorDoesNotThrowOnClosedGenericStructFromReferencedAssembly()\n    {\n        CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest);\n        ImmutableArray<MetadataReference> references = (await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None))\n            .AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(LibSource, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        using MemoryStream stream = new();\n        var emitResult = lib.Emit(stream);\n        foreach (var d in emitResult.Diagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        Assert.True(emitResult.Success);\n        MetadataReference libReference = MetadataReference.CreateFromImage(stream.ToArray());\n\n        CSharpCompilation app = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(AppSource, parseOptions) },\n            references.Add(libReference),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(app, out Compilation output, out ImmutableArray<Diagnostic> generatorDiagnostics);\n        foreach (var d in generatorDiagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        GeneratorDriverRunResult runResult = driver.GetRunResult();\n        foreach (var r in runResult.Results)\n        {\n            Assert.Null(r.Exception);\n        }\n\n        Assert.DoesNotContain(generatorDiagnostics, d => d.Id == \"CS8785\");\n        Assert.NotEmpty(runResult.GeneratedTrees);\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer());\n        ImmutableArray<Diagnostic> analyzerDiagnostics = await app.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n        foreach (var d in analyzerDiagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        Assert.DoesNotContain(analyzerDiagnostics, d => d.Id == \"AD0001\");\n    }\n}\n",
+        "test_names": [
+          "GeneratorDoesNotThrowOnClosedGenericStructFromReferencedAssembly"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10193,
+  "output_tokens": 9902,
+  "ms": 90800,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

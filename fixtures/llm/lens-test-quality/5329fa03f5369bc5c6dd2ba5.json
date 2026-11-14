@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Deleting the `!symbol.GetAttributes().Any(... GeneratedMessagePackFormatterAttribute)` guard would register the generated formatter twice (as a hand-written formatter and as an ObjectSerializationInfo). No test fails, because the execution tests only check GetFormatter<T>() and round trips, and the generator snapshot tests don't cover this path.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38 remove-guard: `&& !symbol.GetAttributes().Any(...)` -> removed; expected to survive because tests only assert GetFormatter<T>() type and round-trip behavior, and GeneratedMessagePackResolver would still compile or return the formatter, so no duplicate-registration assertion exists"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The dedicated generator tests only cover diagnostics. No snapshot or regeneration test verifies the emitted code for the integer-key template or the string-key template (`partial class` vs `internal sealed class`). Swapping the IsUserDeclaredFormatter ternary in either template or the Info.IsUserDeclaredFormatter flag in Collect would only be caught indirectly by the execution tests. Struct and int-key coverage are also thin.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.cs:37",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "StringKeyFormatterTemplate.cs:37 swap-boolean: Info.IsUserDeclaredFormatter ? \"partial class\" : \"internal sealed class\" -> inverted; the execution-test project would fail to compile, but the SourceGenerator.Tests snapshots for generated output would not notice because none exist for this attribute"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The collector diagnostics have no tests: inaccessible data type, generic data type, class without a parameterless constructor (MsgPack006), a surrogate member missing [Key] (MsgPack004), duplicate keys (MsgPack006/KeysMustBeUnique), and a read-only or private target member. Removing any of those guards in GeneratedFormatterCollector survives.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:75",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:75 remove-guard: `if (isClass && !type.InstanceConstructors.Any(...))` -> removed; expected to survive because no test uses a type without a parameterless constructor"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless tests don't cover private-member exclusion, public fields, read-only fields, or inherited members, and no test checks that existing MessagePack attributes on T are honoured, which the acceptance criteria require. The ExternalPerson type has only one read-only property, and no test hits the ordering, IsPublicReadWrite field branch, or the base-type walk in GetInstanceMembers.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:226",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:226 swap-boolean: `!field.IsReadOnly && !field.IsConst` -> `field.IsReadOnly || field.IsConst`; expected to survive because no external test type has a public field"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate and contractless tests exercise only int keys with no gaps, or string keys. There is no test for the string-key surrogate path, the `members.Count` fallback index, or MsgPack005 (mixed keys) in a compiled run. The mixed-key test asserts MsgPack005 only, and a mutation of the key-kind check would not be exercised in the passing-surrogate tests.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:157",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:157 off-by-one: `intKey: members.Count` -> `members.Count + 1`; expected to survive because no execution test uses a string-key surrogate"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Diagnostics are reported through a separate generator pipeline that has no test for the happy path (no spurious diagnostics). Also, with ReferenceSymbols.TryCreate failing, no diagnostic is reported silently. The MsgPack019 test uses a nonpartial class, which has its own compile errors masked by the hand-written Members.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:115",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "MessagePackGenerator.cs:127 delete-statement: context.RegisterSourceOutput(generatedFormatterDiagnostics, ...) deleted; expected to be killed by MsgPack019/020/021/022 tests, so the real gap is the absent negative test that valid formatters produce no diagnostics"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25367,
+  "output_tokens": 1911,
+  "ms": 12925,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

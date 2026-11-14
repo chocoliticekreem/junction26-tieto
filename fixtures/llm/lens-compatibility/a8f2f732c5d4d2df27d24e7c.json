@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Removing the `case <= byte.MaxValue` (Str8) branch in the string header writer changes wire bytes: strings of 32..255 UTF-8 bytes now fall through to the Str16 case (0xDA + 2-byte length) instead of Str8 (0xD9 + 1-byte length). Output grows by 1 byte and differs from all previous versions. It also breaks the MessagePack spec's compact-encoding behavior, and any user who hashes, snapshots or compares serialized bytes will notice. This has nothing to do with the analyzer/SuppressSourceGeneration requirement.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:914",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a string of 100 ASCII chars (and one of 32 and one of 255 bytes) with MessagePackSerializer.Serialize<string> on base and head builds. Base starts with 0xD9 0x64; head starts with 0xDA 0x00 0x64. Also run the MessagePackWriter.WriteString and MessagePackPrimitives.TryWriteStringHeader tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys now drops members whose key kind mismatches from the collected members. Previously such a member fell through and was added (or threw on a duplicate key). The generated formatter for types with mixed keys changes, so the output differs from before. Mixed-key types already raise an error diagnostic (MsgPack006), but the generated source and the resulting builds may differ.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests on a [MessagePackObject] type mixing [Key(0)] and [Key(\"a\")] members. Compare the generated formatter on base vs head and check the member set and the diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The duplicate-key guards silently skip a member with a duplicate key. Previously `Add` threw ArgumentException, which was swallowed or crashed the generator. Now the generated formatter omits the duplicate member. For a type with duplicate keys the generated output changes. This is only compatible if the duplicate-key diagnostic (MsgPack006) is reliably reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a type with two members sharing [Key(0)]. Assert the duplicate-key diagnostic is still reported exactly once and the generator does not throw. Compare the generated output on base vs head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5853,
+  "output_tokens": 1001,
+  "ms": 7927,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

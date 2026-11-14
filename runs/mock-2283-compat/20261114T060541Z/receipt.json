@@ -1,0 +1,369 @@
+{
+  "change_id": "mock-2283-compat",
+  "requirement_id": "REQ-2283",
+  "requirement_title": "Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly",
+  "requirement_text": "# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]` type has a member whose type is a closed generic value type defined in a referenced assembly.\n\nBecause the generator then \"will not contribute to the output\", the compiling assembly silently ends up with no generated resolver at all. It is only a warning, so a normal build looks fine, but trimmed and NativeAOT apps fail at runtime.\n\nRepro: two projects. `lib`:\n\n```csharp\nusing MessagePack;\nnamespace Lib;\n\n[MessagePackObject]\npublic partial record struct Item<T>([property: Key(0)] string Key);\n```\n\n`app`, with a `ProjectReference` to `lib`:\n\n```csharp\nusing MessagePack; using Lib;\nnamespace App;\n\n[MessagePackObject]\npublic sealed partial record Cmd([property: Key(0)] string Scope)\n{\n    [Key(1)] public Item<int> Member { get; init; }\n}\n```\n\nThen `dotnet build` on `app`.\n\nExpected: a clean build, with a generated resolver in `app`.\n\nActual:\n\n```\nCSC : warning CS8785: Generator 'MessagePackGenerator' failed to generate source. It will not\ncontribute to the output and compilation errors may occur as a result. Exception was of type\n'IndexOutOfRangeException' with message 'Index was outside the bounds of the array.'.\nCSC : warning AD0001: Analyzer 'MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer'\nthrew an exception of type 'System.IndexOutOfRangeException' with message 'Index was outside the\nbounds of the array.'.\n```\n\n`app.dll` contains no `GeneratedMessagePackResolver`. Version used: MessagePack 3.1.8.\n\nWhat triggers it (`Item` declared in `lib`, `Cmd` in `app`):\n\n| `Item` declared as | result |\n|---|---|\n| `record struct Item<T>` | crash |\n| `struct Item<T>` | crash |\n| `struct Item` | ok |\n| `record struct Item` | ok |\n| `class Item<T>` | ok |\n| `record class Item<T>` | ok |\n\nIt needs all three of: generic, value type, from a referenced assembly. Moving the identical `Item<T>` declaration into `app` makes the crash disappear.\n\nReporter's analysis: `CollectGeneric` line 661 is the closed-generic branch that calls `GetObjectInfo` directly, so `GetObjectInfo` runs against a type that has no syntax. Several diagnostic paths inside it index `DeclaringSyntaxReferences[0]` directly (lines 735, 1009, 1101) instead of using `FirstOrDefault()` like the neighbouring `GetIdentifierLocation` / `GetLocation` / `GetParameterListLocation` helpers. That collection is empty for a metadata symbol. The reporter did not narrow down which of the three fires.\n\nWorkaround: `[MessagePackFormatter(typeof(ItemFormatter<>))]` on the generic value type short-circuits `CollectCore` before `GetObjectInfo` is reached.\n\n## Acceptance criteria\n\n- Building `app` from the repro produces no CS8785 warning. (derived)\n- Building `app` from the repro produces no AD0001 warning from `MsgPack00xMessagePackAnalyzer`. (derived)\n- `app.dll` contains a `GeneratedMessagePackResolver` (a generated resolver exists). (derived)\n- The generator and analyzer do not throw on a closed generic struct or record struct declared in a referenced assembly.\n- Closed generic classes, non-generic structs and types declared in the same assembly keep working as before (the \"ok\" rows in the table). (derived)\n- Diagnostics that need a source location do not crash when the offending symbol has no declaring syntax (metadata symbol). (derived)\n\n## Notes from discussion\n\nNo comments on the issue. The reporter points at `DeclaringSyntaxReferences[0]` being indexed unguarded at TypeCollector.cs lines 735, 1009 and 1101, and notes the neighbouring helpers use `FirstOrDefault()`. Possibly related: #2092 (CS8785 from the v3 generator, different inner exception, no repro).",
+  "run_ts": "20261114T060541Z",
+  "head_sha": "1fa9d5160e6d9b301c0ebe8d940115bc443625bd",
+  "verdict": "blocked",
+  "verdict_reason": "verified high finding(s) backed by receipts: requirement-tests-1, logic-edge-1, compatibility-1, security-1, product-context-1, test-quality-1",
+  "risk": 9,
+  "areas": [
+    "serializer-runtime",
+    "tests",
+    "type-collector"
+  ],
+  "area_trust": {
+    "serializer-runtime": 1,
+    "tests": 3,
+    "type-collector": 3
+  },
+  "checked": [
+    {
+      "what": "Build base (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-base",
+      "result": "pass"
+    },
+    {
+      "what": "Build head (MessagePack.SourceGenerator.Tests, net8.0)",
+      "by": "build",
+      "evidence_id": "build-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on head: 170/170 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing SourceGenerator tests on base: 167/167 passed, 0 failed",
+      "by": "existing-tests",
+      "evidence_id": "existing-tests-base",
+      "result": "pass"
+    },
+    {
+      "what": "product-context: deliberate per ledger, not a defect: ReportIfLocatedInCompilation drops every analyzer diagnostic whose location is not in the compilation's own syntax trees. This includes Location.None diagnostics, such as the MemberNeedsKey diagnostic when FirstOrDefault returns null. This matches the deliberate design that referenced-assembly types are not analysed and the defining assembly owns validation [L12]. The README and MsgPack004 docs say the same, so the silent drop is expected.",
+      "by": "ledger-citation",
+      "evidence_id": "ledger-product-context-2",
+      "result": "pass"
+    },
+    {
+      "what": "Receipts/Req2283ReferencedGenericStructTests.cs: requirement test fails on base (3/3), passes on head (3/3); refutes 1 lens claim(s): requirement-tests-2",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-1",
+      "result": "pass"
+    },
+    {
+      "what": "Receipts/ReceiptsUInt32WriterTests.cs: edge-case test fails on head: 3/3 failed",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-2",
+      "result": "fail"
+    },
+    {
+      "what": "Receipts/ReceiptsPositionalRecordNullKeyTests.cs: edge-case test fails on head: 1/1 failed",
+      "by": "fail-before-pass-after",
+      "evidence_id": "gentest-3",
+      "result": "fail"
+    },
+    {
+      "what": "Mutation: 2 killed, 4 survived, 0 compile errors, 0 timeouts (6 mutants on TypeCollector.cs)",
+      "by": "mutation",
+      "evidence_id": "mutation",
+      "result": "partial"
+    },
+    {
+      "what": "Compatibility bytes: 5/124 cases differ, 0 base payloads fail to read on head, public API +0/-0",
+      "by": "byte-diff",
+      "evidence_id": "compat-bytes",
+      "result": "fail"
+    },
+    {
+      "what": "routed 9 hunks across 5 files",
+      "by": "rule+jev (auto)",
+      "evidence_id": "",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "requirement-tests-1",
+      "lens": "requirement-tests",
+      "claim": "An unrelated serializer change rides along with this generator fix. Removing the `case <= byte.MaxValue` branch changes the wire format: integer values 128..255 that used to be written as uint8 (0xcc, 2 bytes) now fall through to TryWriteUInt16 (0xcd, 3 bytes). The output is no longer the smallest encoding the MessagePack spec asks for, and it differs byte-for-byte from what the same values serialized to before. REQ-2283 asks for nothing in the serializer runtime.",
+      "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "byte-diff",
+        "detail": "Build the base and head versions of src/MessagePack. In each, call MessagePackPrimitives.TryWrite on a 9-byte span with the changed overload's integer type for the values 127, 128, 200, 255 and 256, and compare bytesWritten and the bytes. Expected: base writes `cc c8` for 200 and head writes `cd 00 c8`. Also run the existing MessagePack.Tests primitive and serialization byte-assertion tests on head."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "compat-bytes"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-1",
+      "lens": "logic-edge",
+      "claim": "Unrelated wire-format change. Removing the `case <= byte.MaxValue` branch from the unsigned `MessagePackPrimitives.TryWrite` overload means values 128..255 no longer use the 2-byte uint8 form (0xcc xx). They now fall through to the 3-byte uint16 form (0xcd 00 xx). Serialized output changes size and bytes for every such value, which breaks byte-exact consumers and the MessagePack 'smallest representation' convention. REQ-2283 does not ask for this.",
+      "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run ReceiptsUInt32WriterTests.UInt32InUInt8RangeUsesUInt8Encoding: TryWrite(buffer, 200u) must produce 2 bytes {0xcc, 0xc8}. On head it produces 3 bytes. A byte-diff of MessagePackSerializer.Serialize(200u) between base and head would show the same."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-2"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-2",
+      "lens": "logic-edge",
+      "claim": "The new GetPropertyIdentifierLocation uses `as PropertyDeclarationSyntax` and returns null for a source property whose declaring syntax is a ParameterSyntax, i.e. a positional record property. The diagnostic then gets Location.None, and the new ReportIfLocatedInCompilation wrapper drops every diagnostic that is not IsInSource. So `record R([property: Key((string)null)] int A)` declared in the compiling assembly no longer gets the BothStringAndIntKeyAreNull error, which it would get as a class property. The same wrapper also silently drops any other source-type diagnostic whose location helper returns null. That is a source symbol, not the metadata-only case covered by L12.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run ReceiptsPositionalRecordNullKeyTests.NullKeyOnPositionalRecordPropertyIsReportedLikeOnClassProperty: the MsgPack ids reported for a class with [Key((string)null)] must also be reported for the positional-record equivalent. On head the record reports none."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "gentest-3"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-1",
+      "lens": "compatibility",
+      "claim": "The case for values 128..255 was removed from the unsigned integer writer, so those values are written as UInt16 (0xcd + 2 bytes) instead of UInt8 (0xcc + 1 byte). This changes serialized bytes for existing users, makes the output larger and non-canonical, and has nothing to do with the generator crash. Round-trip still works, but byte-exact comparisons, hashes, and fixtures break.",
+      "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "byte-diff",
+        "detail": "Serialize uint 200 and ushort 255 with base-built and head-built MessagePack (MessagePackPrimitives.TryWriteUInt via MessagePackWriter.Write(uint)). Base gives CC C8 / CC FF; head gives CD 00 C8 / CD 00 FF. Compare the bytes."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "compat-bytes"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "security-1",
+      "lens": "security",
+      "claim": "Dropping the `case <= byte.MaxValue` branch in the unsigned-integer writer means values 128..255 now fall through to TryWriteUInt16 and are encoded as uint16 (0xcd + 2 bytes) instead of uint8 (0xcc + 1 byte). This changes the wire format and is not canonical or compact. Output grows, and byte-for-byte compatibility with prior versions and with other implementations is lost. Deserialization still works, but any code that compares serialized bytes or hashes them (signatures, caches, tests with exact byte expectations) breaks. The change is unrelated to the generator/analyzer crash in REQ-2283. There is no direct deserialization-safety hole, but it is an unrelated runtime behavior change that affects canonical encoding, which matters if the bytes are signed or hashed.",
+      "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "byte-diff",
+        "detail": "Serialize uint values 128, 200 and 255 using base-built and head-built MessagePackPrimitives.TryWriteUInt (or MessagePackWriter.Write(uint/ulong)) and compare bytes. Base gives CC 80/C8/FF; head gives CD 00 80/CD 00 C8/CD 00 FF. Also run the existing MessagePackWriter/primitives tests that assert exact bytes."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "compat-bytes"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "product-context-1",
+      "lens": "product-context",
+      "claim": "The change removes the `case <= byte.MaxValue` UInt8 branch from the unsigned integer writer. This is unrelated to REQ-2283, and it changes the wire encoding. Values 128..255 now fall through to UInt16 (0xCD + 2 bytes) instead of UInt8 (0xCC + 1 byte), which gives non-canonical, larger output and breaks byte-compat expectations. The ledger flags numeric serialization as bug-prone [L13].",
+      "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:474",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "byte-diff",
+        "detail": "Serialize uint/ulong/int values 128..255 (e.g. 200) with base-built and head-built MessagePack; compare bytes. Base gives CC C8, head gives CD 00 C8. Existing writer tests asserting UInt8 should also fail."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "compat-bytes"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-1",
+      "lens": "test-quality",
+      "claim": "The removal of the `case <= byte.MaxValue` branch in the unsigned-integer writer is unrelated to REQ-2283 and has no test in the diff. If the mutation is wrong, values 128..255 would be written as UInt16 (3 bytes) instead of UInt8 (2 bytes), which changes the wire format. Nothing in the added tests would notice.",
+      "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "byte-diff",
+        "detail": "Serialize values 128..255 (for example (uint)200 and (ulong)255) with base-built and head-built MessagePack and compare bytes. Base emits 0xCC 0xC8; head would emit 0xCD 0x00 0xC8. Existing writer tests are expected to catch it, but the change adds none."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "compat-bytes"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-2",
+      "lens": "test-quality",
+      "claim": "The ReportIfLocatedInCompilation filter wrapper has no test that proves it works. All three new tests assert the absence of diagnostics, so they would pass even if the filter were deleted, as long as the crash sites are guarded. No test shows that diagnostics for in-compilation locations are still reported (a negative or positive pair), so the wrapper could drop every diagnostic and the tests would still pass.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239 delete-statement: this.reportDiagnostic = wrapper -> this.reportDiagnostic = null (or an always-drop filter); expected to survive because the new tests only assert zero diagnostics, and existing analyzer tests are not part of this change."
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m3",
+      "lens": "test-quality",
+      "claim": "the change's tests do not detect delete-statement at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "this.reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.BothStringAndIntKeyAreNull, GetPropertyIdentifierLocation(item), formattedType.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat), item.Name)); -> (statement deleted)"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "mutation-survivor-m6",
+      "lens": "test-quality",
+      "claim": "the change's tests do not detect delete-statement at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1448",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1448",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "report(diagnostic); -> (statement deleted)"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "mutation"
+      ],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "hunches": [
+    {
+      "id": "requirement-tests-3",
+      "lens": "requirement-tests",
+      "claim": "The reportDiagnostic wrapper drops every diagnostic whose location is not in a source tree of this compilation, including Location.None, and not only diagnostics about metadata symbols. GetPropertyIdentifierLocation returns null when the declaring syntax is not a PropertyDeclarationSyntax, such as a positional record parameter `[property: Key(...)]` in the compiling assembly. So the BothStringAndIntKeyAreNull diagnostic for such a source-declared member is now silently suppressed instead of reported. L12 only sanctions missing diagnostics for types from referenced assemblies.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1444",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Add a VerifyCS test (LanguageVersion Latest, SkipGeneratedSourcesCheck) with a same-assembly `[MessagePackObject] public partial record R([property: Key((string)null!)] string A);`. Expect the BothStringAndIntKeyAreNull diagnostic id; on head it is absent because its location is Location.None and the wrapper filters it out."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "compatibility-2",
+      "lens": "compatibility",
+      "claim": "The wrapper that filters diagnostics by compilation drops every diagnostic whose location is not in a syntax tree of the current compilation. Diagnostics that were previously reported with Location.None now vanish. One case is MemberNeedsKey (MsgPack004) when there is no declaring syntax. Another is diagnostics created with a null location. Diagnostics reported in source but through paths that previously worked may also be affected, although the same-assembly cases stay the same. Users could notice that some MsgPack00x warnings or errors are no longer reported. For metadata types this matches ledger L12, but the filter is applied globally.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1442",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run the analyzer tests for MsgPack003/004/005/017 and similar with the head build. Add a case where a diagnostic is created with a null or None location and check that it is still reported, as it was at base."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-3",
+      "lens": "test-quality",
+      "claim": "The new `GetPropertyIdentifierLocation` and the `FirstOrDefault()?` change in `MemberNeedsKey` are only exercised by the metadata path, where the result is a null location. The `ClosedGenericStruct_FromMetadataReference_UnkeyedMember` test would not fail if the `FirstOrDefault` guard were reverted to `[0]`, because the wrapper filter or the L12-style early exit might already prevent it from being reached. Nothing shows which guard is load-bearing. The BothStringAndIntKeyAreNull path has no test at all, since it needs a property with a null key, which is not constructible in source.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 remove-guard: item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() -> item.DeclaringSyntaxReferences[0].GetSyntax(); run ClosedGenericStruct_FromMetadataReference_UnkeyedMember. Also mutate line 985 GetPropertyIdentifierLocation(item) -> the original [0] cast; expected to survive for 985 because no test produces a null key."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-4",
+      "lens": "test-quality",
+      "claim": "The `ClosedGenericStruct_FromMetadataReference` and `UnkeyedMember` tests compile the defining assembly with LanguageVersion.CSharp7_3, which is the default parameter. The test hunk includes only one record struct case, and the `Cmd` record in the usage source is only valid under Latest. The tests may therefore pass on base for the struct cases if the base crash needs the record or init-property shape, so they might not reproduce the bug. Nothing shows the struct tests fail on base.",
+      "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:497",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "Run the three new tests against base-built TypeCollector.cs and confirm each fails (AD0001/CS8785 or an IndexOutOfRangeException). Any that pass on base do not reproduce the bug."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "test-quality-5",
+      "lens": "test-quality",
+      "claim": "The tests use SkipGeneratedSourcesCheck and verify generation only through a separate manual CSharpGeneratorDriver run. They check only that the resolver hint name exists, not its content (for example, no formatter registered for Item<int>). Behaviour for the metadata type at runtime is not asserted, and there is no negative case showing that same-assembly closed generic structs still report diagnostics.",
+      "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:630",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "regeneration",
+        "detail": "Rerun the generator snapshot tests and add a snapshot for the metadata-struct scenario; the current tests would pass with an empty resolver body."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "logic-edge-3",
+      "lens": "logic-edge",
+      "claim": "The issue names three unguarded `DeclaringSyntaxReferences[0]` sites (reporter's lines 735, 1009, 1101). This diff fixes only the two near new lines 985 and 1077, which are offset by 24 from the reported 1009/1101. No hunk touches the region corresponding to the reported line 735 (about line 711). The location is computed before reportDiagnostic is invoked, so the new filtering wrapper cannot prevent an IndexOutOfRangeException there. If that site is reached for a metadata closed generic struct, the CS8785/AD0001 crash from the repro remains.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "Grep TypeCollector.cs on head for `DeclaringSyntaxReferences[0]` in GetObjectInfo around lines 700-740. Confirm with a two-compilation test: lib compilation with `[MessagePackObject] public partial record struct Item<T>([property: Key(0)] string Key)` emitted to a MetadataReference, then app `Cmd` with an `Item<int>` member. Run the generator plus MsgPack00xMessagePackAnalyzer and assert there is no CS8785/AD0001."
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "refused": [],
+  "not_checked": [
+    {
+      "what": "tests/MessagePack.Tests and other runtime test suites",
+      "why": "not built or run in the sandbox; only the source generator test project is in scope"
+    },
+    {
+      "what": "NativeAOT, Unity and non-net8.0 target frameworks",
+      "why": "the sandbox builds and tests net8.0 only"
+    }
+  ],
+  "residual_risk": "This change touches 5 files (0 generated) in serializer-runtime, tests, type-collector; the highest routed risk is 9/10. 2 file(s) were routed for deep review, 3 for light review and 0 to the regeneration check. The existing source generator tests ran on head: 170 of 170 passed, 0 failed. 6 unverified hunch(es) remain without an executed receipt. It touches risky areas (serializer-runtime), so a human must sign off. 2 thing(s) were not checked, including tests/MessagePack.Tests and other runtime test suites; NativeAOT, Unity and non-net8.0 target frameworks. By signing off, the signer accepts any defect that only those unchecked paths would have revealed. The change is blocked; signing off is not offered until the blocker is fixed.",
+  "routing": {
+    "README.md": "light",
+    "doc/analyzers/MsgPack004.md": "light",
+    "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs": "deep",
+    "src/MessagePack/MessagePackPrimitives.Writers.cs": "deep",
+    "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs": "light"
+  },
+  "counts": {
+    "source": 2,
+    "test": 1,
+    "docs": 2,
+    "generated": 0,
+    "template": 0,
+    "total": 5,
+    "not_generated": 5
+  },
+  "questions": [],
+  "interpretations": [],
+  "narrative": "",
+  "mock_llm": false
+}

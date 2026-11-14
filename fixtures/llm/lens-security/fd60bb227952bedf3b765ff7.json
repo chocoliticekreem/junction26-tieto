@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Contractless mode is built from every public read-write member, but the generated formatter bypasses MessagePackSecurity checks only if the template does; more concretely, IsPublicReadWrite for fields requires field.IsReadOnly, which is inverted. Public mutable fields are excluded and public readonly fields are included. The generated deserializer then assigns to readonly fields, which fails to compile or produces broken generated code. This is a correctness bug rather than a security hole, but it can silently drop data from the wire contract.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:279",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a generator snapshot test with [GeneratedMessagePackFormatter] for a type with `public int F;` and `public readonly int G;`. Expect F to be serialized and G excluded. The current output does the opposite."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated-formatter diagnostics are reported only via RegisterSourceOutput from the generator, and the new descriptors MsgPack019-022 are added to the analyzer's SupportedDiagnostics. A rejected formatter produces no output and no model, so a misconfiguration is only surfaced if the diagnostic pipeline runs. Both pipelines call Collect twice with no exception handling, so a throw such as GetMemberType's ArgumentOutOfRangeException would disable generation for the whole generator run.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:115",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read GeneratedFormatterCollector.Collect and the two call sites in MessagePackGenerator.cs. Neither call site guards against exceptions, so one bad formatter class can abort the shared source pipeline."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18187,
+  "output_tokens": 673,
+  "ms": 6342,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

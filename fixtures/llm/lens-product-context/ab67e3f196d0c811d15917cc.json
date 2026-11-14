@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Requirement says all generated code should be decorated, but the change emits the attribute only for non-netstandard2.0 and non-.NET Framework targets, so those targets are unmarked. This is deliberate per [L12], which records no preference and says to follow the requirement. The README documents the limitation.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L12] asked whether netstandard2.0/.NET Framework output should also be excluded and answered 'No preference; follow the requirement'. The conditional emission is therefore not a defect."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change modifies the runtime decimal formatter to write with StandardFormat 'F'. This is unrelated to the code-coverage requirement and alters serialized bytes. It is a wire-format change hidden in a coverage PR. [L8] records that numeric serialization is bug-prone. Decimal output for values like 1E-10 would change, and the change has no tests or docs for it.",
+        "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize decimals such as 1E-10, 1.0m, 79228162514264337593543950335m and 0.0000000000000000000000000001m with base-built and head-built MessagePack; compare bytes and check the round trip."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change alters the output whitespace for nesting types with constraints ('{' becomes '{\\r\\n'). It is unrelated to the requirement and has no explanation. It changes the snapshots of generated files for constrained nested generics, beyond adding the attribute.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests and inspect the snapshot diffs for nested constrained generic types, checking for changes beyond the attribute lines."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditional, no-setting reading. Every generated formatter and resolver type, including the nested FormatterCache and GetFormatterHelper types, gets the attribute inside an '#if !NETSTANDARD2_0 && !NETFRAMEWORK' guard in the .tt templates and the generated .cs files. No opt-out option exists."
+      },
+      {
+        "label": "B",
+        "summary": "Opt-out reading. The same attribute is emitted by default, but a new generator option (for example an MSBuild property or a GeneratedMessagePackResolver/assembly attribute property) disables emission. The templates read that option and emit the attribute only when it is enabled. The attribute would also be available on netstandard2.0 through a generated internal attribute definition or an existence check."
+      }
+    ]
+  },
+  "input_tokens": 13922,
+  "output_tokens": 1021,
+  "ms": 8793,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

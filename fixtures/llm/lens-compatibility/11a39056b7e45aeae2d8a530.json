@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Requirement and ledger L7 call for an opt-out setting, but the attribute is emitted unconditionally on a hard-coded `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guard. Users cannot turn it off, so coverage output changes for existing users without opting in.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "Cite L7 (\"Add an opt-out setting\"). Then grep the change for any new MSBuild property, generator option, or MessagePackGeneratorOption that gates the attribute; none exists in the hunks."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Only formatter, string-key formatter, enum and union templates are decorated. The resolver template (and other generated types such as the resolver's helper classes) is not in the hunks, so the criterion \"all generated code is decorated\" is not met.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests and grep the generated resolver output (GeneratedMessagePackResolver) for ExcludeFromCodeCoverage; expect it to be missing."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The `{` emitted after nesting-type constraints now carries `\\r\\n`. This changes the whitespace of generated output for every nested generic type with constraints, which affects users who check in or snapshot generated code. The change is outside the requirement.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests with a nested generic type that has constraints. Compare the output with the base-built generator and check for a newline-only diff in the `{` line."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `#if` guard is placed at column 0 immediately before the attribute. In the StringKey and Formatter templates it follows the previous emitted text with no guaranteed preceding newline, so a missing line break could put `#if` mid-line and break compilation. Skipping the attribute on netstandard2.0 and .NET Framework also leaves those targets undecorated, which contradicts \"all generated code\".",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile generated formatters for a non-nested type and a nested generic-constrained type on net8.0 and netstandard2.0 targets. Assert there are no CS1040 errors and that the attribute is present or absent as intended."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7065,
+  "output_tokens": 1003,
+  "ms": 8333,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

@@ -1,0 +1,364 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "Acceptance criterion 'If T does carry MessagePack attributes, they are honoured' is not met. Without a SurrogateType the collector always builds contractless members from every public read-write member of T. It never reads [MessagePackObject], [Key], [IgnoreMember], [DataContract] or [DataMember] on T. So a member marked [IgnoreMember] on T is still serialized, and [Key(n)] integer keys are replaced by string-name keys. The README and attribute docs in this change describe the same contractless-only behaviour.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:91",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.GeneratedFormatterHonoursTypeAttributesTests.IgnoreMemberOnReferencedType_IsNotSerialized. ProjectA.Annotated carries [MessagePackObject] and an [IgnoreMember] SecretToken property. On head the generated formatter source contains SecretToken, so the test fails."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "The change silently alters a security default unrelated to REQ-2129. MessagePackSecurity.GetHashCollisionResistantEqualityComparer used to throw TypeAccessException for types without a known hash-collision-resistant comparer. It now returns EqualityComparer<T>.Default. That removes hash-flooding protection for untrusted data on arbitrary key types.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:215",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add a test: class Custom {}; Assert.Throws<TypeAccessException>(() => MessagePackSecurity.UntrustedData.GetEqualityComparer<Custom>()). It passes on base and fails on head because a default comparer is returned instead of throwing."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-3",
+    "lens": "requirement-tests",
+    "claim": "The requirement asks for 'contractless behaviour over public members'. The generated contractless formatter keeps only public read-write members, so public get-only properties and readonly fields are silently dropped from the serialized output. It also requires an accessible parameterless constructor (line 77) and matches no constructor parameters. Immutable library types that ContractlessStandardResolver handles are therefore rejected or serialized with data missing.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:133",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Define a ProjectA type with 'public int Id { get; }' and a constructor 'MyType(int id)' in a referenced assembly. Declare a [GeneratedMessagePackFormatter] for it in ProjectB and run the generator. Expect a formatter that writes Id, as ContractlessStandardResolver does. On head the formatter is rejected with a diagnostic and has no members."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "The fallback in GetHashCollisionResistantEqualityComparer<T> now returns EqualityComparer<T>.Default instead of throwing TypeAccessException. Under MessagePackSecurity.UntrustedData, a dictionary or set keyed by an arbitrary user type is deserialized with a non-collision-resistant comparer, so attacker-chosen keys can cause hash-flooding. This removes a security guard and is unrelated to REQ-2129.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:215",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Receipts.GeneratedTests.GeneratedFormatterEdgeCaseReceipts.UntrustedData_RejectsNonHashResistantKeyType: MessagePackSecurity.UntrustedData.GetEqualityComparer<CustomKey>() must throw TypeAccessException. It passes on base and fails on head."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "Contractless member collection ignores any MessagePack or DataContract attributes on T. When T carries [MessagePackObject] with [Key]/[IgnoreMember] (or [DataContract]/[DataMember]), the generated formatter still serializes every public read-write member under its name as a string key. An [IgnoreMember] property is therefore serialized and the [Key(0)] int keys are discarded. This breaks the acceptance criterion 'If T does carry MessagePack attributes, they are honoured'.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:131",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Receipts.GeneratedTests.GeneratedFormatterEdgeCaseReceipts.GeneratedFormatter_HonoursIgnoreMemberOnFormattedType: compile ProjectA.MyType ([MessagePackObject], [Key(0)] Value, [IgnoreMember] SecretToken) into a metadata image, then run MessagePackGenerator on a [GeneratedMessagePackFormatter] partial class for it. The generated formatter must not mention SecretToken; on head it does."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "GetEqualityComparer fallback changed from throwing TypeAccessException to returning EqualityComparer<T>.Default. Under UntrustedData, hash-based collections with non-whitelisted key types are now silently allowed, defeating the hash-collision protection. This is unrelated to the requirement. Existing users who relied on the exception, or on the secure-by-default behaviour, are affected without opting in.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:215",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "With MessagePackSecurity.UntrustedData, deserialize a Dictionary<CustomKeyType,int> where CustomKeyType is not whitelisted. Base throws TypeAccessException; head succeeds. Assert that the exception is thrown."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-2",
+    "lens": "compatibility",
+    "claim": "The new Error diagnostics MsgPack019-022 are registered in SupportedDiagnostics, but the diff does not add them to AnalyzerReleases.Unshipped.md or to doc/analyzers. This breaks RS2000 tracking. The helpLinkUri values point to docs that do not exist.",
+    "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:318",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Build the SourceGenerator project and look for RS2000 (release tracking) warnings. Check that doc/analyzers/MsgPack019.md through MsgPack022.md exist."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-4",
+    "lens": "compatibility",
+    "claim": "In contractless mode the generated string-key formatter emits members ordered by name, with IntKey set to the index. It excludes public get-only properties, readonly fields and init-only members, which ContractlessStandardResolver includes. A user who moves from the dynamic contractless resolver to this generated formatter would get a different wire map. The generated formatter is also opt-in, so the impact is limited to this feature.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:161",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "byte-diff",
+      "detail": "Serialize a class with public get-only property Id and read-write Name using ContractlessStandardResolver and the generated formatter. Compare the map keys; the generated output omits Id."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "security-1",
+    "lens": "security",
+    "claim": "GetEqualityComparer<T> used to throw TypeAccessException for types with no known hash-resistant comparer when UntrustedData is active. It now returns EqualityComparer<T>.Default. This silently disables the collision-resistance protection: an attacker can send hash-colliding keys for any non-whitelisted key type (custom structs, classes) in Dictionary/HashSet and cause a hash-flooding DoS. The change is unrelated to the requirement and breaks a secure-by-default behavior.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:215",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Deserialize a Dictionary<CustomKey,int> (CustomKey is a user type with no hash-resistant comparer) with MessagePackSecurity.UntrustedData. Base throws TypeAccessException; head succeeds with the default comparer. Existing tests asserting TypeAccessException (e.g. in MessagePackSecurityTests) should fail on head. Mutation: reverting the line is killed by that test."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "security-2",
+    "lens": "security",
+    "claim": "Surrogate mode lets string keys come from KeyAttribute, but the member-name match uses only the first member with that name. The new generated-formatter path reads and writes members without checking MsgPack-level restrictions on the target (for example, it gives no diagnostic for init-only or required members, and passes empty constructorParameters). A struct or class lacking a settable path could emit code that fails to compile or leaves required members unset. This is mainly a correctness risk, with a minor security impact from partially initialized objects.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:232",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Add a snapshot test with [GeneratedMessagePackFormatter] over a type with a required or init-only public property and run the generator tests to see whether the output compiles and whether required members are set."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "A one-line change in MessagePackSecurity.cs replaces the TypeAccessException with EqualityComparer<T>.Default in the hash-resistant comparer fallback. That silently disables hash-collision protection for untrusted data. The change is unrelated to REQ-2129 and nothing in the ledger sanctions it. Ledger L12 says the project has deliberately moved toward secure-by-default.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:215",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Deserialize a Dictionary<CustomKeyType,int> with MessagePackSecurity.UntrustedData. Base throws TypeAccessException; head returns a result using the default comparer, so a test asserting the throw fails on head. Cite [L12]."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-3",
+    "lens": "product-context",
+    "claim": "The collector never honours MessagePack attributes that T itself carries ([MessagePackObject], [Key], [DataContract]), and only the surrogate is read. The requirement says to use T's attributes if they are present. The README does not state this limitation. Recorded answer [L20] says to follow the requirement, so the omission is a gap.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:92",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add a source-generator test where T is in the same compilation with [MessagePackObject] and [Key(0)] members, formatted with [GeneratedMessagePackFormatter]. The output should be an int-key array; instead it will be a string-key map."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "Security-relevant behavior change has no test. When no hash-resistant comparer exists, GetEqualityComparer now returns EqualityComparer<T>.Default instead of throwing TypeAccessException. No test in the diff covers this, and the change appears unrelated to the requirement. The existing test that expects TypeAccessException would fail, and the diff does not update it.",
+    "location": "src/MessagePack/MessagePackSecurity.cs:215",
+    "severity": "critical",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run the existing MessagePackSecurity tests, e.g. one that deserializes an untrusted dictionary keyed by a non-whitelisted type and asserts TypeAccessException. Expect a failure on head. Mutation: MessagePackSecurity.cs:215 delete-statement; the change's own tests will not notice."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "The contractless test asserts only that read-write members are serialized and that the read-only Doubled is skipped. No test covers public fields, a private or protected setter, or static or indexer members. Mutations to IsPublicReadWrite (a field's readonly/const check, the property's setter-accessibility check) and to GetInstanceMembers (static, indexer or base-class filtering) would survive.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:262",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "GeneratedFormatterCollector.cs:262 negate-condition: !field.IsReadOnly -> field.IsReadOnly; expected to survive because every external test type uses only auto-properties and has no public fields."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "Contractless keys are sorted by name with OrderBy(Name), and the int key is assigned from the loop index. Tests check only a map header and JSON content, so removing the OrderBy or changing the ordering would not fail any test.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:158",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "GeneratedFormatterCollector.cs:158 delete-statement: remove .OrderBy(m => m.Name, StringComparer.Ordinal); expected to survive because assertions use Contains on JSON and do not check key order."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "The requirement says that if T carries MessagePack attributes they are honoured. The change has no test for a type with [MessagePackObject] or [DataContract], and the collector never reads attributes on T, so this acceptance criterion is untested. Every external type in the tests is attribute-free.",
+    "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:1",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Add a type with [MessagePackObject] and [Key(1)] formatted via [GeneratedMessagePackFormatter]. Assert that it uses array keys; the test is expected to fail on head."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-5",
+    "lens": "test-quality",
+    "claim": "Diagnostic coverage is incomplete. No test covers the contractless no-parameterless-constructor case, an inaccessible T, a generic T, duplicate surrogate keys (MsgPack006), or a surrogate member without a key (MsgPack003). Mutants that remove these guards would survive. The mixed-key test expects MsgPack005 but not any MsgPack022.",
+    "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs:1",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "GeneratedFormatterCollector.cs:~70 remove-guard: delete the isClass && !InstanceConstructors.Any(...) check; expected to survive because no test uses a class with no parameterless constructor."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-6",
+    "lens": "test-quality",
+    "claim": "The Tests project has no snapshot or generation test for the emitted output. Template changes (partial class vs internal sealed class, in both the int-key and string-key templates) are covered only through ExecutionTests. The generated IsUserDeclaredFormatter output and the GeneratorUtilities hand-written formatter exclusion are not checked directly. Removing the exclusion could produce a double registration that a type-only IsType check would not notice.",
+    "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "GeneratorUtilities.cs:38 remove-guard: delete the !symbol.GetAttributes().Any(...) clause; expected to survive or fail only by a compile duplicate."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-3",
+    "lens": "logic-edge",
+    "claim": "The generator does not deduplicate between generated formatters and TypeCollector output. If T is declared in the same compilation and is itself a [MessagePackObject], TypeCollector emits its own formatter for T and GeneratedFormatterCollector adds a second ObjectSerializationInfo for the same data type. The resolver then registers two formatters for one type, which causes a duplicate-key/switch conflict or makes formatter choice depend on order.",
+    "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:70",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "MessagePackGenerator.cs:60-76 adds the GeneratedFormatterCollector model next to the Collect(typeSymbol) models without excluding data types already collected. Verify with a test that declares [MessagePackObject] class T and [GeneratedMessagePackFormatter] partial class F : IMessagePackFormatter<T> in one compilation plus a [GeneratedMessagePackResolver], then compiles and resolves T."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-4",
+    "lens": "logic-edge",
+    "claim": "IsPartial checks only the formatter's own declaration. A [GeneratedMessagePackFormatter] class nested in a non-partial outer class, or declared private inside one, passes validation. The generated 'partial class' part is then emitted inside regenerated containing types (CS0260 on the non-partial outer type), or the resolver cannot instantiate the inaccessible formatter. The user gets a compile error instead of a MsgPack019 diagnostic.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:46",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "GeneratedFormatterCollector.IsPartial (lines 291-297) inspects only formatter.DeclaringSyntaxReferences, and Formatter = new QualifiedNamedTypeName(formatter) carries the containing types into EmitNestingTypesAndNamespaces. Test: class Outer { [GeneratedMessagePackFormatter] partial class F : IMessagePackFormatter<T> {} } plus a resolver, and expect MsgPack019 rather than CS0260/CS0122."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-3",
+    "lens": "compatibility",
+    "claim": "GeneratedFormatterCollector runs with reportDiagnostic: null in the model pipeline, but the diagnostics pipeline calls Collect again. Diagnostics such as MsgPack019-022 are reported only through the generator's RegisterSourceOutput. The analyzer never invokes them, so they are not reported in the IDE live analysis path. When Collect returns null, nothing is generated, but the user's partial class still compiles without the interface implementation. The user will see only CS0535 errors if the diagnostics are suppressed.",
+    "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:115",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Read MsgPack00xMessagePackAnalyzer.Initialize: it has no registration for GeneratedMessagePackFormatterAttribute, so the new descriptors are never reported by the analyzer."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-4",
+    "lens": "product-context",
+    "claim": "Surrogate keys are not checked against L3's keyAsPropertyName or the analyzer rules (MsgPack004). MsgPack005 and MsgPack006 are reused from the existing set. The new diagnostics MsgPack019-022 do have release notes and docs.",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:131",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Compare surrogate key validation with TypeCollector for the keyAsPropertyName and MsgPack004 behaviour."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m1",
+    "lens": "test-quality",
+    "claim": "the change's tests do not detect swap-boolean at src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:324",
+    "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:324",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "isEnabledByDefault: true, -> isEnabledByDefault: false,"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m7",
+    "lens": "test-quality",
+    "claim": "the change's tests do not detect negate-condition at src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:168",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs:168",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "&& IsUserDeclaredFormatter == other.IsUserDeclaredFormatter -> && IsUserDeclaredFormatter != other.IsUserDeclaredFormatter"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m13",
+    "lens": "test-quality",
+    "claim": "the change's tests do not detect delete-statement at src/MessagePack.SourceGenerator/MessagePackGenerator.cs:74",
+    "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:74",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "modelPerType.Add(generatedModel); -> (statement deleted)"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]

@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetEqualityComparer fallback now returns EqualityComparer<T>.Default instead of throwing TypeAccessException for types with no hash-resistant comparer. This silently disables the hash-collision protection for UntrustedData, so existing secure users are no longer protected. It is unrelated to the requirement.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "With MessagePackSecurity.UntrustedData, call GetEqualityComparer<T>() for an unwhitelisted type, e.g. a custom struct or class. Base throws TypeAccessException; head returns the default comparer. Alternatively deserialize a Dictionary keyed by such a type under UntrustedData and assert it throws."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless members are ordered by name and given IntKey = index, but the string-key formatter is chosen with isIntKey=false. The wire format is then a map with sorted names, which differs from the dynamic ContractlessStandardResolver behaviour. Read-only properties, get-only members and private members are skipped, and members are not in declaration order. The emitted bytes may therefore not match what the dynamic contractless resolver produces for the same type.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Take a type with public properties declared out of alphabetical order. Serialize it with ContractlessStandardResolver and with the generated formatter, then compare the bytes. A mismatch in key order or in the omitted read-only members shows the drift."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The new diagnostics MsgPack019-022 are added to SupportedDiagnostics, but the diff shows no AnalyzerReleases.Unshipped.md entry and no doc pages. This means RS2000 (release tracking) errors in the generator build. The new Error-severity diagnostics also appear in users' builds that use the attribute, although only opt-in users can trigger them.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:318",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that AnalyzerReleases.Unshipped.md contains rows for MsgPack019-022; the diff touches no such file."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18707,
+  "output_tokens": 887,
+  "ms": 7499,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

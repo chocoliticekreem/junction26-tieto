@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Per the requirement and maintainer comment, if T carries MessagePack attributes ([MessagePackObject]/[Key]/[DataContract]) they must be honoured. The collector always uses contractless mode or the surrogate and never reads attributes on T. Ledger L24 answered 'follow the requirement', so ignoring them is not accepted.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:88",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a type with [MessagePackObject] and [Key(0)]/[Key(1)] on its members. Declare a [GeneratedMessagePackFormatter] partial class for it. Assert the output is an array with the declared keys. Currently it is a string-key map."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless members are ordered by name and read-only members are skipped. This differs from the ContractlessStandardResolver (L3), which uses declaration order and includes get-only members. L25 explicitly accepts name-sorted read-write-only, so this is a deliberate deviation.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:151",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L25] Name-sorted read-write-only is acceptable; [L23] contractless by default with an optional surrogate."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change modifies the BigInteger/timestamp-related writer in MessagePackPrimitives.Writers.cs, flipping the mask on the timestamp32 check from 0xffffffff00000000 to 0x00000000ffffffff. This is unrelated to the feature and looks like a regression: the timestamp32 format applies when the high 32 bits are zero. The new mask would use the 32-bit format only when the low 32 bits are zero, corrupting timestamps (L16 says serialization is bug-prone).",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize DateTime values such as 2020-01-01 with base and head builds. Compare the bytes; head will emit timestamp64 or mis-encode where base emitted timestamp32, and round-trip may fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Analyzer diagnostics MsgPack019-022 are declared and documented, but the analyzer's Initialize never registers a check for them. They are reported only via the generator's RegisterSourceOutput, so the analyzer descriptors are never raised from the analyzer itself. Only the new diagnostics' conventions (release notes and docs) are updated, and the diagnostic for NoDeserializingConstructor is reused rather than a documented new one.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:318",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the analyzer's Initialize and confirm there is no registration that emits these descriptors."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "The change implements the surrogate-type design: contractless by default, plus an optional SurrogateType on [GeneratedMessagePackFormatter] whose [Key]/[IgnoreMember] attributes define the contract. The generator emits the formatter body into the user's partial class. Attributes on T itself are not read."
+      },
+      {
+        "label": "B",
+        "summary": "Contractless by default, but honour attributes on T when present, as the maintainer said. If T has [MessagePackObject]/[Key] or [DataContract]/[DataMember], use those keys and membership. Without them, fall back to contractless over public members. No surrogate type is needed; SurrogateType would be removed or kept as an optional extra."
+      }
+    ]
+  },
+  "input_tokens": 30306,
+  "output_tokens": 1385,
+  "ms": 11643,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

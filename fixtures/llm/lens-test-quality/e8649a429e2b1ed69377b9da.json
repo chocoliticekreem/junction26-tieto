@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The ReportIfLocatedInCompilation filter wraps every analyzer diagnostic. Its negation or removal is not caught: no test asserts that a real in-source diagnostic (e.g. MsgPack004 on a same-assembly type) still reaches the reporter, and no test covers the metadata case where the filter matters. The metadata tests only check for no diagnostics.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1449",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1449 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(...)) -> if (!(...)); expected to survive because new tests assert only absence of diagnostics, and existing analyzer tests may not be among the change's tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The guard `!formattedType.DeclaringSyntaxReferences.IsEmpty` was added at two sites (the field loop and the property loop). The unkeyed-member test only covers properties, so removing the guard in the field loop is not killed because no test has an unkeyed public field in a metadata generic struct. A mutant here would crash, but only if the field path is exercised.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1066",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1066 remove-guard: `contractAttr is not null && !formattedType.DeclaringSyntaxReferences.IsEmpty` -> `contractAttr is not null`; expected to survive because tests use only properties, and the other guard is the one covered."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The BothStringAndIntKeyAreNull path, now using GetPropertyIdentifierLocation, has no test. Reverting it to DeclaringSyntaxReferences[0] would not fail any test, because no metadata type has a derived/null-key Key attribute. The same applies to the MemberNeedsKey FirstOrDefault()? change, which is shadowed by the IsEmpty guard.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:986",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:986 delete-statement: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no test makes a metadata property reach this diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests do not cover the 'ok' rows (closed generic class from metadata, non-generic struct from metadata) or a same-assembly generic struct with a missing key. A regression where same-assembly diagnostics are dropped by the new guards or filter would go unnoticed, so the no-regression criterion is untested.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:499",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test where a same-assembly [MessagePackObject] struct<T> has an unkeyed public member and expect MsgPack004, then run it against the head build."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10765,
+  "output_tokens": 1295,
+  "ms": 9136,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

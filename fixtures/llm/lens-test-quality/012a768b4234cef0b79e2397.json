@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `continue` added in the int-key loop on a mixed key kind is not caught. In MixedKeyKindsAreReportedWithoutAnalyzerFailure the mixed member is Member2 with a string key, and Member1 has an int key. The analyzer reports MsgPack005 only, and nothing asserts on the DoNotMixStringAndIntKeys diagnostic or on the collected members. With the `continue` removed, the member would still fall through to the `else if (stringKey is not null)` branch or to the dictionary add. Whether that crashes or changes the output depends on which branch is reached, and the test does not isolate it.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:1008 delete-statement: `continue;` -> removed; expected to survive because the test only expects a MsgPack005 marker on Member2 and checks no member collection or crash path specific to this branch."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `continue` in the second collection loop (around line 1148) is not covered by any test. No test has mixed key kinds on fields or properties in a way that reaches that loop. MixedKeyKindsAreReportedWithoutAnalyzerFailure covers only one loop, and the test does not show which of the two loops handles properties versus fields.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:1148 delete-statement: `continue;` -> removed; expected to survive because only properties are used in the mixed-key test, and no field-based mixed key test exists."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `if (!intMembers.ContainsKey(...))` guards and the stringMembers guards are only exercised for duplicate keys on properties. The duplicate-key tests use properties only, not fields. The field-loop guards at ~1163 and ~1179 would survive removal if the two loops handle properties and fields respectively.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:1163 remove-guard: `if (!intMembers.ContainsKey(member.IntKey))` -> unconditional Add; expected to survive because all duplicate-key tests use properties, so a field with duplicate keys is never analyzed."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test SuppressedTypeRoundTripsThroughDynamicResolver would pass on base too, because it does not exercise the analyzer or TypeCollector change. The ExecutionTests round trip and the null-formatter check do not reproduce issue 2234, which concerns analyzer diagnostics.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:28",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressedSourceGenerationTests on the base-built TypeCollector; expect both tests to pass, showing they do not detect the regression."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 8954,
+  "output_tokens": 1177,
+  "ms": 8488,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

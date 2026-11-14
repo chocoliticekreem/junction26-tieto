@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Inverted condition: `if (stringMembers.ContainsKey(member.StringKey))` is missing the `!` that the other four sites have. For a new string key it never adds the member, so the type's stringMembers stay empty and the generated formatter omits all string-keyed members. For a duplicate key it calls Add and throws ArgumentException, which crashes the generator/analyzer. A crash disables the analyzer's diagnostics (including MsgPack00x checks) for the compilation. A formatter that silently drops members yields incomplete serialization. It does not weaken MessagePackSecurity settings (UntrustedData, MaximumObjectGraphDepth), but it is a correctness and availability regression in generated code.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator snapshot/analyzer tests on a [MessagePackObject] type with string-keyed members. This type must be in the second member-collection path (the one near line 1138, likely the non-annotated/record-style path). Expect the formatter to contain all string keys and no exception. Then add a case with duplicate [Key(\"a\")] and expect MsgPack diagnostics rather than an ArgumentException."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The added `continue` after reporting DoNotMixStringAndIntKeys changes which members are collected. Mixed-key types now silently drop the mismatched members instead of adding them. This only occurs when an error diagnostic is already reported, so it is low risk, but the generator may still emit a formatter that omits members. Low security relevance.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshot tests with a type mixing int and string keys. Confirm that only the diagnostic is produced and the generator does not throw or emit a partial formatter that compiles."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5306,
+  "output_tokens": 732,
+  "ms": 6485,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

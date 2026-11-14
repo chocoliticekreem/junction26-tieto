@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The decimal formatter change (adding StandardFormat 'F') alters serialized bytes for some decimals, and no test in the diff covers it. Reverting or mutating the format would not fail any test in the change.",
+        "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148 delete-statement: new System.Buffers.StandardFormat('F') -> removed; expected to survive because the only new tests (CodeCoverageExclusionTests) inspect generator output and never serialize a decimal."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test only checks for the attribute text and the #if guard text. It never compiles the generated output, and never compiles for netstandard2.0. A broken guard or attribute would pass. The requirement says the generated code must still compile on every target framework.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:73",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Templates .tt/.cs: change the guard to '#if NETSTANDARD2_0' or misspell the attribute namespace in the emitted guard text; expected to survive in the guard test only if the mutated text still matches the Guard constant, and compile-level breakage is never checked because the test never compiles the generated trees."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The 'generated.Count >= 5' assertion is weak. The test source has two object formatters, an enum, a union, and a resolver, and the union and composite-resolver templates are not clearly distinguishable. A template that loses the attribute could be masked, because the check only looks for the attribute somewhere in each file. For example, the GetFormatterHelper and FormatterCache nested classes in a file pass if only the outer type has the attribute. The second test counts guarded occurrences against total occurrences, not against the expected number of types.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:63",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:67 delete-statement: remove the attribute before 'private static class XGetFormatterHelper'; expected to survive because the test asserts only text.Contains(attribute) per file and the file still has other occurrences."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The CompositeResolverTemplate output (the composite resolver and its nested FormatterCache) is never exercised by the test source, which only uses [GeneratedMessagePackResolver]. Removing the attribute there would not fail any test in the diff, apart from snapshot checks.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "CompositeResolverTemplate.cs:27 delete-statement: remove the '#if...ExcludeFromCodeCoverage...#endif' text; expected to survive in CodeCoverageExclusionTests because no composite resolver source is generated, so only snapshots could catch it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change from '{' to '{\\r\\n' for nesting types with constraints has no dedicated test. Only snapshots could catch it, and only if a snapshot covers a nested type with constraints. The new test source contains no nested or constrained types.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TransformUtilities.cs:58 swap-boolean: writer(anyConstraints ? \"{\\r\\n\" : ...) -> \"{\"; expected to survive in CodeCoverageExclusionTests because it has no nesting types with constraints; check via regeneration of the snapshot tests."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 13120,
+  "output_tokens": 1450,
+  "ms": 11191,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `continue` for derived KeyAttribute with suppressSourceGeneration (both the field and property loops) has no test. No test uses a KeyAttribute-derived attribute on a suppressed type, so removing the guard would go unnoticed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921 remove-guard: `if (derivedKeyAttribute is not null && suppressSourceGeneration is true) { continue; }` -> removed; expected to survive because no test declares a derived-KeyAttribute member on a SuppressSourceGeneration type"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `continue` after DoNotMixStringAndIntKeys has weak coverage. MixedKeyKindsAreReportedWithoutAnalyzerFailure checks only that MsgPack005 is reported at Member2, and the test name suggests it is meant to check for no analyzer failure, but the harness does not check that. Deleting the `continue` would then reach the dictionary add with a null key, and the test might still pass if the analyzer swallows exceptions. The test also never covers the field loop (line ~1160) or a string-first, int-second ordering.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014 delete-statement: `continue;` after DoNotMixStringAndIntKeys -> removed; expected to survive for the field-loop copy (line 1160) because all tests use properties only, and possibly for the property loop too"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The duplicate-key `ContainsKey` guards are tested only for properties. Every duplicate-key test uses properties, so the guards in the field loop (intMembers/stringMembers at ~1175/1191) can be removed without failing any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1175",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1175 remove-guard: `if (!intMembers.ContainsKey(member.IntKey))` -> unconditional Add; expected to survive because no duplicate-key test uses fields (same for stringMembers at 1191)"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test hunks do not exercise the source-generator-side fix. SuppressedSourceGenerationTests (ExecutionTests) would pass on base because it only checks that no formatter is generated and that dynamic round-tripping works. The analyzer tests use VerifyCS with the analyzer only and no generator snapshot.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:20",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressedSourceGenerationTests against base-built code; expect both facts to pass, so they do not reproduce the bug"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9405,
+  "output_tokens": 1212,
+  "ms": 8456,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

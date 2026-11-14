@@ -1,0 +1,55 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The README says the attribute is only emitted for targets where it is available, but the guard `#if !NETSTANDARD2_0 && !NETFRAMEWORK` is hard-coded. It also omits that generated types other than formatters and resolvers may be undecorated. Nested partial containers emitted by EmitNestingTypesAndNamespaces and any other generated helper types (e.g. attribute/helper declarations in the resolver) are not decorated, so the claim 'All generated code' is not fully met. This is a convention/doc accuracy concern.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read TransformUtilities.EmitNestingTypesAndNamespaces (emits `partial class/struct` wrappers without the attribute) and compare with README wording and REQ-2297 'all generated code'."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new tests are in a new file whose test class has no `namespace` and uses `Fact`/`Assert` implicitly. Otherwise the tests only check string presence in generated output, not that the generated code compiles on netstandard2.0/.NET Framework targets, which was a derived acceptance criterion.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test compiling generated output with preprocessor symbols NETSTANDARD2_0 and with NET8_0 and asserting zero diagnostics; the current tests only do string matching."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should ExcludeFromCodeCoverage be emitted unconditionally for all users, or should there be an opt-out setting?",
+        "options": [
+          "Unconditional, no setting (as implemented)",
+          "Add an opt-out MSBuild/attribute property to disable emission"
+        ],
+        "why_it_matters": "The requirement says no setting is needed but one would be fine. If the team wants an opt-out, the unconditional change is incomplete; if not, it is correct as is.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditionally decorate generated formatters (object, string-key, enum, union) and resolvers and their nested helper classes with ExcludeFromCodeCoverage guarded by `#if !NETSTANDARD2_0 && !NETFRAMEWORK`; no setting; nesting partial wrapper types are left undecorated."
+      },
+      {
+        "label": "B",
+        "summary": "Decorate every generated type, including the partial nesting containers, and add an opt-out setting (e.g. an MSBuild property or attribute option read by the generator) that suppresses emission of the attribute."
+      }
+    ]
+  },
+  "input_tokens": 13051,
+  "output_tokens": 962,
+  "ms": 8033,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys (first occurrence) is not exercised by any test. All tests use uniform key kinds, and none mixes int and string keys, so deleting or moving the statement would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 delete-statement: continue; -> (removed); expected to survive because no test in the diff mixes [Key(0)] with [Key(\"a\")] (MsgPack006) on the same type."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The second `continue` (around line 1148, the other member-collection loop) has no test either. No test mixes key kinds, and it is not clear which test reaches that loop.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148 delete-statement: continue; -> (removed); expected to survive because no test mixes int and string keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ContainsKey guards on intMembers and stringMembers are only partly covered. The duplicate-key tests cover the first loop (the properties path). Fields, or whatever the second loop handles, have no duplicate-key test, so removing the guards at ~1163 and ~1179 would survive. The second loop also has no string-key test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163 remove-guard: if (!intMembers.ContainsKey(member.IntKey)) -> unconditional Add; expected to survive because every duplicate-key test uses properties, not the other member kind."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests do not show that the original bug is fixed. The requirement says the analyzer fails with SuppressSourceGeneration = true, but the analyzer tests for MsgPack004, MsgPack015 and MsgPack003 may already pass on base, since the diff has no source change that gates analysis on SuppressSourceGeneration. Only the duplicate-key tests plausibly hit the new code. The tests were never shown to fail on base.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:17",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests against base-built source. Tests that pass on base do not reproduce the bug."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test SuppressedTypeRoundTripsThroughDynamicResolver and the NoFormatterIsGenerated test exercise no changed source line. They would pass on base, and they say nothing about analyzer diagnostics.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:20",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressedSourceGenerationTests on base. Expect pass, which shows they do not reproduce REQ-2234."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 8257,
+  "output_tokens": 1297,
+  "ms": 8920,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

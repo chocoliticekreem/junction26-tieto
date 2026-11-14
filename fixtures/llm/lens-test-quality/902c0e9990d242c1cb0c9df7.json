@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The MessagePackPrimitives.Writers.cs hunk removes the `case <= byte.MaxValue` Str8 branch from the string header writer. No test in the diff covers it. Strings of 32..255 bytes would now be written with Str16, a non-minimal encoding, or the code would take a different path. The removal is unrelated to REQ-2234 and is not exercised by any test.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:917",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize strings of 31, 32, 100 and 255 UTF-8 bytes with base-built and head-built MessagePack and compare bytes. Base emits the 0xd9 Str8 header and head should differ. Also run the existing primitives writer tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `continue` after the DoNotMixStringAndIntKeys diagnostic is not reliably covered. In MixedKeyKindsAreReportedWithoutAnalyzerFailure, the test expects MsgPack005 on Member2, but the diagnostic for mixed keys is DoNotMixStringAndIntKeys, which may be a different id. The test cannot clearly show that the `continue` is needed. Deleting the `continue` would probably still pass, because the following Add would take the else branch and the ContainsKey guard would absorb any collision. The two `continue` statements at lines 1008 and 1148 are also in different code paths, and only one test touches them.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 delete-statement: continue; -> (removed); expected to survive because the mixed-key test passes with the ContainsKey guards in place and the analyzer reports the diagnostic either way. Repeat at line 1148 for the second path (fields vs properties)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ContainsKey guards at the intMembers and stringMembers Add sites lack separate negative coverage in the field-versus-property path. The DuplicateKeys tests use only properties. The second member-collection path, at lines 1160-1180, appears to be for fields or a different collection loop, and none of the tests cover duplicate keys there. Removing the guards at those lines would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163 remove-guard: if (!intMembers.ContainsKey(member.IntKey)) { Add } -> Add; expected to survive because every duplicate-key test uses properties and no test duplicates keys on fields. Same for the stringMembers guard at line 1179."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests for the suppressed case may pass on base. The base SuppressSourceGeneration analyzer failure presumably comes from the ContainsKey crash path, but tests such as MemberWithoutKeyIsReported and MemberTypeMustBeMessagePackObjectIsReported do not involve duplicate keys. If base already reports MsgPack003/004/015 for suppressed types, these tests do not reproduce the bug. Only the Duplicate* tests could reproduce a crash. No test shows that analysis was skipped in base for a suppressed type.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:21",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests against the base-built analyzer, source change reverted. Tests MemberWithoutKeyIsReported, AllowPrivateRequiredIsReported and MemberTypeMustBeMessagePackObjectIsReported that pass on base do not reproduce the bug."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed has no markup, so it only asserts the absence of diagnostics. It would also pass if the analyzer did nothing for suppressed types, so it cannot detect the reported bug. It encodes ledger L17, but it is a weak assertion.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:170",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Make the analyzer skip suppressed types completely. This test is expected to survive because it expects zero diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The execution test NoFormatterIsGeneratedForSuppressedType and the round-trip test cover runtime behaviour but not analyzer reporting. They pass on base too. Neither detects the bug in REQ-2234.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:20",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressedSourceGenerationTests on the base build and observe that both tests pass."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9072,
+  "output_tokens": 1911,
+  "ms": 13461,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

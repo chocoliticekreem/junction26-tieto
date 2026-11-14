@@ -1,0 +1,61 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "DecimalFormatter.Serialize now calls Utf8Formatter.TryFormat with StandardFormat('F') and no precision. For decimal, Utf8Formatter treats 'F' without a precision as 2 fractional digits. Any decimal with more than two fractional digits is silently rounded on the wire: 1.2345m is written as \"1.23\" and 0.001m as \"0.00\". The default 'G' format preserved the exact value. The format also changes for values that do survive: 1.0m becomes \"1.00\". This is a serializer-format change outside the requirement and loses data on every round trip.",
+        "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DecimalFormatterPrecisionReceiptTests.DecimalRoundTripsWithoutLosingDigits. MessagePackSerializer.Serialize/Deserialize<decimal> of 1.2345m, 0.001m and -123.456789m returns a different value on head. Also byte-diff Serialize(1.2345m) between base and head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated resolver part `partial class <Resolver>` now always carries [ExcludeFromCodeCoverage]. That attribute has AllowMultiple=false. A user who already put [ExcludeFromCodeCoverage] on their own `[GeneratedMessagePackResolver] partial class` declaration now gets CS0579 (duplicate attribute) in the generated file. This is the likely workaround for exactly the users asking for this feature, so their previously compiling code breaks.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.UserExcludeFromCodeCoverageOnResolverReceiptTests.ResolverAlreadyMarkedByUserStillCompiles. On head it fails with CS0579 reported in the generated resolver file; on base it passes. The same applies to CompositeResolverTemplate.tt:7."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Every emission is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. ExcludeFromCodeCoverageAttribute exists in netstandard2.0 and in .NET Framework 4.0+, and is valid on classes there. So the guard is not needed for compilation. It does mean projects targeting netstandard2.0 or .NET Framework get no coverage exclusion at all, which fails 'all generated code is decorated' for those targets.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the generator with CSharpParseOptions.WithPreprocessorSymbols(\"NETSTANDARD2_0\") and netstandard2.0 reference assemblies. Then check that the compiled formatter and resolver types have no ExcludeFromCodeCoverageAttribute, even though the attribute resolves in that compilation."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DecimalFormatterPrecisionReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Globalization;\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DecimalFormatterPrecisionReceiptTests\n{\n    [Theory]\n    [InlineData(\"1.2345\")]\n    [InlineData(\"0.001\")]\n    [InlineData(\"-123.456789\")]\n    public void DecimalRoundTripsWithoutLosingDigits(string text)\n    {\n        decimal value = decimal.Parse(text, NumberStyles.Number, CultureInfo.InvariantCulture);\n        byte[] bytes = MessagePackSerializer.Serialize(value);\n        decimal result = MessagePackSerializer.Deserialize<decimal>(bytes);\n        Assert.Equal(value, result);\n    }\n}\n",
+        "test_names": [
+          "DecimalRoundTripsWithoutLosingDigits"
+        ],
+        "expects": "fail-on-head"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/UserExcludeFromCodeCoverageOnResolverReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class UserExcludeFromCodeCoverageOnResolverReceiptTests\n{\n    [Fact]\n    public async Task ResolverAlreadyMarkedByUserStillCompiles()\n    {\n        string source = \"\"\"\n            using System.Diagnostics.CodeAnalysis;\n            using MessagePack;\n\n            namespace MyApp\n            {\n                [MessagePackObject]\n                public class MyObject\n                {\n                    [Key(0)]\n                    public int Value { get; set; }\n                }\n\n                [ExcludeFromCodeCoverage]\n                [GeneratedMessagePackResolver]\n                partial class MyCoverageResolver\n                {\n                }\n            }\n            \"\"\";\n\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(source);\n        await test.RunAsync();\n    }\n}\n",
+        "test_names": [
+          "ResolverAlreadyMarkedByUserStillCompiles"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 13064,
+  "output_tokens": 7720,
+  "ms": 69387,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

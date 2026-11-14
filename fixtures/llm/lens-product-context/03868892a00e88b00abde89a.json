@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change generates formatters for types from referenced assemblies from the compiling assembly. This looks like it contradicts the deliberate design that referenced-assembly types get no formatter, but it is an explicit opt-in via [GeneratedMessagePackFormatter]. The metadata-only early exit in TypeCollector.CollectCore is untouched, so L11 still holds for ordinary types.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] Types from a referenced assembly are deliberately not analysed or formatted by default. The new path is opt-in and does not go through TypeCollector.CollectCore, so the L11 behaviour is preserved."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MessagePackSecurity.GetHashCollisionResistantEqualityComparer now returns EqualityComparer<T>.Default instead of throwing TypeAccessException for unknown types. This silently removes the hash-collision protection for untrusted data and is unrelated to REQ-2129. It is a security regression and out of scope.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Deserialize a Dictionary<CustomKeyType,int> with MessagePackSecurity.UntrustedData and assert TypeAccessException is thrown. It fails on head and passes on base."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new diagnostics MsgPack019-022 are reported only from the source generator via context.ReportDiagnostic. The analyzer registers the descriptors but has no analysis action that reports them. The analyzer package alone, which per L1 is the diagnostics surface, will not emit them. The docs claim they are listed as analyzers.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:378",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "MsgPack00xMessagePackAnalyzer.Initialize registers no action for GeneratedMessagePackFormatterAttribute. Diagnostics come only from MessagePackGenerator.generatedFormatterDiagnostics."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Implements both contractless default and an optional SurrogateType. Surrogate [Key]/[IgnoreMember] define the keys. The formatted type's own MessagePack attributes are never read, and a default constructor is required."
+      },
+      {
+        "label": "B",
+        "summary": "Contractless by default, but if the formatted type carries [MessagePackObject]/[Key]/[DataContract] attributes, the generator honours them, as the maintainer said. No surrogate mechanism. GeneratedFormatterCollector would read attributes on T via TypeCollector instead of SurrogateType."
+      }
+    ]
+  },
+  "input_tokens": 29667,
+  "output_tokens": 1060,
+  "ms": 8467,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

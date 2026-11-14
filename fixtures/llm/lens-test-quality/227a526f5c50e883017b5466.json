@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Ledger L7 records that an opt-out setting should be added, but neither templates nor tests include any opt-out. No test checks that such a setting suppresses the attribute, so the decided behavior is untested and unimplemented.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "Cite L7 (Add an opt-out setting). Search the diff for any option/property read by the templates or a test that disables the attribute; none exists."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests only run the generator against a compilation using DefaultTargetFrameworkReferences and never compile the generated output under netstandard2.0 or NETFRAMEWORK. They only match text for the guard, so a wrong guard symbol would be accepted if it was applied consistently. Neither test would catch the guard being deleted from templates if the attribute check were also removed.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:94",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 swap-boolean: '#if !NETSTANDARD2_0 && !NETFRAMEWORK' -> '#if NETSTANDARD2_0'; expected to survive in the compile sense because the tests only compare text uniformity, though ExcludeAttributeIsGuarded... would fail on the exact string. Also run a generated-output compile with NETSTANDARD2_0 defined to prove the real behavior."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test source does not cover generic formatters, nested types, or resolver composition (CompositeResolverTemplate). The test count assertion `>= 5` is weak and does not confirm each template kind was exercised. If the CompositeResolverTemplate, FormatterCache, or GetFormatterHelper attribute were deleted, the per-file `text.Contains` check would still pass because the same file contains another attribute. The guarded-count check would also still pass.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:68",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:67 delete-statement: remove the ExcludeFromCodeCoverage block before 'private static class <Resolver>GetFormatterHelper'; expected to survive because tests only require at least one attribute per file and that every attribute occurrence is guarded, not an attribute on each emitted type."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12232,
+  "output_tokens": 981,
+  "ms": 7943,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

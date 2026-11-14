@@ -6,7 +6,9 @@ labelled `answered_by = ORACLE` in context/ledger.jsonl, and the metrics notes s
 Policy:
   1. A question that touches one of the bait conventions (bench/bait-conventions.md) is answered with
      that convention's recorded text: the behaviour is deliberate.
-  2. Otherwise the option most consistent with the requirement text (most shared content words) wins.
+     "Touches" = shares words distinctive to that convention (not used by the other conventions).
+  2. Otherwise the option the requirement clearly favours (see pick_option): most words shared
+     with affirmed requirement clauses, ahead of the runner-up, and not contested by a negated one.
   3. With no clear winner: NO_PREFERENCE.
 """
 
@@ -23,10 +25,10 @@ from .questions import _STOP, normalise
 ORACLE = "bench-oracle (simulated human)"
 NO_PREFERENCE = "No preference; follow the requirement"
 CONVENTIONS_FILE = config.BENCH / "bait-conventions.md"
-TOUCH_THRESHOLD = 0.25  # share of the question's content words found in the convention
-BAIT_TOUCH_THRESHOLD = 0.12  # lower bar on the bait case whose convention it is
-MIN_SHARED_WORDS = 3  # short questions must still share real vocabulary with the convention
+MIN_DISTINCTIVE = 3  # distinctive, non-requirement convention words to touch it
+BAIT_MIN_DISTINCTIVE = 3  # lower bar on the bait case built on that convention
 MIN_OPTION_OVERLAP = 2
+OPTION_MARGIN = 2
 
 _SECTION_RE = re.compile(r"^## ([A-Z])\. (.+)$", re.M)
 _ENTRY_RE = re.compile(r'Ledger entry \(suggested\): "(.+)"\s*$', re.M)
@@ -40,11 +42,13 @@ class Convention:
     title: str
     entry: str  # the suggested ledger text: what the oracle answers
     used_by: list[str]  # manifest ids of the bait cases built on it
-    words: set[str]  # content words of title + body, for matching
+    words: set[str]  # content words of title + statement + entry, for matching
+    anchors: set[str]  # identifiers in backticks and title words: one must be shared to match
 
 
 def _content_words(text: str) -> set[str]:
-    return {w for w in normalise(text).split() if w not in _STOP and len(w) > 2}
+    return {w for w in normalise(text).split()
+            if w not in _STOP and len(w) > 2 and not w.isdigit()}
 
 
 def load_conventions(path: Path | None = None) -> list[Convention]:
@@ -56,40 +60,93 @@ def load_conventions(path: Path | None = None) -> list[Convention]:
         entry = _ENTRY_RE.search(body)
         if not entry:
             continue
-        # Identifiers in backticks (e.g. SuppressSourceGeneration) count as words too.
-        idents = " ".join(re.sub(r"([a-z])([A-Z])", r"\1 \2", c) for c in _CODE_RE.findall(body))
+        # Match on what the convention says, not on the "Evidence"/"Used by" notes, which name
+        # bench cases and unrelated features.
+        statement = re.split(r"^(Evidence in code|Used by)", body, maxsplit=1, flags=re.M)[0]
+        about = f"{m.group(2)} {statement} {entry.group(1)}"
+        idents = " ".join(re.sub(r"([a-z])([A-Z])", r"\1 \2", c) for c in _CODE_RE.findall(about))
         out.append(Convention(
             key=m.group(1), title=m.group(2).strip(), entry=entry.group(1).strip(),
             used_by=sorted(set(_USED_BY_RE.findall(body))),
-            words=_content_words(f"{m.group(2)} {body} {idents}")))
+            words=_content_words(f"{about} {idents}"),
+            anchors=(_content_words(m.group(2)) - _requirement_vocabulary())
+            | {t.lower() for c in _CODE_RE.findall(about) for t in re.findall(r"[A-Za-z]\w{3,}", c)}))
     return out
 
 
-def _touch_score(question: Question, conv: Convention) -> float:
-    qwords = _content_words(f"{question.text} {question.why_it_matters}")
-    shared = qwords & conv.words
-    if len(shared) < MIN_SHARED_WORDS:
-        return 0.0
-    return len(shared) / len(qwords)
+def distinctive_words(conv: Convention, conventions: list[Convention]) -> set[str]:
+    """Words of this convention that the other conventions do not use. Shared vocabulary
+    (generator, analyzer, types, diagnostics) is everywhere in this codebase and proves nothing."""
+    others = set().union(*(c.words for c in conventions if c.key != conv.key))
+    return conv.words - others
+
+
+def _requirement_vocabulary() -> set[str]:
+    words: set[str] = set()
+    for f in config.REQUIREMENTS.glob("REQ-*.md"):
+        words |= _content_words(f.read_text(encoding="utf-8"))
+    return words
 
 
 def matching_convention(question: Question, case_id: str,
                         conventions: list[Convention]) -> Convention | None:
-    best, best_score = None, 0.0
+    """On the bait case built on a convention: BAIT_MIN_DISTINCTIVE of its distinctive words.
+    Elsewhere: MIN_DISTINCTIVE distinctive words that no requirement uses either, so a question
+    about the requirement's own subject (formatters, resolvers, referenced assemblies) never
+    gets a convention's "deliberate" answer."""
+    qwords = _content_words(f"{question.text} {question.why_it_matters}")
+    req_vocab = _requirement_vocabulary()
+    best, best_shared = None, 0
     for conv in conventions:
-        score = _touch_score(question, conv)
-        bar = BAIT_TOUCH_THRESHOLD if case_id in conv.used_by else TOUCH_THRESHOLD
-        if score >= bar and score > best_score:
-            best, best_score = conv, score
+        own = case_id in conv.used_by
+        vocab = distinctive_words(conv, conventions)
+        hits = qwords & (vocab if own else vocab - req_vocab)
+        bar = BAIT_MIN_DISTINCTIVE if own else MIN_DISTINCTIVE
+        if len(hits) >= bar and qwords & conv.anchors and len(hits) > best_shared:
+            best, best_shared = conv, len(hits)
     return best
 
 
+_NEGATION_RE = re.compile(r"\b(not|no|never|nor|without|don't|doesn't|isn't)\b", re.I)
+
+
+def _requirement_words(requirement_text: str) -> tuple[set[str], set[str]]:
+    """(affirmed words, negated words): in each sentence, words after a negation cue are negated
+    ("I do not feel like a setting is needed"), words before it are affirmed."""
+    pos: set[str] = set()
+    neg: set[str] = set()
+    for sentence in re.split(r"(?<=[.!?])\s+|\n+", requirement_text):
+        m = _NEGATION_RE.search(sentence)
+        if m is None:
+            pos |= _content_words(sentence)
+        else:
+            pos |= _content_words(sentence[:m.start()])
+            neg |= _content_words(sentence[m.end():])
+    return pos, neg
+
+
+def _affirmed(text: str) -> set[str]:
+    """Content words of an option before any negation cue ("Unconditional, no setting" ->
+    {unconditional})."""
+    m = _NEGATION_RE.search(text)
+    return _content_words(text[:m.start()] if m else text)
+
+
 def pick_option(options: list[str], requirement_text: str) -> str:
-    req = _content_words(requirement_text)
-    scored = sorted(((len(_content_words(o) & req), o) for o in options), key=lambda x: -x[0])
+    """The option the requirement clearly favours, else NO_PREFERENCE.
+
+    Score = affirmed option words found in affirmed requirement clauses. The winner must reach
+    MIN_OPTION_OVERLAP, lead the runner-up by OPTION_MARGIN, and use no word the requirement
+    negates anywhere ("I do not feel like a setting is needed, but a setting would be fine" makes
+    any setting option contested). A wrong recorded answer misleads every later review of the
+    area, so doubt means no preference."""
+    pos, neg = _requirement_words(requirement_text)
+    scored = sorted(((len(_affirmed(o) & pos), o) for o in options), key=lambda x: -x[0])
     if not scored or scored[0][0] < MIN_OPTION_OVERLAP:
         return NO_PREFERENCE
-    if len(scored) > 1 and scored[1][0] == scored[0][0]:
+    if len(scored) > 1 and scored[0][0] - scored[1][0] < OPTION_MARGIN:
+        return NO_PREFERENCE
+    if _affirmed(scored[0][1]) & neg:
         return NO_PREFERENCE
     return scored[0][1]
 

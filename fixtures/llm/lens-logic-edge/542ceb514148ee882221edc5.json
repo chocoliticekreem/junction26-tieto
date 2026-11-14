@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early `return null` for `SuppressSourceGeneration = true` stops all analysis of the type, not only generation. MsgPack003, MsgPack004 and MsgPack005 are therefore never reported for such types. For example, `[MessagePackObject(SuppressSourceGeneration = true)] public class C { [Key(0)] public int A {get;set;} public int B {get;set;} }` gets no MsgPack004. This is the reverse of REQ-2234, which requires the MsgPack0xx diagnostics to still be reported with SuppressSourceGeneration = true, as in 3.1.0. Ledger L14 only exempts the generation-only rules MsgPack011, 016 and 017.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:714",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressSourceGenerationAnalyzerReceiptTests.MissingKeyIsReportedWhenSourceGenerationSuppressed. It runs every DiagnosticAnalyzer in the MessagePack.SourceGenerator assembly over a suppressed type whose public member has no [Key], and asserts that MsgPack004 is reported. It fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Two members with the same [Key(n)] or the same string key no longer crash the collector, but the second member is now silently dropped with no diagnostic. For a normal, non-suppressed type, the generated formatter then never serializes that member's data, and the user gets no warning. The dynamic resolver instead throws on duplicate keys at run time.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1029",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "In TypeCollector.cs lines 1029-1032, 1045-1048, 1169-1172 and 1185-1188, the `if (!intMembers.ContainsKey(...))` / `if (!stringMembers.ContainsKey(...))` guards skip the duplicate member and report no Diagnostic. Compare with `[MessagePackObject] public class C { [Key(0)] public int A; [Key(0)] public int B; }`: the generated formatter contains only A."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressSourceGenerationAnalyzerReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Reflection;\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressSourceGenerationAnalyzerReceiptTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public SuppressSourceGenerationAnalyzerReceiptTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task MissingKeyIsReportedWhenSourceGenerationSuppressed()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                public int B { get; set; }\n            }\n            \"\"\";\n\n        ImmutableArray<MetadataReference> frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = frameworkRefs.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ReceiptsAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp7_3)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetCustomAttribute<DiagnosticAnalyzerAttribute>() is not null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n\n        analyzers.Should().NotBeEmpty();\n\n        ImmutableArray<Diagnostic> diagnostics = await compilation.WithAnalyzers(analyzers).GetAllDiagnosticsAsync();\n        foreach (Diagnostic d in diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        diagnostics.Should().Contain(d => d.Id == \"MsgPack004\");\n    }\n}\n",
+        "test_names": [
+          "MissingKeyIsReportedWhenSourceGenerationSuppressed"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8712,
+  "output_tokens": 5248,
+  "ms": 44219,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

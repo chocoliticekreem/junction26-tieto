@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "DepthStep changed from `>=` to `>`, so the depth limit is off by one: a payload nested one level deeper than MaximumObjectGraphDepth is now accepted instead of throwing InsufficientExecutionStackException. This is a security-relevant behaviour change for existing users, including UntrustedData, and has nothing to do with REQ-2234.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Set MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(N). Deserialize a payload with exactly N+1 nested single-element arrays, and one with N. Base throws at the depth-N boundary. Head accepts one more level. The test asserts the base behaviour and fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` on a mixed int/string key mismatch changes the TypeCollector's ObjectSerializationInfo. The mismatched member is now dropped from the member list, whereas before it was added after the diagnostic. For a type that mixes keys, the generated formatter output and the set of reported diagnostics change, because downstream checks now see fewer members. Users who snapshot or compile the generated code would notice. The requirement did not ask for this.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests, and generate with base and head for a [MessagePackObject] type with one [Key(0)] member and one [Key(\"a\")] member. Diff the generated formatter and the diagnostics. Mismatched members are present in base output and absent in head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate int or string keys are now silently deduplicated with `ContainsKey`, keeping the first member. Previously Add threw ArgumentException, which surfaced as a generator failure. Generated output is now emitted for types with duplicate keys, and a duplicate-key diagnostic may not be reported. This changes build results for users, since generation succeeds where it used to fail or report. It is also unrelated to restoring the analyzer under SuppressSourceGeneration.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Compile a [MessagePackObject] type with two members that both have [Key(0)], once with base and once with head. Compare the diagnostics and generated output. Base throws or reports. Head generates a formatter for the first member only."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "None of the hunks touch the path that decides whether the analyzer reports under SuppressSourceGeneration=true, so the stated bug is probably not fixed. These changes only alter the key-mismatch and duplicate-key handling, which applies equally with the flag unset.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject(SuppressSourceGeneration = true)] type with a public member that has no [Key], expecting MsgPack004. Run it on head. If it still reports nothing, the bug is unfixed."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5675,
+  "output_tokens": 1207,
+  "ms": 9079,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new diagnostics MsgPack019-022 are declared and added to SupportedDiagnostics, but the diff shows no entries in AnalyzerReleases.Unshipped.md and no doc/analyzers pages, even though helpLinkUri points to them. Missing release tracking triggers RS2000 in the analyzer project build, and the help links 404.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that src/MessagePack.SourceGenerator/AnalyzerReleases.Unshipped.md lists MsgPack019-022 and that doc/analyzers/MsgPack019.md through MsgPack022.md exist. Neither appears in the diff."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated partial class is emitted with only the 'partial class' modifiers. It is emitted inside EmitNestingTypesAndNamespaces and carries the generic constraints and formatter name from Info.Formatter. The analyzer never checks whether the user's declaration is a class nested in a generic or static container, or is 'sealed' or 'static'. The accessibility of the formatter, which is user-declared, does not matter for the partial. The main compatibility risk is the resolver: the generated resolver registers Info.Formatter as if it were a generated 'internal sealed' class. A user-declared public formatter may be instantiated through a different path, such as 'new Formatter()'. The user-declared formatter may also lack a parameterless constructor, which would break the generated resolver.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with a [GeneratedMessagePackFormatter] public partial class that has a custom constructor, then compile the generated resolver and check that it still builds."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode serializes members sorted by ordinal name and silently drops get-only or private-set properties, readonly fields and init-only properties that would normally be serialized. Because IsPublicReadWrite requires a public setter, init-only properties are included (their SetMethod is public) while the info is marked IsInitOnly. The sort order is name-ordinal, whereas the existing contractless resolver uses declaration order. Bytes for a type serialized through this formatter therefore differ from the dynamic ContractlessStandardResolver for the same type, which breaks interoperability for users who later switch resolvers. This follows from the requirement but is not documented.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with properties {Zed, Alpha, Mid} through a [GeneratedMessagePackFormatter] class, then through ContractlessStandardResolver. Compare the map key order bytes."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The GeneratorUtilities hand-written-formatter filter matches the attribute by display string. If the attribute is absent, no problem arises. If the user's formatter has the attribute but the generator rejects it (not partial, wrong interface), the formatter is dropped from the hand-written registration too. A previously working hand-written formatter that gains the attribute would silently lose resolver registration.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Snapshot test: a non-partial class with [GeneratedMessagePackFormatter] implementing IMessagePackFormatter<T>. Check that the generated resolver neither registers it nor produces a compile error beyond MsgPack019."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18294,
+  "output_tokens": 1377,
+  "ms": 10651,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

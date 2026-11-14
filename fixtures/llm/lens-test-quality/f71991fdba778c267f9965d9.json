@@ -1,0 +1,83 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "No test covers a surrogate with a missing [Key] on a non-ignored member (MemberNeedsKey path), nor duplicate keys (KeysMustBeUnique). Deleting the unique-key guard or the key-null check would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:172",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:172 remove-guard: if (!claimedKeys.Add(key)) {report; return null;} -> removed; expected to survive because no test in GeneratedMessagePackFormatterTests declares duplicate surrogate keys"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The no-parameterless-constructor rejection for class data types has no test. Removing the guard would change nothing in the suite, and the generator would emit a formatter that does not compile.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:79",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:79 remove-guard: if (isClass && !type.InstanceConstructors.Any(...)) -> removed; expected to survive because no diagnostic test uses a class without a default ctor (MsgPack006 path)"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate integer-key execution test only checks the array header length (8). It never asserts that keys 3 and 7 hold Id and Name, nor that the gap slots are nil. Swapping the key assignment (intKey -> members.Count) in the surrogate path would produce a different layout but the round trip would still pass.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:62",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:~163 swap: CreateMember(target, intKey: intKey, ...) -> intKey: members.Count; expected to survive because the round trip is self-consistent, and the header would be 2 not 8, so the header assert may kill it; but swapping Id/Name keys (3<->7) survives"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless member ordering (OrderBy name) and the exclusion of public fields, read-only fields and private setters are untested. Only properties are used in test types. Negating IsPublicReadWrite for fields or removing the IsReadOnly check would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:274",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:274 negate-condition: field.DeclaredAccessibility == Public && !field.IsReadOnly && !field.IsConst -> drop !field.IsReadOnly; expected to survive because no external test type has fields"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities filter that stops a [GeneratedMessagePackFormatter] class being registered as a hand-written formatter is not tested for failure. GeneratedFormattersAreRegisteredInGeneratedResolver would likely still pass if the filter were removed, since only the type is checked. No snapshot or duplicate-registration test exists.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: && !symbol.GetAttributes().Any(...) -> removed; expected to survive because tests only assert formatter type, not absence of duplicate/hand-written registration"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The IsUserDeclaredFormatter template switch (partial class vs internal sealed class) is exercised only through compilation in execution tests. There is no generator snapshot test for the emitted output, so the non-user-declared path regression is covered only by existing snapshots. Required also: no test for int-key vs string-key template for user-declared formatter beyond the two cases.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a generator snapshot test for a [GeneratedMessagePackFormatter] class and rerun the generator snapshot tests"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Requirement says that if T carries MessagePack attributes they are honoured, yet no test covers it. The collector ignores T's own [MessagePackObject]/[Key]/[IgnoreMember]. Contractless is applied unconditionally when there is no surrogate.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:92",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Format an in-compilation type with [MessagePackObject] and [Key(1)] via [GeneratedMessagePackFormatter] and assert the keys; expected to fail because the collector yields string-name contractless keys"
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25774,
+  "output_tokens": 1905,
+  "ms": 13787,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

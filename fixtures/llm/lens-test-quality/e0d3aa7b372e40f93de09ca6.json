@@ -1,0 +1,74 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The early return for suppressSourceGeneration skips ALL type-level analysis, including diagnostics that 3.1.0 reported for suppressed types (MsgPack003 on missing key, MsgPack004, MsgPack005, MsgPack006, MsgPack007 etc.). The new tests assert that MsgPack004, MsgPack005 (duplicate keys), MsgPack006 (mixed keys) and member-type-must-be-MessagePackObject are NOT reported for suppressed types, which contradicts the acceptance criterion that the analyzer still reports diagnostics with SuppressSourceGeneration = true. The tests lock in the regression instead of detecting it.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:19",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add an analyzer test with [MessagePackObject(SuppressSourceGeneration = true)] and a public property without [Key] expecting {|MsgPack004:...|}; it fails on head because TypeCollector returns null early, and passes on 3.1.0 behavior."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Mutation: removing the new early-return guard is not killed by tests that expect no diagnostics only for the suppressed paths... specifically the guard's removal would be caught only by tests that expect silence, but there is no test that a suppressed type still produces ANY diagnostic, so the inverse mutant (guard narrowed to only skip some checks) survives. Also no test verifies non-suppressed types with missing Key still report MsgPack004 alongside the guard (negative control missing).",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:713",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:713 negate-condition: suppressSourceGeneration is true -> suppressSourceGeneration is not true; expected to survive only partly: the generated-type test covers MsgPack005 only, and MsgPack004/003 for non-suppressed types lack a control in this file."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The continue added after DoNotMixStringAndIntKeys is not covered by any test in the diff. MixedKeyKindsDoNotFailAnalyzer uses a suppressed type, which now returns before reaching that code, and no non-suppressed mixed-key test exists in the diff, so deleting the continue survives.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014 delete-statement: continue; -> removed; expected to survive because the only mixed-key test uses SuppressSourceGeneration = true and exits at the early return."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ContainsKey guards on intMembers/stringMembers (4 sites) are unreachable from the suppressed tests, since suppressed types return early. Only DuplicateKeysAreReported...ForGeneratedTypes exercises the int-key property path, so the string-key path, and field (second hunk) paths for int and string duplicates have no test. Removing the guard on string members or fields survives. The 'DoNotFailAnalyzer' tests for suppressed types also pass on base-with-guard-only.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1045",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1045 remove-guard: if (!stringMembers.ContainsKey(member.StringKey)) -> unconditional Add; expected to survive because no non-suppressed duplicate-string-key test exists; same for field paths at :1169 and :1185."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ExecutionTests assertions do not exercise the analyzer at all and would pass on base: NoFormatterIsGeneratedForSuppressedType and the dynamic round-trip already held before the change, so they do not reproduce issue 2234.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:20",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressedSourceGenerationTests against base-built TypeCollector; expect both to pass, showing they do not reproduce the bug."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "For SuppressSourceGeneration = true types, should the analyzer still report the general contract diagnostics (MsgPack003/004/005/006/007) as in 3.1.0, or only skip the generation-only ones (MsgPack011/016/017)?",
+        "options": [
+          "Keep reporting general contract diagnostics; skip only MsgPack011/016/017",
+          "Skip all diagnostics for suppressed types (current change)"
+        ],
+        "why_it_matters": "If the first, the early return is too broad and the new tests encode wrong behavior (high defect). If the second, the requirement 'analyzer still reports diagnostics' is reinterpreted and tests are adequate for that scope.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 8984,
+  "output_tokens": 1921,
+  "ms": 13246,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

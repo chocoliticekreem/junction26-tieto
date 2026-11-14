@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The MessagePackPrimitives.Writers.cs change flips the timestamp mask from 0xffffffff00000000 to 0x00000000ffffffff, an unrelated runtime change with no covering test. The mutation would select the 6-byte timestamp32 format for wrong values and corrupt DateTime serialization. No test in the diff touches timestamp encoding.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack/MessagePackPrimitives.Writers.cs:787 swap-boolean/mask: 0x00000000ffffffffL -> 0xffffffff00000000L; expected to survive because no test in the diff serializes timestamps. Also byte-diff: serialize DateTime/DateTimeOffset values (e.g. 2020-01-01 with nanoseconds, and seconds=1) with base and head builds and compare bytes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless membership filter IsPublicReadWrite is only tested for a get-only property (Doubled). The tests do not cover public fields, readonly fields, private-setter properties, or inherited members, so mutating the field branch or the base-type walk would survive. Struct tests use properties only.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:243",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs IsPublicReadWrite field arm: `!field.IsReadOnly` -> `field.IsReadOnly`, and GetInstanceMembers loop `current = current.BaseType` deleted; expected to survive because ExternalPerson/Point/Widget have only auto-properties and no base class."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Requirement says MessagePack attributes on T must be honoured, but no test puts [MessagePackObject]/[DataContract]/[Key] on T. The collector ignores them entirely. No test would catch this.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a GeneratedMessagePackFormatter over a type annotated with [MessagePackObject] and [Key(n)] on its members (needs MessagePack-referencing type) and assert wire bytes use those keys; it fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate test only covers mixed int-key/ignore handling. There is no execution test for string-key surrogates, or for the key-uniqueness and MemberNeedsKey diagnostics. Mutating `claimedKeys.Add(key)` or the string-key `intKey: members.Count` branch would survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:176",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:176 negate-condition: `if (!claimedKeys.Add(key))` -> `if (claimedKeys.Add(key))`; expected to survive because no test has duplicate keys, and the only surrogate has unique int keys (the first mutated run would still emit an error only for distinct keys... tests with unique keys would fail, so also verify with a duplicate-key test)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The diagnostics tests never assert that generated output is absent or that the non-error cases produce a snapshot. There is no generator snapshot test of emitted code, so the template change (`partial class` vs `internal sealed class`) and the exclusion of attributed classes in GeneratorUtilities are covered only indirectly. Removing the GeneratorUtilities attribute guard would likely survive.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: delete `!symbol.GetAttributes().Any(...GeneratedMessagePackFormatter...)`; expected to survive or change only the resolver text because the execution test checks GetFormatter type, which may resolve either way."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Class without an accessible parameterless constructor, and the inaccessible-type branch of MsgPack021, have no test. Only the abstract case is tested. Also the NoDeserializingConstructor path has none.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:73",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:73 remove-guard: delete the parameterless-constructor check; expected to survive because no test uses a class lacking one."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 26282,
+  "output_tokens": 1772,
+  "ms": 14025,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

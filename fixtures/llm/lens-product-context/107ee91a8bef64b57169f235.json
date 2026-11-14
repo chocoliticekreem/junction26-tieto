@@ -1,0 +1,45 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetPropertyIdentifierLocation still indexes DeclaringSyntaxReferences[0] unguarded. Its doc comment says it returns null for metadata properties, but it throws IndexOutOfRangeException on a metadata symbol. The BothStringAndIntKeyAreNull path therefore still crashes for a closed generic struct from a referenced assembly.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Reference an assembly that defines a generic struct with a property whose [Key] has neither an int nor a string key. Use it closed as a member from another assembly. Run the generator and analyzer and expect an IndexOutOfRange / AD0001 or CS8785. The existing tests never hit this path."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new docs say members of referenced-assembly types are 'reported by the project that defines that type'. This matches the deliberate behavior in [L8], so the change is consistent with the ledger. For generic types, though, CollectGeneric still calls GetObjectInfo, so the analysis does run. Diagnostics are now dropped by ReportIfLocatedInCompilation rather than never produced.",
+        "location": "README.md:1641",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] Types from referenced assemblies are deliberately not analysed and get no diagnostics from the consuming assembly. Dropping their diagnostics is consistent with this."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new filter ReportIfLocatedInCompilation wraps every diagnostic reported through the TypeCollector. A diagnostic with a null or None location is now silently dropped, because IsInSource is false for it. Any existing diagnostic created without a location would stop being reported. This is a risk of wrong or missing reports, which [L10] warns about.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the full analyzer test suite (MsgPack003/004/005 etc.). Look for diagnostics created with a null location, such as the FirstOrDefault()?.GetLocation() paths, that are now missing."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 11115,
+  "output_tokens": 857,
+  "ms": 6853,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

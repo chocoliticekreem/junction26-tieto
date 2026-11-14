@@ -57,8 +57,10 @@ def bench_runs(tmp_path):
     write_run(root, "mock-1-clean", "cold", 1, "needs-sign-off", [baseline], [MUT_EV])
     # logic: caught by an edge test at the planted line (±10) and by an existing-test regression
     write_run(root, "mock-1-logic", "cold", 2, "blocked",
-              [finding("logic-edge", f"{F}:110", ("gentest-1",)), baseline], [TEST_EV, MUT_EV],
-              reason="1 existing test(s) pass on base but fail on head: T.X")
+              [finding("logic-edge", f"{F}:110", ("gentest-1",)), baseline],
+              [TEST_EV, MUT_EV, {"id": "existing-tests-head", "kind": "existing-tests",
+                                 "result": "fail", "details": {"failed_tests": ["T.X"]}}],
+              reason="1 test(s) fail on head (passing on base, or added by the change): T.X")
     # edge: missed (finding far from the planted line is off-target, not a catch)
     write_run(root, "mock-1-edge", "cold", 3, "needs-sign-off",
               [finding("security", f"{F}:900")], [])
@@ -131,10 +133,19 @@ def test_mutation_baseline_uses_mutant_text_not_just_file():
     new = metrics.classify(_run("mock-1-logic", "needs-sign-off",
                                 [survivor(f"{F}:103", "x -> y")]), clean)
     assert new.caught and new.rows == {"test-quality"}
-    # a new mutant in the same file away from the plant: about the agent's change, baseline
+    # a new mutant away from the plant: about the agent's unchanged code, off-target
     away = metrics.classify(_run("mock-1-logic", "needs-sign-off",
                                  [survivor(f"{F}:700", "x -> y")]), clean)
-    assert not away.caught and len(away.baseline) == 1
+    assert not away.caught and len(away.off_target) == 1 and not away.baseline
+
+
+def test_control_false_alarm_only_at_the_planted_lines():
+    clean = _run("mock-1-clean", "needs-sign-off", [finding("logic-edge", f"{F}:500")])
+    r = metrics.classify(_run("mock-1-control", "needs-sign-off", [
+        finding("logic-edge", f"{F}:502"),       # repeats clean (within 3 lines): baseline
+        finding("security", f"{F}:600"),         # new, but not at the plant: off-target
+        finding("logic-edge", f"{F}:11")]), clean)  # at the planted rename: false alarm
+    assert [len(r.baseline), len(r.off_target), len(r.false_alarms)] == [1, 1, 1]
 
 
 def test_missing_test_plant_caught_by_any_new_survivor():
@@ -143,6 +154,28 @@ def test_missing_test_plant_caught_by_any_new_survivor():
                               [survivor(f"{F}:5", "a -> b"), survivor(f"{F}:900", "p -> q")]),
                          clean)
     assert r.caught and len(r.matching) == 1 and len(r.baseline) == 1
+
+
+def test_blocked_clean_makes_blocked_variant_need_its_own_reason():
+    high = finding("requirement-tests", f"{F}:5", ("gentest-1",))
+    clean = _run("mock-1-clean", "blocked", [high])
+    # blocked only by the same baseline finding: not a catch
+    same = metrics.classify(_run("mock-1-edge", "blocked", [high]), clean)
+    assert not same.caught and len(same.baseline) == 1
+    # blocked by a new high finding elsewhere: counts, credited as verdict only
+    other = metrics.classify(_run("mock-1-edge", "blocked",
+                                  [high, finding("security", "src/Other.cs:1")]), clean)
+    assert other.caught and other.rows == {metrics.VERDICT_ONLY}
+
+
+def test_run_with_unavailable_lens_is_incomplete():
+    run = _run("mock-1-edge", "needs-sign-off", [])
+    run.lenses = {"lenses": [{"lens": "logic-edge", "status": "unavailable"},
+                             {"lens": "security", "status": "ok"},
+                             {"lens": "product-context", "status": "skipped"}]}
+    assert metrics.incomplete(run) == ["logic-edge"]
+    run.lenses["lenses"][0]["status"] = "ok"
+    assert metrics.incomplete(run) == []
 
 
 def test_verdict_only_catch_gets_pseudo_lens():

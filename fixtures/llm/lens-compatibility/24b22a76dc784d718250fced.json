@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change only touches TypeCollector member collection (duplicate keys, mixed key kinds). It does not visibly touch the SuppressSourceGeneration path, so the stated bug (analyzer silent when SuppressSourceGeneration=true) is likely not fixed. The hunks fix only a crash/duplicate-key case.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1005",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test with SuppressSourceGeneration=true (build property/analyzer config) on a [MessagePackObject] type with a public member lacking [Key] (MsgPack004). Assert the diagnostic is reported on head. If it fails, the requirement is unmet."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` on mixed key kinds skips the member. The member used to be added to intMembers/stringMembers after the diagnostic. Generated formatters for types with mixed keys now omit those members, so generated code and snapshots change. Previously the mix could produce a formatter with all members, or a crash.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run generator snapshot tests on a [MessagePackObject] type mixing [Key(0)] and [Key(\"a\")]. Compare generated formatter output between base and head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate keys are now silently deduplicated, so the first member wins and later ones are dropped from the generated formatter. Previously Add threw ArgumentException. The generated formatter for duplicate-key types now compiles with fewer members and changes the wire format. Whether DuplicateKey (MsgPack00x) is still reported is not shown in this change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the analyzer and generator on a type with two members sharing [Key(0)]. Assert the duplicate-key diagnostic is still reported and no exception is thrown. Compare generated output with base."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 4862,
+  "output_tokens": 819,
+  "ms": 6237,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

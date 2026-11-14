@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The copy constructor in MessagePackSecurity no longer copies HashCollisionResistant. Any derived or cloned instance, such as WithMaximumObjectGraphDepth, silently loses hash-collision resistance. UntrustedData.WithMaximumObjectGraphDepth(n) would then yield a non-resistant instance and open a DoS hole. The change is unrelated to the requirement.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:62",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Assert MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(10).HashCollisionResistant is true. It passes on base and fails on head. Also compare hashing behavior of a Dictionary<string,..> deserialized with each option."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is emitted only under `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. Generated code in netstandard2.0 and .NET Framework projects stays undecorated, so the requirement 'all generated code is decorated' is not met there. ExcludeFromCodeCoverage exists in .NET Framework 4.0+ and netstandard2.0, so the guard is unneeded. Ledger L9 asks for an opt-out setting, but none is added. Users who want the attribute on those targets get nothing.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Generate a formatter in a netstandard2.0 or net472 compilation and inspect the output. The attribute is preprocessed out. Compare with the requirement to decorate all generated code."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement asks that all generated code be decorated, but the generated nested partial containers and some helper types are not covered. The new attribute lists cover only formatters, resolvers and the FormatterCache and GetFormatterHelper nested classes. Any other emitted types would stay undecorated, and the new `{\\r\\n` brace change in TransformUtilities alters whitespace in every nested-type snapshot.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests. Check whether generated output for types with generic constraints now differs in whitespace and whether every emitted type carries the attribute."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10609,
+  "output_tokens": 912,
+  "ms": 8399,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

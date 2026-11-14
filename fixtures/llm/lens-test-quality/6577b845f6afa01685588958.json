@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The requirement says that MessagePack attributes on T must be honoured. No test puts [MessagePackObject], [DataContract] or [Key] on an external type. The collector never reads attributes on T, so contractless mode is always used. Ledger L19 says to follow the requirement, so no test in the diff would catch this gap.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:96",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Put [MessagePackObject] with [Key(0)] on a local type T and declare [GeneratedMessagePackFormatter] for T. Assert the serialized bytes are an array rather than a map."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test SurrogateControlsKeysAndMembership asserts only the array header length 8, the round-trip, and Internal==0. It does not check that Id sits at index 3 and Name at index 7. A mutant that remaps keys, for example an off-by-one in the int key, would survive as long as the maximum key stays 7.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:62",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:~176 off-by-one: CreateMember(target, intKey: intKey, ...) -> intKey with the two keys swapped; expected to survive because the test only checks the header and the round-trip."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate string keys have no positive test. The only string-key surrogate test is the mixed-key diagnostic case. There is also no test that an [IgnoreMember] surrogate member is excluded under string keys, and no test of duplicate keys (KeysMustBeUnique).",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:182",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:~182 delete-statement: remove the `if (!claimedKeys.Add(key))` guard block; expected to survive because no test uses duplicate keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The diagnostic tests do not cover MsgPack021 for generic, inaccessible or struct types. They do not cover a missing parameterless constructor, which reports NoDeserializingConstructor (MsgPack006), and no test covers an interface or abstract struct. Removing the accessibility or constructor guard would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:68",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:~77 remove-guard: delete the `isClass && !type.InstanceConstructors.Any(...)` check; expected to survive because no test has a class without a parameterless constructor."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratedFormatterForExternalTypes tests cover only the standard (non-map-mode) project. MapModeExecutionTests excludes them, and no snapshot test covers the generated partial class template. The IsUserDeclaredFormatter template branch is therefore verified only through execution of the int-key and string-key paths. The diagnostics tests also do not check that the generator excludes the class from hand-written formatter registration.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:35",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:~38 remove-guard: delete the `!symbol.GetAttributes().Any(...)` clause; expected to survive or fail only by a duplicate registration at runtime, because the diff has no snapshot test for it."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 26116,
+  "output_tokens": 1398,
+  "ms": 10234,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

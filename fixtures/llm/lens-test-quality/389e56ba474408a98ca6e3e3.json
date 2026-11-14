@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The tests only check that the attribute text appears somewhere in each generated file. They never check that the attribute sits directly on the type declaration, and they never check that each generated type (formatter, resolver, FormatterCache, GetFormatterHelper) carries it. Deleting the attribute from the nested FormatterCache or GetFormatterHelper types leaves the resolver file with the attribute on the outer class, so the test still passes. The first test only needs `Contains` per file, and the second only compares counts.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:73",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:28 delete-statement: remove the #if/[ExcludeFromCodeCoverage]/#endif block before `private static class FormatterCache<T>` -> block deleted; expected to survive because the resolver file still contains the attribute on the outer partial class, so Contains passes and the guarded count equals the attribute count."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests never compile the generated output for netstandard2.0 or .NET Framework. They only do string matching on the guard. If the `#if !NETSTANDARD2_0 && !NETFRAMEWORK` condition were negated or weakened, the guard text would still match and the tests would still pass. No test checks that the attribute is absent when those symbols are defined. The compilation is also never built with those preprocessor symbols.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:88",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14 negate-condition: `#if !NETSTANDARD2_0 && !NETFRAMEWORK` -> `#if NETSTANDARD2_0 || NETFRAMEWORK` in one template; expected to survive because the test only checks that the guard string appears, and the string `#if !NETSTANDARD2_0 ...` is hardcoded in the test, so the mutant would only fail if the test normalized to a different form. The snapshot tests would catch the text change, but this new test would not."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `TransformUtilities.EmitNestingTypesAndNamespaces` change (`{` becomes `{\\r\\n` when constraints are present) has no targeted test. The new tests use only non-generic, non-nested types with no constraints. The new attribute test therefore never reaches the `anyConstraints` branch. Reverting the line would only be noticed through snapshot regeneration, if some snapshot has a constrained nesting type.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: `anyConstraints ? \"{\\r\\n\" : ...` -> `anyConstraints ? \"{\" : ...`; expected to survive in CodeCoverageExclusionTests because it has no generic nesting type with constraints."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test source does not cover generic types, nested types, or a multi-resolver (CompositeResolver) case. CompositeResolverTemplate is changed but never exercised by the new tests, since only `[GeneratedMessagePackResolver]` is used. Removing the attribute from CompositeResolverTemplate would go unnoticed by these tests.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:49",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7 delete-statement: remove the attribute block before `partial class`; expected to survive because TestSource has no composite resolver attribute and so never generates that template."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12381,
+  "output_tokens": 1470,
+  "ms": 10548,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

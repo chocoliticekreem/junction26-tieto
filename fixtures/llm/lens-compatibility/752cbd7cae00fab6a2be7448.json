@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "DecimalFormatter.Serialize now passes StandardFormat('F') to Utf8Formatter.TryFormat. The default format for decimal can emit scientific notation or retain trailing zeros differently. With 'F', values such as 1E-10 or large-scale decimals serialize to different strings, so wire bytes change. The change is unrelated to the coverage requirement and is a silent wire-format change for existing users. Also, an 'F' string for extreme values (e.g. decimal.MinValue with 28 fractional digits) can exceed MaxFixStringLength (31) and make TryFormat fail, hitting the fallback path with a different encoding.",
+        "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize decimals with base-built and head-built MessagePack through DecimalFormatter: 1.0m, 1.10m, 0.0000001m, decimal.MaxValue, decimal.MinValue, 79228162514264337593543950335m / 1e28m, -0.0000000000000000000000000001m. Compare the bytes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "TransformUtilities changes the opening brace emission for nesting types with constraints from \"{\" to \"{\\r\\n\". This alters the whitespace of generated output for nested generic types with constraints, which changes user-checked-in or snapshot output. It is not part of the requirement.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests for nested generic types with constraints and diff the output against base. Expect only the ExcludeFromCodeCoverage attribute lines to differ, but a newline difference after '{' will also appear."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is emitted only under `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. Generated code in projects targeting netstandard2.0 or .NET Framework is still not excluded from coverage. Also, the preprocessor symbols reflect the user's target framework, and ExcludeFromCodeCoverage exists on netstandard2.1, .NET Core 2.0+ and .NET 5+, so it compiles there. Targets such as netstandard1.x or Unity builds that define neither symbol do not have the attribute, and generated code there could fail to compile.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile generated output in a test project targeting a framework lacking System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute (e.g. a Unity-like or netstandard1.x compile with no symbols defined) and assert there are no compile errors."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `#if` / `#endif` lines are emitted at column 0 inside the generated nesting and namespace blocks. In FormatterTemplate and StringKeyFormatterTemplate the preceding output has no guaranteed trailing newline, so the `#if` could be glued onto a previous line and break compilation. This depends on the previous Write ending with a newline, which was changed only in TransformUtilities for the constrained case.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the snapshot and compilation tests for nested generic types with and without constraints, and with a type in the global namespace; assert the generated code compiles and `#if` starts a line."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10876,
+  "output_tokens": 1340,
+  "ms": 10134,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The depth guard in `DepthStep` changed from `>=` to `>`, an off-by-one that widens a security limit. With `MaximumObjectGraphDepth = N`, a reader already at depth N no longer throws, so N+1 nesting levels are accepted. This is unrelated to REQ-2234. It also changes behaviour when `SuppressSourceGeneration` is unset, which breaks the criterion that unflagged behaviour does not change. It also weakens the configured stack-depth protection for untrusted data (L9).",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeyAndDepthReceipts.DepthStep_AtMaximumDepth_Throws: security = UntrustedData.WithMaximumObjectGraphDepth(2), reader.Depth = 2, call DepthStep. Base throws InsufficientExecutionStackException; head does not, so the test fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Before this change, two members with the same `[Key(0)]` (or the same string key) made `Dictionary.Add` throw, so the generator or analyzer failed loudly. The new `ContainsKey` guard keeps only the first member and reports no diagnostic. The generated formatter silently never serializes or deserializes the second member, which loses data without any warning. Duplicate string keys behave the same way. This applies to all users, not only those with `SuppressSourceGeneration = true`.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeyAndDepthReceipts.DuplicateIntKey_IsReportedOrBothMembersFormatted. Drive CSharpGeneratorDriver over a [MessagePackObject] class with [Key(0)] FirstMember and [Key(0)] SecondMember. On head there is no error diagnostic, no generator exception, and 'SecondMember' is absent from the generated sources."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeyAndDepthReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeyAndDepthReceipts\n{\n    [Fact]\n    public void DepthStep_AtMaximumDepth_Throws()\n    {\n        MessagePackSecurity security = MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(2);\n        var reader = new MessagePackReader(new ReadOnlyMemory<byte>(new byte[] { 0xc0 }));\n        reader.Depth = 2;\n        bool threw = false;\n        try\n        {\n            security.DepthStep(ref reader);\n        }\n        catch (InsufficientExecutionStackException)\n        {\n            threw = true;\n        }\n\n        Assert.True(threw, \"DepthStep must throw when the reader is already at MaximumObjectGraphDepth.\");\n    }\n\n    [Fact]\n    public async Task DuplicateIntKey_IsReportedOrBothMembersFormatted()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace TestNs\n            {\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n\n                [MessagePackObject]\n                public class Dup\n                {\n                    [Key(0)]\n                    public int FirstMember { get; set; }\n\n                    [Key(0)]\n                    public int SecondMember { get; set; }\n                }\n            }\n            \"\"\";\n\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = frameworkRefs.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var tree = CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp7_3));\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsDupKeyAsm\",\n            new[] { tree },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator());\n        driver = driver.RunGenerators(compilation);\n        var result = driver.GetRunResult();\n\n        string generated = string.Join(\"\\n\", result.Results.SelectMany(r => r.GeneratedSources).Select(s => s.SourceText.ToString()));\n        bool reported = result.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error)\n            || result.Results.Any(r => r.Exception is not null || r.Diagnostics.Any(d => d.Severity == DiagnosticSeverity.Error));\n\n        Assert.True(\n            reported || generated.Contains(\"SecondMember\"),\n            \"A duplicate [Key(0)] must either be reported or both members must be formatted; it must not be silently dropped.\");\n    }\n}\n",
+        "test_names": [
+          "DepthStep_AtMaximumDepth_Throws",
+          "DuplicateIntKey_IsReportedOrBothMembersFormatted"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8619,
+  "output_tokens": 8114,
+  "ms": 73619,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

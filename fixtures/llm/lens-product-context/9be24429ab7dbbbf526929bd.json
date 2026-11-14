@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "EnumTemplate emits the attribute under the inverted guard `#if NETSTANDARD2_0 || NETFRAMEWORK`, so it is emitted only where ExcludeFromCodeCoverage is unavailable and omitted everywhere else. Enum formatters are not excluded from coverage on modern targets, and netstandard2.0/.NET Framework consumers may fail to compile. This contradicts the requirement that all generated code be decorated and still compile, and the README.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.tt:8",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run CodeCoverageExclusionTests.AllGeneratedTypesAreExcludedFromCodeCoverage and ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable. The enum formatter file's guard text is `#if NETSTANDARD2_0 || NETFRAMEWORK`, so the guarded-count assertion fails. Also check the enum formatter snapshot."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same inverted guard is in the generated EnumTemplate.cs, so the compiled generator output carries the same bug as the .tt template.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests and inspect the enum formatter snapshots. The attribute sits under `#if NETSTANDARD2_0 || NETFRAMEWORK` rather than `#if !...`."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README says the attribute is emitted for all generated formatters and resolvers, but the enum formatter has it only on netstandard2.0/.NET Framework. The doc is inaccurate for enums. The README also does not cover other generated types, such as nested helper classes.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare the README sentence with EnumTemplate.tt:8, whose guard is inverted."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new test only checks that the attribute occurs and is wrapped in a guard. It does not check the guard polarity, so the inverted enum guard is not caught. The count check also passes for the inverted form only if its text matches, otherwise it fails. The test's `Guard` constant is the correct form, so it may fail on the enum.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:77",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Flip the guard polarity in another template, e.g. FormatterTemplate. Check that the tests fail. Run the test suite after fixing the enum guard too."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditional, no setting. Every generated type gets the attribute, guarded by `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, and no opt-out option exists."
+      },
+      {
+        "label": "B",
+        "summary": "Add an opt-out setting, e.g. a MessagePackGeneratorOptions or MSBuild property, that suppresses emission of the attribute. The templates would then wrap the attribute conditionally on that option."
+      }
+    ]
+  },
+  "input_tokens": 13179,
+  "output_tokens": 1202,
+  "ms": 8846,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

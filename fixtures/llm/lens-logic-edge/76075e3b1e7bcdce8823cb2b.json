@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Two distinct members with the same [Key] value (for example two properties both marked [Key(0)]) are no longer reported at all. The new `ContainsKey` guards keep the first member and silently drop the second, and no diagnostic is raised. The generated formatter (when generation is on) then never writes or reads the second member, which is silent data loss. The dynamic resolver rejects the same type at run time as having duplicated keys. Before this change, `Dictionary.Add` threw on this input, which was at least loud; now neither the analyzer nor the generator reports anything.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeyReceiptTests.DuplicateIntKey_IsReportedOrBothMembersSerialized. It compiles a [MessagePackObject] with AlphaMember and BetaMember both at [Key(0)], runs every DiagnosticAnalyzer in the generator assembly plus MessagePackGenerator, and asserts that either an error-severity MsgPack diagnostic is reported or the generated formatter references both members. On head no MsgPack error is reported and BetaMember is absent from the generated code. The same silent drop applies to the string-key path (line 1039) and the second collection path (lines 1163 and 1179)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after reporting DoNotMixStringAndIntKeys skips everything else for that member. That includes validating its [MessagePackFormatter] attribute (MsgPack006) and collecting or validating the member's type (for example MsgPack003 when the member's type is not serializable). Those diagnostics are now silently dropped for a member that also has a mixed key kind. On base they were reported alongside the mix diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Lines 1008 and 1148: the `continue` precedes the formatter-attribute lookup at ~1045/~1185 and the member-type collection that follows it. A type with [Key(0)] int A and [Key(\"b\")] NonSerializable B would show MsgPack003 for B on base but not on head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeyReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack.SourceGenerator;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeyReceiptTests(ITestOutputHelper logger)\n{\n    private const string Source = \"\"\"\n        using MessagePack;\n\n        namespace TestNs\n        {\n            [GeneratedMessagePackResolver]\n            partial class MyResolver\n            {\n            }\n\n            [MessagePackObject]\n            public class DupKeyObject\n            {\n                [Key(0)]\n                public int AlphaMember { get; set; }\n\n                [Key(0)]\n                public int BetaMember { get; set; }\n            }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task DuplicateIntKey_IsReportedOrBothMembersSerialized()\n    {\n        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3);\n        var framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = Enumerable.Concat<MetadataReference>(framework, ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var compilation = CSharpCompilation.Create(\n            \"DupKeyAsm\",\n            new[] { CSharpSyntaxTree.ParseText(Source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = typeof(MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetCustomAttributes(typeof(DiagnosticAnalyzerAttribute), false).Length > 0)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n\n        ImmutableArray<Diagnostic> analyzerDiagnostics = await compilation.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new[] { new MessagePackGenerator().AsSourceGenerator() }, parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out ImmutableArray<Diagnostic> generatorDiagnostics);\n        GeneratorDriverRunResult runResult = driver.GetRunResult();\n        string generatedText = string.Join(\"\\n\", runResult.GeneratedTrees.Select(t => t.ToString()));\n\n        var allDiagnostics = analyzerDiagnostics.Concat(generatorDiagnostics).Concat(runResult.Diagnostics).ToList();\n        foreach (Diagnostic d in allDiagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        logger.WriteLine(generatedText);\n\n        bool duplicateReported = allDiagnostics.Any(d => d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal) && d.Severity == DiagnosticSeverity.Error);\n        bool bothMembersSerialized = generatedText.Contains(\"AlphaMember\") && generatedText.Contains(\"BetaMember\");\n\n        Assert.True(\n            duplicateReported || bothMembersSerialized,\n            \"Duplicate [Key(0)] was neither reported as an error nor were both members serialized; BetaMember is silently dropped.\");\n    }\n}\n",
+        "test_names": [
+          "DuplicateIntKey_IsReportedOrBothMembersSerialized"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8266,
+  "output_tokens": 10335,
+  "ms": 90075,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

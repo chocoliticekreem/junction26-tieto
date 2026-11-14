@@ -1,0 +1,45 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `ContainsKey` guards turn duplicate `[Key]` values into a silent member drop. A `[MessagePackObject]` type with two members both `[Key(0)]` (or both `[Key(\"a\")]`) used to throw on `Dictionary.Add`, which surfaced as an AD0001/CS8785 warning. Now the second member is skipped, and no visible code in these hunks reports a MsgPack diagnostic for the collision. Unless a uniqueness check exists elsewhere, the generated formatter omits a member with no warning, which loses data silently.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeyDiagnosticReceipts.DuplicateIntKeys_ReportsMsgPackError and DuplicateStringKeys_ReportsMsgPackError. Each compiles a type with duplicate keys, runs all DiagnosticAnalyzers from the generator assembly plus the generator, and asserts at least one Error-severity MsgPack diagnostic. They fail on head if the duplicate is silently dropped."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same silent-drop guard is duplicated in the second member loop (fields), so duplicate keys on fields are also dropped without a diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Same receipt class; variant with duplicate [Key(0)] on two public fields: DuplicateIntKeysOnFields_ReportsMsgPackError."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeyDiagnosticReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.Threading;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeyDiagnosticReceipts\n{\n    private static async Task<List<Diagnostic>> RunAllAsync(string source)\n    {\n        var framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var refs = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var compilation = CSharpCompilation.Create(\n            \"DupKeyTest\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.CSharp7_3)) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        var asm = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly;\n        var analyzers = asm.GetTypes()\n            .Where(t => typeof(Microsoft.CodeAnalysis.Diagnostics.DiagnosticAnalyzer).IsAssignableFrom(t) && !t.IsAbstract && t.GetConstructor(Type.EmptyTypes) is not null)\n            .Select(t => (Microsoft.CodeAnalysis.Diagnostics.DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n\n        var all = new List<Diagnostic>();\n        if (analyzers.Length > 0)\n        {\n            var withAnalyzers = compilation.WithAnalyzers(analyzers);\n            all.AddRange(await withAnalyzers.GetAnalyzerDiagnosticsAsync());\n        }\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out var genDiags);\n        all.AddRange(genDiags);\n        return all;\n    }\n\n    private static void AssertMsgPackError(List<Diagnostic> diags)\n    {\n        Assert.True(\n            diags.Any(d => d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal) && d.Severity == DiagnosticSeverity.Error),\n            \"Expected an Error-severity MsgPack diagnostic for duplicate keys, got: \" + string.Join(\"; \", diags.Select(d => d.Id + \": \" + d.GetMessage())));\n    }\n\n    [Fact]\n    public async Task DuplicateIntKeys_ReportsMsgPackError()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            namespace TestNs\n            {\n                [MessagePackObject]\n                public class Dup\n                {\n                    [Key(0)] public int A { get; set; }\n                    [Key(0)] public int B { get; set; }\n                }\n            }\n            \"\"\";\n        AssertMsgPackError(await RunAllAsync(source));\n    }\n\n    [Fact]\n    public async Task DuplicateStringKeys_ReportsMsgPackError()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            namespace TestNs\n            {\n                [MessagePackObject]\n                public class Dup\n                {\n                    [Key(\"a\")] public int A { get; set; }\n                    [Key(\"a\")] public int B { get; set; }\n                }\n            }\n            \"\"\";\n        AssertMsgPackError(await RunAllAsync(source));\n    }\n\n    [Fact]\n    public async Task DuplicateIntKeysOnFields_ReportsMsgPackError()\n    {\n        string source = \"\"\"\n            using MessagePack;\n            namespace TestNs\n            {\n                [MessagePackObject]\n                public class Dup\n                {\n                    [Key(0)] public int A;\n                    [Key(0)] public int B;\n                }\n            }\n            \"\"\";\n        AssertMsgPackError(await RunAllAsync(source));\n    }\n}\n",
+        "test_names": [
+          "DuplicateIntKeys_ReportsMsgPackError",
+          "DuplicateStringKeys_ReportsMsgPackError",
+          "DuplicateIntKeysOnFields_ReportsMsgPackError"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 7944,
+  "output_tokens": 7327,
+  "ms": 66425,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

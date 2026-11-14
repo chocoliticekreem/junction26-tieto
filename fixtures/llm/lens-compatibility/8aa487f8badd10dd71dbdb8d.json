@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The mask in the timestamp writer was changed from 0xffffffff00000000 to 0x00000000ffffffff. The timestamp32 branch (6 bytes) is now chosen when the low 32 bits are zero rather than when the high 32 bits are zero. Existing DateTime values will serialize as the wrong format and be corrupted. For example, a time with zero nanoseconds and seconds below 2^32 now falls into the 64-bit timestamp branch. Timestamp32 will be written for values with nonzero nanoseconds, which loses data. This change is unrelated to the requirement.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:787",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize DateTime(2020,1,1,0,0,0,Utc) and DateTime(2020,1,1,0,0,0,Utc).AddTicks(10) with MessagePackSerializer on base and head builds. Compare the bytes: base emits d6 ff + 4 bytes for the first value, head emits d7 ff + 8 bytes. Round-trip the second value on head to show lost nanoseconds."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new analyzer diagnostics MsgPack019-022 are added to SupportedDiagnostics as Error severity. The analyzer never reports them, because the diagnostics are only reported from the generator. This is an inconsistency, and the new IDs may be missing from AnalyzerReleases.Unshipped.md. If that file is not updated, RS2000 fires in the build. The doc/analyzers pages the help link points to may also be missing.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check AnalyzerReleases.Unshipped.md for MsgPack019-022 entries and doc/analyzers/MsgPack019.md through MsgPack022.md. Check that the analyzer's own code never reports these descriptors."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode skips get-only properties and readonly fields, and sorts members by name. ContractlessStandardResolver serializes get-only members and orders them differently. A user who swaps a formatter from dynamic contractless to the generated one gets different wire bytes, with members missing and key order changed. The ledger says to follow the requirement here, which is ambiguous on this point.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:148",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "For a type with public int A {get;set;}, public int B {get;}, and a public field C, serialize with ContractlessStandardResolver and with a generated formatter. Compare the bytes."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 19209,
+  "output_tokens": 1032,
+  "ms": 9199,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The guard `!formattedType.DeclaringSyntaxReferences.IsEmpty` at the first member-key check (~line 916) is not exercised by any test with a metadata type where contractAttr is non-null and key is null. The UnkeyedMember test uses a plain public property without a KeyAttribute-derived attribute, and the ReportIfLocatedInCompilation filter would also suppress the resulting diagnostics. The test may therefore pass with the guard removed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:916",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:916 remove-guard: `contractAttr is not null && !formattedType.DeclaringSyntaxReferences.IsEmpty` -> `contractAttr is not null`; expected to survive because the inner diagnostic paths now use null-safe locations and ReportIfLocatedInCompilation drops diagnostics without a source location, so ClosedGenericStruct_FromMetadataReference_UnkeyedMember still passes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The same redundant guard on the second member-collection path (~line 1067) has no distinguishing test. Every added test uses a class or struct with [MessagePackObject] and int keys, so the second path (likely string-key or contractless) is never reached with a metadata type. Removing the guard would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1067",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1067 remove-guard: `contractAttr is not null && !formattedType.DeclaringSyntaxReferences.IsEmpty` -> `contractAttr is not null`; expected to survive because no test covers a metadata generic struct with an unkeyed member on this path, and the null-safe location plus the filter prevent a crash anyway."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ReportIfLocatedInCompilation filter wraps all analyzer diagnostics. No test checks that diagnostics for same-compilation types are still reported, so a mutation that negates or drops the condition would not be caught. Inverting the condition would suppress all diagnostics, and no added test asserts an expected diagnostic. The new tests only assert zero diagnostics, which is exactly what suppression produces.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1447",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1447 negate-condition: `diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(...)` -> `!(...)`; expected to survive in the new tests because they all assert no diagnostics. Only pre-existing tests in other files would catch it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ctor change wrapping reportDiagnostic is not tested for the case where a null reportAnalyzerDiagnostic (generator path) must stay null, nor for the analyzer path in the happy case. The tests assert no AD0001 via the verifier but never assert that a real diagnostic still flows through the wrapper.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239 delete-statement: remove the wrapper and assign `reportAnalyzerDiagnostic` directly; expected to survive for ClosedGenericStruct_FromMetadataReference because there is no assertion on emitted diagnostics, apart from the null-safe location fixes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The BothStringAndIntKeyAreNull path (GetPropertyIdentifierLocation, line 986) has no test. The metadata tests all have valid [Key] attributes, so the changed call site is never hit with a metadata property, and a regression to `DeclaringSyntaxReferences[0]` would not be detected.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:986",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:986 delete-statement: revert to `((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation()`; expected to survive because no test makes a metadata property reach intKey == null && stringKey == null."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 11384,
+  "output_tokens": 1774,
+  "ms": 11524,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

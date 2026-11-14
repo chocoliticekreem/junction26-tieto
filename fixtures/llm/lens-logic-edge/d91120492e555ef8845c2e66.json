@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The core requirement is rejected. The guard `type.DeclaringSyntaxReferences.IsEmpty` sends every data type that comes from a referenced assembly (a metadata symbol, which has no syntax references) to MsgPack021 `GeneratedFormatterDataTypeNotSupported` and returns null. So `[GeneratedMessagePackFormatter] partial class F : IMessagePackFormatter<ProjectA.MyType>`, where ProjectA is a compiled reference, gets an error diagnostic and no generated body. This is exactly the scenario REQ-2129 asks for. L11 covers TypeCollector's ordinary metadata skip, not this opt-in feature.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:66",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterMetadataTypeTests.FormatterForTypeInReferencedAssemblyIsGenerated. It compiles ProjectA to an image reference, drives MessagePackGenerator over ProjectB, and asserts there is no MsgPack021 diagnostic and no compile error in the output compilation."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MessagePack attributes on T are never consulted. Contractless mode serializes every public read-write member by name, so an `[IgnoreMember]` public property is still serialized, and `[MessagePackObject]`/`[Key(n)]` keys on T are replaced by name keys. The acceptance criteria say attributes on T must be honoured, and L19 says to follow the requirement.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:89",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Declare T with [MessagePackObject] and members [Key(0)] int A and [IgnoreMember] int B. Generate a formatter for T via [GeneratedMessagePackFormatter]. Assert the generated source uses int key 0 and does not reference B. On head it writes string keys \"A\" and \"B\"."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "IsPartial checks only the formatter class, not its containing types. A formatter nested in a non-partial outer class passes validation. The template then emits the nesting types around `partial class F`, so the user gets compiler errors (missing partial modifier / duplicate type) instead of a MsgPack019 diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:47",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Use source `class Outer { [GeneratedMessagePackFormatter] public partial class F : IMessagePackFormatter<MyType> { } }` with a resolver. Drive the generator and assert the output compilation has CS0260/CS0101 errors and no MsgPack019."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In surrogate mode every instance field and property of the surrogate must carry [Key] or [IgnoreMember], including private or non-public ones, because GetInstanceMembers does not filter by accessibility. A surrogate with a private helper field fails with MsgPack004 even though only public members are meant to be in scope.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:156",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Use a surrogate with `[Key(0)] public int A {get;set;}` plus `private int helper;`. Assert no MsgPack004 is reported. On head, MsgPack004 is reported for 'helper'."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterMetadataTypeTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterMetadataTypeTests(ITestOutputHelper logger)\n{\n    [Fact]\n    public async Task FormatterForTypeInReferencedAssemblyIsGenerated()\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        CSharpParseOptions parseOptions = new(LanguageVersion.CSharp12);\n\n        string projectASource = \"\"\"\n            namespace ProjectA\n            {\n                public class MyType\n                {\n                    public int Id { get; set; }\n                    public string Name { get; set; }\n                }\n            }\n            \"\"\";\n        CSharpCompilation projectA = CSharpCompilation.Create(\n            \"ProjectA\",\n            new[] { CSharpSyntaxTree.ParseText(projectASource, parseOptions) },\n            framework,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        using MemoryStream stream = new();\n        var emitResult = projectA.Emit(stream);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n        MetadataReference projectARef = MetadataReference.CreateFromImage(stream.ToArray());\n\n        string projectBSource = \"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n\n            namespace ProjectB\n            {\n                [GeneratedMessagePackFormatter]\n                public partial class MyTypeFormatter : IMessagePackFormatter<ProjectA.MyType> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\";\n        List<MetadataReference> references = new(framework);\n        references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n        references.Add(projectARef);\n        CSharpCompilation projectB = CSharpCompilation.Create(\n            \"ProjectB\",\n            new[] { CSharpSyntaxTree.ParseText(projectBSource, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            generators: new ISourceGenerator[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(projectB, out Compilation output, out ImmutableArray<Diagnostic> generatorDiagnostics);\n\n        foreach (Diagnostic d in generatorDiagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        Assert.DoesNotContain(generatorDiagnostics, d => d.Id == \"MsgPack021\");\n        Assert.DoesNotContain(generatorDiagnostics, d => d.Severity == DiagnosticSeverity.Error);\n\n        var errors = output.GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error).ToList();\n        foreach (Diagnostic d in errors)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        Assert.Empty(errors);\n    }\n}\n",
+        "test_names": [
+          "FormatterForTypeInReferencedAssemblyIsGenerated"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 21478,
+  "output_tokens": 5753,
+  "ms": 48684,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

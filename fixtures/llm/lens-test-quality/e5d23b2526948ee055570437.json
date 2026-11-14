@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The test only matches generated trees whose file name starts with \"Formatters.\". The resolver template (GeneratedMessagePackResolver) is declared in the test source but never checked, so a missing attribute there is not detected. The requirement says \"all generated code\".",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:128",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Test files are filtered by Path.GetFileName(...).StartsWith(\"Formatters.\"). Since the resolver is not covered by the filter, a mutant that never adds the attribute to the resolver output would survive. Run the generator on TestSource and list all GeneratedTrees to confirm the resolver file is excluded from assertions."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The assertion generated.Count >= 4 is weak. A mutant that removes the attribute from one template will fail the Contains check, but the guard test assumes the guard text matches exactly. There is no check that each formatter kind (object, string-key, enum, union) is individually present, so a template silently producing no file could still pass if others compensate.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:72",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:72 off-by-one: generated.Count >= 4 -> >= 3; expected to survive because the generator emits more than 4 files (e.g. the union member and its interface formatter) so the count is not tight."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change from \"{\" to \"{\\r\\n\" for constrained nesting types has no dedicated test. TestSource has no nested generic type with constraints, so the line is exercised only by snapshot regeneration. The new tests never exercise this branch.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean/delete-statement: \"{\\r\\n\" -> \"{\"; expected to survive in CodeCoverageExclusionTests because TestSource has no nested constrained generic types; only snapshot tests might kill it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests only check text and never compile the generated output for netstandard2.0/.NETFRAMEWORK or net8 symbol definitions. The guard is validated by string match only, so the requirement that generated code compiles on all targets is not proven. The guard test also accepts an attribute with no leading tab, so the pairing is loose.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:83",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test that compiles the generated trees with preprocessor symbol NETSTANDARD2_0 defined and with it undefined, and asserts no diagnostics. Then mutate the guard in a template to confirm the string-only test would not catch a wrong symbol that still matches."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "L7 asks for an opt-out setting, but the change adds no setting and no test for opting out, so the opt-out requirement recorded in the ledger is unmet and untested.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "Cite L7 (\"Add an opt-out setting\"): no test in CodeCoverageExclusionTests exercises a setting that disables the attribute."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 9352,
+  "output_tokens": 1384,
+  "ms": 10404,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

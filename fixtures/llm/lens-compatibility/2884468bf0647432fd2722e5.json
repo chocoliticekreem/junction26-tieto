@@ -1,0 +1,55 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The attribute is emitted only under `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, but the requirement says all generated code should be decorated. Projects targeting netstandard2.0 or net4x (a very common MessagePack target) get no attribute, so their coverage stays skewed. ExcludeFromCodeCoverage exists in net4.0+ and netstandard2.0 for classes, so the guard may be unnecessary. It also may not match how users define the symbols: multi-targeting projects only get the symbols NETSTANDARD2_0 or NETFRAMEWORK on the matching TFM.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate and compile a [MessagePackObject] type in a netstandard2.0 project. Assert that the generated formatter contains ExcludeFromCodeCoverage, then confirm it is absent. Check whether the attribute compiles without the guard on netstandard2.0 and net472."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The `#if` and attribute lines are emitted inside generated files that users compile. The `#if` directives start at column 0 and are emitted in nested types or namespaces, so they interact with the surrounding layout. The TransformUtilities change from `{` to `{\r\n` alters whitespace for every generated file with nesting types that have constraints, so users who check in generator output will see diffs beyond the attribute. This is a needed fix: without the newline, `{` would sit directly before `#if`, which is invalid. It is still an unrelated output change to flag.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests and inspect the diffs for nested generic types with constraints. Confirm that only the intended attribute lines and the newline after `{` changed."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "A user-defined or mismatched `using System.Diagnostics.CodeAnalysis`, or a conflicting type named `ExcludeFromCodeCoverage`, cannot collide because the attribute is fully qualified with `global::`. However, the attribute is applied to the generated partial resolver class, which users may extend as a partial class. This changes the coverage of their own partial members of the resolver. Their hand-written partial parts become excluded from coverage, which is a visible behavior change without opt-in.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read ResolverTemplate.tt line 14. The attribute is on `partial class`, which applies to all parts of the partial class, including user-written parts."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the attribute be emitted on all target frameworks, or only on non-netstandard2.0 and non-.NET Framework targets?",
+        "options": [
+          "Emit on all targets, with no guard",
+          "Keep the guard as is",
+          "Add an opt-out setting"
+        ],
+        "why_it_matters": "If every supported TFM has the attribute, the guard fails the 'all generated code' criterion, so the verdict is a defect. If the guard is deliberate, it is acceptable.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 10005,
+  "output_tokens": 1202,
+  "ms": 9343,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

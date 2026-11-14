@@ -1,0 +1,45 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetPropertyIdentifierLocation is documented as returning null for metadata properties, but it still indexes DeclaringSyntaxReferences[0] unguarded. It will throw IndexOutOfRangeException for a metadata property, so the BothStringAndIntKeyAreNull path is not fixed and the doc comment is false. This contradicts the requirement that diagnostics needing a location must not crash on metadata symbols.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test where a referenced-assembly closed generic struct has a [Key] property whose key is null (e.g. a KeyAttribute subclass), used as a member type. It should throw IndexOutOfRangeException from GetPropertyIdentifierLocation. Alternatively, code-citation: `[0]` vs the `FirstOrDefault()` used by the neighbouring helpers."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new docs say members of referenced types are validated by the defining assembly and not diagnosed by the consumer. This matches the deliberate behaviour in [L8], so the filtering of diagnostics for metadata types is consistent and not a defect.",
+        "location": "doc/analyzers/MsgPack004.md:49",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] Types from a referenced assembly are deliberately not analysed; the defining assembly owns validating and formatting its own types."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "ReportIfLocatedInCompilation silently drops every diagnostic whose location is not in the compilation. This includes diagnostics with Location.None. Previously those were reported, and some diagnostics built from null locations may now disappear (e.g. MemberNeedsKey with a null location). The filter is broader than the crash fix and risks false negatives for source-declared types in the same assembly. This is the kind of regression [L10] warns about.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing analyzer tests (MsgPack003/004/005 etc.) for types that previously reported with a None or non-source location. Check that none of them regress with the wrapped reportDiagnostic."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 11734,
+  "output_tokens": 880,
+  "ms": 7302,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

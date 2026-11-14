@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetPropertyIdentifierLocation is documented as null-safe for metadata properties, but it still indexes DeclaringSyntaxReferences[0] and casts unconditionally. For a metadata property of a closed generic struct, the BothStringAndIntKeyAreNull path still throws IndexOutOfRangeException, so the crash is not fixed there. The argument is evaluated before reportDiagnostic?.Invoke, and the new filter wrapper cannot help because the exception happens first.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a two-compilation generator/analyzer test: a referenced assembly has a generic struct Item<T> with a [Key] property whose key is null (e.g. a metadata property with a KeyAttribute that has neither int nor string key). The consumer has [MessagePackObject] Cmd with an Item<int> member. Assert no IndexOutOfRangeException/AD0001/CS8785. It fails at DeclaringSyntaxReferences[0]."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Related: the cast to PropertyDeclarationSyntax is also unguarded. Positional record struct parameters synthesize properties whose syntax is a ParameterSyntax, so the cast can throw InvalidCastException even for source-declared properties. Previously the same cast existed, but the new helper's docs promise null-safety that it does not deliver.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read GetPropertyIdentifierLocation: the hard cast `(PropertyDeclarationSyntax)...[0].GetSyntax()` fails for a record primary-constructor property. Compare with GetIdentifierLocation, which uses FirstOrDefault and a null-conditional."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new reportDiagnostic wrapper silently drops every diagnostic whose location is not in a syntax tree of the compilation. This includes diagnostics created with a null or none location, for example MemberNeedsKey, which now uses FirstOrDefault()?.GetSyntax().GetLocation(). It also drops diagnostics created with an unrelated location. Previously diagnostics with Location.None were reported. A user could lose diagnostics that were previously reported, such as MsgPack003/004/005 on a type in source whose location is found elsewhere.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing analyzer diagnostic tests (MsgPack003/004/005/etc.) at head and base. Add a case with a diagnostic whose Location is Location.None, or one for a partial type, and assert that the expected diagnostic is still reported."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 6620,
+  "output_tokens": 1073,
+  "ms": 8573,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

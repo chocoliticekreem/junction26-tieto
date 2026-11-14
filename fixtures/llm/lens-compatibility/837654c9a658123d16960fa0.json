@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "ReportIfLocatedInCompilation drops every diagnostic whose Location is not IsInSource. Diagnostics created with a null location (Diagnostic.Create(..., (Location?)null, ...) gives Location.None) are now silently suppressed. Several existing diagnostic paths use helpers that can return null (GetIdentifierLocation, GetLocation(parameter), GetParameterListLocation). For source types whose syntax is unavailable or located elsewhere, the diagnostic previously reported with no location and now disappears. This changes diagnostics in users' builds (e.g. MsgPack003/004/005/etc.), and an error-level diagnostic being lost can turn a failing build into a passing one.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] type in source whose diagnostic is created through a null-returning location helper (e.g. MsgPack006 or MsgPack005 on a constructor parameter list with a null ParameterList location). Assert the diagnostic is still reported at head, as at base. Compare base vs head diagnostic sets across the existing analyzer test suite."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper filter is applied to the reportDiagnostic sink globally, not only to the metadata path. Diagnostics located in a syntax tree that the compilation doesn't contain (generated or other-compilation trees) are now dropped, and the added ContainsSyntaxTree check runs per diagnostic. Diagnostics previously reported on types from partial declarations in other trees are unaffected only if the trees belong to the compilation. The scope is wider than the crash fix needed, so some existing reports may disappear.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the full MsgPack00x analyzer test suite at base and head and diff the reported diagnostics. Add a case with a generated-tree or partial type that reports MsgPack004 and confirm it is still reported."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The crash-path fix only changes diagnostic reporting. The closed generic metadata struct still goes through GetObjectInfo in CollectGeneric, so the generator may produce a formatter for the metadata generic type in the app. L8 says metadata types deliberately get no formatter from the compiling assembly. A new formatter or generated-resolver entry for Item<int> could appear in users' generated output, which changes generated code they snapshot or check in.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1426",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests with a two-project repro (lib Item<T> struct, app Cmd with Item<int> member). Inspect the generated resolver and formatters for Item<int> and compare with the 'ok' class Item<T> case."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 6624,
+  "output_tokens": 1103,
+  "ms": 9174,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

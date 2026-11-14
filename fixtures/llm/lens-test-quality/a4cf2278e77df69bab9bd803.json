@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "IsPublicReadWrite treats a public field as eligible only when field.IsReadOnly is true, so the condition is inverted. Writable public fields are skipped and readonly fields are included, which would break deserialization. No test uses a public field on any external type, so nothing would notice.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:268",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:268 negate-condition: field.IsReadOnly -> !field.IsReadOnly; expected to survive because ExternalPerson, ExternalPoint and ExternalWidget declare only properties, so no test exercises the field branch. A test with a public mutable field on an external type would fail on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test of 'only public members' never checks that non-public members are skipped. ExternalPerson has no private/internal/protected members and no private-setter property. Mutating the accessibility checks in IsPublicReadWrite (for example, dropping the SetMethod public check) would only be caught by the read-only Doubled property.",
+        "location": "tests/MessagePack.SourceGenerator.ExternalTypes/ExternalPerson.cs:7",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:263 remove-guard: drop `property.DeclaredAccessibility == Accessibility.Public` and the GetMethod accessibility check; expected to survive because no external type has a non-public or private-set member."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate key-kind and key-uniqueness paths are weakly covered. SurrogateKeysMustNotMixStringAndInt expects MsgPack005 only from the analyzer path, but the Collect call that reports it is invoked with the diagnostic list in the generator. The duplicate-key check (KeysMustBeUnique) has no test, and neither does the string-key surrogate path (the `(string)key` branch). The ExecutionTests surrogate uses only int keys, so the string-key surrogate branch has no round-trip test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:176",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:176 remove-guard: delete the `if (!claimedKeys.Add(key))` block; expected to survive because no test has duplicate surrogate keys. Also swap `CreateMember(target, intKey: members.Count, stringKey: (string)key)` args; expected to survive because there is no string-key surrogate test."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test covers the guard that excludes [GeneratedMessagePackFormatter] classes from the hand-written formatter registration in GeneratorUtilities. Removing it could duplicate the registration. GeneratedFormattersAreRegisteredInGeneratedResolver would likely pass either way if the duplicate resolves to the same formatter, and there is no snapshot test.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: delete `&& !symbol.GetAttributes().Any(...GeneratedMessagePackFormatterAttributeName...)`; expected to survive or at most yield a duplicate registration the tests never inspect."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Missing negative cases: there are no tests for MsgPack021 on a generic or inaccessible type, for a class without a parameterless constructor (NoDeserializingConstructor), or for the surrogate member being a read-only or non-public member of T. There are also no generator snapshot tests (regeneration) for the new formatter output, so the template change (`partial class`) is verified only through the ExecutionTests.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs:73",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:68 remove-guard: delete the `!compilation.IsSymbolAccessibleWithin(type, formatter)` and `isClass && !...InstanceConstructors.Any` checks; expected to survive because only the abstract-type case is tested for MsgPack021 and no test lacks a default constructor."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The int-key contractless/surrogate path is checked loosely. SurrogateControlsKeysAndMembership asserts only the array length (8), not that Id sits at index 3 and Name at index 7, so swapped keys would survive. Also ContractlessClassUsesStringKeys only checks the header byte and substrings in the JSON, not key order (OrderBy ordinal).",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:62",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:179 swap: CreateMember(target, intKey: intKey, ...) -> intKey: members.Count; expected to survive only partly: the length would change to 2, so this would be caught, but a swap of two int keys would round-trip fine and survive."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25366,
+  "output_tokens": 1963,
+  "ms": 13834,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

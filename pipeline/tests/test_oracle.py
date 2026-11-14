@@ -41,6 +41,38 @@ def test_no_clear_option_means_no_preference():
     assert oracle.answer(question, "mock-2283-logic", REQ) == (oracle.NO_PREFERENCE, "none")
 
 
+def test_negated_requirement_words_count_against_an_option():
+    req = ("I would like all generated code to be decorated with the attribute. "
+           "I do not feel like a setting is needed.")
+    options = ["Decorate all generated code unconditionally", "Add an opt-out setting"]
+    assert oracle.pick_option(options, req) == options[0]
+
+
+def test_generic_vocabulary_does_not_trigger_a_convention():
+    # Shares generic words (generated, attribute, guard, README) with convention B but none of its
+    # anchors (SuppressSourceGeneration, opting out, MsgPack016...).
+    question = q("Should the attribute still be emitted on netstandard2.0 by some other route, given "
+                 "the README documents the guard for generated code?", ["Skip", "Emit"],
+                 area="codegen-templates")
+    assert oracle.matching_convention(question, "mock-2297-bait", oracle.load_conventions()) is None
+
+
+def test_each_bait_convention_is_recognised_on_its_own_case():
+    convs = oracle.load_conventions()
+    cases = {
+        "mock-2129-bait": ("The new attribute is marked [Conditional(\"NEVERDEFINED\")], so it is "
+                           "not emitted into the user's assembly. Is that intended?", "A"),
+        "mock-2234-bait": ("The new continue skips KeyAttribute-derived keys on suppressed types. Is "
+                           "skipping MsgPack016 deliberate when SuppressSourceGeneration is true?", "B"),
+        "mock-2283-bait": ("Member-key diagnostics are skipped for types declared in a referenced "
+                           "assembly. Is it deliberate that the consuming project does not report "
+                           "them, leaving it to the defining project?", "C"),
+    }
+    for case, (text, key) in cases.items():
+        conv = oracle.matching_convention(q(text, ["Yes", "No"]), case, convs)
+        assert conv is not None and conv.key == key, case
+
+
 def test_answer_questions_appends_labelled_entries_and_skips_answered():
     written: list[LedgerEntry] = []
     q1 = q("Should the log line be blue or green?", ["Blue", "Green"], area="docs")

@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "New diagnostic IDs MsgPack019-022 are added to SupportedDiagnostics, but the diff doesn't show AnalyzerReleases.Unshipped.md being updated. With RS2000 (release tracking) treated as an error this could break the analyzer build, and the rules wouldn't be documented. The doc pages that the help links point to are also not in the diff.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check whether AnalyzerReleases.Unshipped.md lists MsgPack019-022 and whether doc/analyzers/MsgPack019.md through MsgPack022.md exist."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated-formatter diagnostics (MsgPack019-022 and the reused MsgPack003/004-style ones) are reported only through RegisterSourceOutput in the generator. The change adds no analyzer-side check in MsgPack00xMessagePackAnalyzer.Initialize. If the analyzer is used without the generator, the new rules never fire. Also, the diagnostics are keyed to the generator's output, so any other generator that emits a diagnostic with the same ID could duplicate it.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:127",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a non-partial class marked [GeneratedMessagePackFormatter] with only the analyzer enabled (no generator) and assert MsgPack019 is reported."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless key order is alphabetical (OrderBy Name) and the formatter uses string keys. The wire format may therefore differ from ContractlessStandardResolver, which serializes members in declaration order. Users who switch from the dynamic contractless resolver to this generated formatter would see different map key order. The bytes also change if members are later reordered or renamed. Members lacking a public setter are also skipped here, whereas ContractlessStandardResolver serializes get-only properties and readonly fields.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:146",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with properties declared in the order Zeta, Alpha and a get-only property, using ContractlessStandardResolver and the generated formatter, then compare the bytes."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Surrogate mode with int keys hands intKey values to CreateMember directly. For sparse keys (for example 0 and 5) the generated array formatter needs gap handling. Gaps are not checked here. The result may be a crash, or the wrong array length.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:196",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Surrogate with [Key(0)] and [Key(5)]; generate, serialize and deserialize a round trip."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18701,
+  "output_tokens": 1132,
+  "ms": 8620,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

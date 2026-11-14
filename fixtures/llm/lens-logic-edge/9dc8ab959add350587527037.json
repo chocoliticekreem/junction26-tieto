@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "`MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth` was raised from 500 to 5000. Nothing in REQ-2283 asks for this. A tenfold higher nesting limit on the untrusted-data preset lets a deeply nested hostile payload recurse much further through formatters. That can cause a StackOverflowException, which cannot be caught and kills the process. This undoes a deliberate secure-by-default limit (ledger L9: depth limit of 500).",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.UntrustedDataDepthReceiptTests.UntrustedData_MaximumObjectGraphDepth_StaysAt500. It asserts MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth == 500. It passes on base and fails on head (actual value 5000)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The reporter named three unguarded `DeclaringSyntaxReferences[0]` sites at 3.1.8 lines 735, 1009 and 1101. The two fixed sites sit at head lines 985 and 1077, a constant offset of -27. That maps the first site to about line 708. No hunk touches that region, and the hunks before line 982 have zero line drift. The new `ReportIfLocatedInCompilation` wrapper cannot help there: the index into the empty array happens while the Diagnostic is being built, before the wrapper runs. If that site is the one the repro hits, CS8785 and AD0001 still occur for `Item<int>` from a referenced assembly.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:708",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read TypeCollector.cs around lines 700-715 on head and look for a remaining `DeclaringSyntaxReferences[0]`. To confirm, compile the issue's `lib` (public partial record struct Item<T>([property: Key(0)] string Key)) to a metadata reference. Then run VerifyCS with the `app` source (LanguageVersion latest, SkipGeneratedSourcesCheck) and check for CS8785/AD0001."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new reportDiagnostic wrapper silently drops every diagnostic whose location is not in this compilation. That includes MsgPack004 (MemberNeedsKey) raised for a public member inherited from a base class in a referenced assembly by a [MessagePackObject] type declared in source. The type being serialized belongs to this compilation, so ledger L8 (metadata types are not analysed) does not cover it. Before the change this case crashed. Now it produces no diagnostic, even though the member still has no key. The wrapper also drops any diagnostic created with a null location (Location.None) for source types, for example where GetParameterListLocation returns null for an implicitly declared constructor. These could instead be reported at the derived type's identifier.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile lib `public class BaseC { public int X { get; set; } }` to a MetadataReference. Run VerifyCS (SkipGeneratedSourcesCheck) on `[MessagePackObject] public class D : BaseC { [Key(0)] public int Y { get; set; } }`. Observe that no MsgPack004 is reported for the unkeyed inherited X."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/UntrustedDataDepthReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class UntrustedDataDepthReceiptTests\n{\n    [Fact]\n    public void UntrustedData_MaximumObjectGraphDepth_StaysAt500()\n    {\n        Assert.Equal(500, MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth);\n    }\n}\n",
+        "test_names": [
+          "UntrustedData_MaximumObjectGraphDepth_StaysAt500"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10535,
+  "output_tokens": 6163,
+  "ms": 60838,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

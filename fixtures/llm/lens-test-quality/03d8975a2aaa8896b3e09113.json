@@ -1,0 +1,74 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early return for generic types with no declaring syntax is untested for removal. The 'delete-statement' mutant (removing the guard) would make the generator reach GetObjectInfo for metadata types, but the first mutation is plausibly caught only if the ReportIfLocatedInCompilation filter and the FirstOrDefault fixes are also absent. Because those three other fixes independently prevent the crash, the tests pass whether or not the guard exists, so the guard is not independently verified.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640 remove-guard: if (type.OriginalDefinition.DeclaringSyntaxReferences.IsEmpty) { return; } -> removed; expected to survive because GetPropertyIdentifierLocation, FirstOrDefault and ReportIfLocatedInCompilation already prevent the crash and the tests only assert no diagnostics and that the resolver hint exists"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "ReportIfLocatedInCompilation negation or removal is not killed. The metadata types now return early, and the null locations from GetPropertyIdentifierLocation yield Location.None (IsInSource false), so no test in the diff exercises a diagnostic with a located source tree being filtered. No test checks that a real in-source diagnostic (e.g. MsgPack004 on a same-assembly generic type) is still reported, nor that a metadata-origin diagnostic is dropped.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1451",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1451 negate-condition: if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree)) -> if (!(...)); expected to survive for the new tests because none of them expects any diagnostic, though existing analyzer tests may kill it"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper around reportDiagnostic changes behavior for all diagnostics, e.g. those with Location.None or locations in other trees, but no new test covers a diagnostic that previously was reported with Location.None (null location) and is now silently dropped. This is a regression-risk with no negative test (e.g. MemberNeedsKey on a same-assembly type whose property has no syntax, or a diagnostic with no location).",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the full MessagePack.Analyzers.Tests suite on head and compare to base; add a test asserting an in-source MsgPack003/004 diagnostic is still reported on a closed generic type declared in the same compilation"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test ClosedGenericStruct_FromMetadataReference_UnkeyedMember is meant to cover the MemberNeedsKey FirstOrDefault change at line ~1083, but with the early return in place that path is never reached for metadata types, so the test would pass even if the FirstOrDefault were reverted to [0]. Similarly for BothStringAndIntKeyAreNull at line 991: no test triggers it.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:577",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1083 delete-statement: item.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax().GetLocation() -> item.DeclaringSyntaxReferences[0].GetSyntax().GetLocation(); expected to survive because the early return at line 640 prevents GetObjectInfo from reaching it for metadata types"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests only assert that the resolver hint name exists and that there are no warnings. They do not assert that a formatter or registration for the Cmd or MyObject member type is correct, and generated-source checks are skipped (SkipGeneratedSourcesCheck), so a resolver that omits the generic member's handling would pass.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:653",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot on the repro and inspect the generated resolver for how Item<int> is handled; compare it against the expected behavior of using the defining assembly's formatter"
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "For a closed generic type from a referenced assembly, should the compiling assembly's resolver register a formatter for it, or rely on the defining assembly's resolver?",
+        "options": [
+          "Skip it (the current early return) and rely on the defining assembly's resolver",
+          "Generate a closed-generic formatter in the compiling assembly"
+        ],
+        "why_it_matters": "If skipping is intended, the tests are adequate apart from the weak assertions. If generation is expected (e.g. for NativeAOT), the early return is a requirement miss and the tests, which skip generated-source checks, would not notice.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 10297,
+  "output_tokens": 1961,
+  "ms": 13905,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

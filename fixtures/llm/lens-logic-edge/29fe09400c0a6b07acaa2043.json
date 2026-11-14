@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The duplicate-key guard in the field loop is inverted: `if (stringMembers.ContainsKey(member.StringKey))` should be `!ContainsKey`. A string-keyed field whose key is new is now never added to stringMembers. For example, `[MessagePackObject] public class MyObject { [Key(\"myField\")] public int MyFieldValue; }` gets a generated formatter that silently omits the field. It writes a 0-entry map and ignores the value on deserialize. This is silent data loss, and it also affects runs where SuppressSourceGeneration is unset (acceptance criterion 3).",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1179",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.StringKeyedFieldDroppedTests.StringKeyedFieldAppearsInGeneratedFormatter. It drives MessagePackGenerator over a type with one string-keyed field and asserts the generated source mentions MyFieldValue. Expected to pass on base and fail on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Because of the same inverted guard, `Add` in the field loop is only reached when the key already exists. A string-keyed field whose key duplicates an earlier string-keyed property (or field) therefore still throws ArgumentException. That is exactly the duplicate-key crash the other three hunks guard against, so the analyzer/generator still throws (AD0001/CS8785) for that input instead of reporting diagnostics.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1181",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run VerifyCS.Test with TestBehaviors.SkipGeneratedSourcesCheck on `[MessagePackObject] public class C { [Key(\"a\")] public int P { get; set; } [Key(\"a\")] public int F; }` and observe AD0001/CS8785 from an ArgumentException in TypeCollector."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/StringKeyedFieldDroppedTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class StringKeyedFieldDroppedTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public StringKeyedFieldDroppedTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task StringKeyedFieldAppearsInGeneratedFormatter()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            namespace TestNs\n            {\n                [MessagePackObject]\n                public class MyObject\n                {\n                    [Key(\"myField\")]\n                    public int MyFieldValue;\n                }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver\n                {\n                }\n            }\n            \"\"\";\n\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        var frameworkRefs = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = frameworkRefs.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        var compilation = CSharpCompilation.Create(\n            \"ReceiptsTestAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new ISourceGenerator[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGenerators(compilation);\n        GeneratorDriverRunResult result = driver.GetRunResult();\n\n        foreach (var r in result.Results)\n        {\n            Assert.Null(r.Exception);\n        }\n\n        string allGenerated = string.Join(\"\\n\", result.GeneratedTrees.Select(t => t.ToString()));\n        this.logger.WriteLine(allGenerated);\n\n        Assert.Contains(\"MyObject\", allGenerated);\n        Assert.Contains(\"MyFieldValue\", allGenerated);\n    }\n}\n",
+        "test_names": [
+          "StringKeyedFieldAppearsInGeneratedFormatter"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8265,
+  "output_tokens": 4379,
+  "ms": 38476,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

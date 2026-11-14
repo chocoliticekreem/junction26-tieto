@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The ledger answer (L6) says to add an opt-out setting, but the change emits ExcludeFromCodeCoverage unconditionally on supported targets. There is no opt-out option, so existing users who do not want the attribute (or who rely on coverage of generated code) cannot disable it.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "Cite L6 ('Add an opt-out setting') and show that no new generator option or MSBuild property is read by any template or by the generator options class."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities change alters whitespace emitted after a nesting type's constraints (`{` becomes `{\\r\\n`). This changes generated output for every nested or generic-nested type, which affects users who check in or snapshot generated output. It is not part of the requirement.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests for nested generic types with constraints and diff the output against base. Confirm the only differences are the attribute lines and the extra newline."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guard assumes ExcludeFromCodeCoverage exists on every other target. A consumer targeting netstandard2.1 or an old netcoreapp, or an assembly built with a custom TFM, may lack the type (it was added in netcoreapp2.0 and netstandard2.1), and the guard would not exclude it. Generated code would then fail to compile, which is a breaking build error. The preprocessor symbols (NETCOREAPP2_0_OR_GREATER or NETSTANDARD2_1_OR_GREATER) are not consulted.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile generated output in a project targeting netcoreapp1.x (or a TFM without System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage) and check for CS0234 or CS0246. At minimum, compile for netstandard2.1 and net6.0."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10124,
+  "output_tokens": 872,
+  "ms": 6761,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

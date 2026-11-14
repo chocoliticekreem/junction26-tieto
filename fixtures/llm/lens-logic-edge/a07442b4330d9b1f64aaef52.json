@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Duplicate keys now pass silently. A [MessagePackObject] with two members sharing [Key(0)] (or the same string key) previously made `intMembers.Add` / `stringMembers.Add` throw. That surfaced as AD0001/CS8785, so the problem was visible. The new `ContainsKey` guard keeps the first member and drops the second without reporting anything. With no diagnostic, the analyzer stops flagging a type that the dynamic resolver rejects at run time ('key is duplicated'). For types that are not suppressed, the generated formatter silently omits the second member, so its data is lost on round-trip.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.DuplicateKeyDiagnosticTests. It compiles `[MessagePackObject] public class Dup { [Key(0)] public int A {get;set;} [Key(0)] public int B {get;set;} }` (plain and with SuppressSourceGeneration = true) and runs every DiagnosticAnalyzer in the MessagePack.SourceGenerator assembly. It asserts that at least one Error-severity MsgPack diagnostic is reported. On head none is expected, so the test fails. The same applies to the string-key guard at line 1039 and the copies at lines 1163 and 1179."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/DuplicateKeyDiagnosticTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class DuplicateKeyDiagnosticTests(ITestOutputHelper logger)\n{\n    private static async Task<ImmutableArray<Diagnostic>> GetAnalyzerDiagnosticsAsync(string source)\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var references = framework.Concat(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n        var compilation = CSharpCompilation.Create(\n            \"DupKeyAssembly\",\n            new[] { CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Latest)) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        var analyzers = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => !t.IsAbstract && typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && t.GetCustomAttributes(typeof(DiagnosticAnalyzerAttribute), false).Length > 0)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n\n        return await compilation.WithAnalyzers(analyzers).GetAllDiagnosticsAsync();\n    }\n\n    [Fact]\n    public async Task DuplicateIntKey_IsReported()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class Dup\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                [Key(0)]\n                public int B { get; set; }\n            }\n            \"\"\";\n        var diagnostics = await GetAnalyzerDiagnosticsAsync(source);\n        foreach (var d in diagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        diagnostics.Should().Contain(d => d.Severity == DiagnosticSeverity.Error && d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal));\n    }\n\n    [Fact]\n    public async Task DuplicateIntKey_SuppressSourceGeneration_IsReported()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class Dup\n            {\n                [Key(0)]\n                public int A { get; set; }\n\n                [Key(0)]\n                public int B { get; set; }\n            }\n            \"\"\";\n        var diagnostics = await GetAnalyzerDiagnosticsAsync(source);\n        foreach (var d in diagnostics)\n        {\n            logger.WriteLine(d.ToString());\n        }\n\n        diagnostics.Should().Contain(d => d.Severity == DiagnosticSeverity.Error && d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal));\n    }\n}\n",
+        "test_names": [
+          "DuplicateIntKey_IsReported",
+          "DuplicateIntKey_SuppressSourceGeneration_IsReported"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8228,
+  "output_tokens": 7066,
+  "ms": 63149,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

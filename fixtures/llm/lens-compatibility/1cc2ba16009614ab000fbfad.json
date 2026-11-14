@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `case <= byte.MaxValue` (Str8) branch was removed from TryWriteStringHeader. Strings of 32..255 UTF-8 bytes are now written with a Str16 header (0xda + 2-byte length) rather than Str8 (0xd9 + 1 byte). Existing users get different bytes for the same data without opting in, and the output is larger by 1 byte per string. Data stays decodable, but the change is unrelated to the analyzer bug in REQ-2234 and it breaks byte-for-byte stability, such as hashes, snapshots and signatures over serialized output. The MessagePack spec also recommends the smallest encoding.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:914",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a string of 100 ASCII chars ('a' x 100) with MessagePackSerializer on the base build and the head build. Base starts with 0xD9 0x64, head starts with 0xDA 0x00 0x64. Also try lengths 32 and 255."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "TypeCollector now silently skips members whose key kind (int vs string) differs from the others and tolerates duplicate keys, where it previously added them or threw. The mixed-key diagnostic is still reported, but the generated formatter now silently omits those members, and for duplicates it keeps only the first. Previously, as in 3.1.1+, a duplicate key hit `Dictionary.Add` and threw ArgumentException (the likely cause of the analyzer crash). Generator output for invalid types (compiled in projects that suppress errors) therefore differs. The duplicate-key diagnostic (MsgPack006) is still reported elsewhere, so this is probably low risk, but nothing here shows a test confirming the diagnostics still fire.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] class with duplicate [Key(0)] members and one with mixed int/string keys. Assert MsgPack006 and MsgPack007 are still reported and no exception is thrown. Run the test with SuppressSourceGeneration both true and false."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No hunk touches the SuppressSourceGeneration handling, such as the analyzer gating on that option. The diff changes only duplicate and mixed key handling in TypeCollector, so the reported bug (analyzer silent when SuppressSourceGeneration=true) may not be fixed. If it is not fixed, the requirement is unmet.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test with build property/option SuppressSourceGeneration=true on a type that violates MsgPack004. Assert the diagnostic is reported at head. It should fail if the bug is not fixed."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5891,
+  "output_tokens": 1092,
+  "ms": 9021,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

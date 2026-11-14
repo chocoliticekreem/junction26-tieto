@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Newly added `continue` after reporting DoNotMixStringAndIntKeys (MsgPack009) changes generator output for all users, not only SuppressSourceGeneration=true. Previously the mismatched member fell through and was added to intMembers/stringMembers (or crashed/was handled later); now it is skipped, so generated formatter code for types with mixed keys differs. Output is only produced alongside an error diagnostic, but the generated file and any follow-on diagnostics (e.g. MsgPack006 key gaps) can change in users' builds.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1014",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshot tests, plus a case with a [MessagePackObject] type mixing [Key(0)] and [Key(\"a\")], and compare generated output and diagnostics between base and head. Also run with SuppressSourceGeneration unset."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate keys no longer throw ArgumentException from Dictionary.Add; the second member is silently dropped from the generated formatter. Duplicate-key diagnostics (MsgPack006 for int, string duplicates) must still report, otherwise the dropped member shifts generated output for the unset/false case. If duplicate string keys have no diagnostic, a build that previously failed with a generator crash now compiles and omits a member, silently changing serialized bytes.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1029",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a [MessagePackObject] class with two members using [Key(\"a\")] (and another with [Key(1)] twice) without SuppressSourceGeneration. Assert a duplicate-key diagnostic is reported and the generator does not silently emit a formatter missing a member; compare with base behaviour."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` for KeyAttribute-derived keys under SuppressSourceGeneration=true skips the rest of the loop for those members, including MsgPack004 reporting and the member's formatter attribute handling. The analyzer therefore stays silent for those members. This matches L14 for generation-only diagnostics, but it could also hide non-generation diagnostics, contrary to the requirement that the analyzer still report its diagnostics.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:921",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: [MessagePackObject(SuppressSourceGeneration=true)] with a property carrying a custom KeyAttribute-derived attribute and a MsgPack-violating setting (e.g. non-serializable member type). Assert that the expected non-generation diagnostic is still reported on head."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 6114,
+  "output_tokens": 1046,
+  "ms": 8276,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

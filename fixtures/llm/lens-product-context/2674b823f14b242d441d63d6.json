@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Ledger L7 records the answer 'Add an opt-out setting'. The change adds no opt-out setting and emits the attribute unconditionally, apart from the target-framework preprocessor guard. This conflicts with a recorded team decision. The ledger entry L6 text on the same question is a non-answer about SuppressSourceGeneration, so L7 is the operative answer.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L7] says to add an opt-out setting. Grep the generator options and the MessagePackGeneratorOptions parsing for a coverage-exclusion switch; none exists in the diff. A test that sets the opt-out and expects no attribute would fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README says all generated formatters and resolvers are decorated. The README line also does not document any opt-out setting, which L7 requires. The claim 'only emitted for targets where it is available (not netstandard2.0 or .NET Framework)' matches the #if guards, which are consistent with L7's framework-conditional question.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "README.md:1639-1640 describes only unconditional emission with a TFM guard. It has no documented opt-out setting, as [L7] requires."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "TransformUtilities.EmitNestingTypesAndNamespaces changes the brace emission from '{' to '{\\r\\n' when a type has constraints, and renames a variable. This is an unrelated formatting change in a shared utility, and it alters generated output for nested constrained types. It has no connection to the requirement and risks snapshot churn.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:56",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests for nested generic types with constraints and check for diffs unrelated to the attribute."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new test only checks the five generated kinds from a single sample source. It covers neither generic or nested types nor the composite resolver template (CompositeResolverTemplate), so those template changes are unverified by the new test. Coverage of 'all generated code' is incomplete.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:56",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "Remove the attribute from the CompositeResolverTemplate or FormatterCache<T> nested classes. The new tests do not fail, because they only check that the file contains the attribute somewhere."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "The change adds ExcludeFromCodeCoverage unconditionally to all emitted types (formatters, resolvers, and nested helper classes), guarded only by #if !NETSTANDARD2_0 && !NETFRAMEWORK, with no setting."
+      },
+      {
+        "label": "B",
+        "summary": "The change adds the same attribute but with an opt-out MSBuild or generator option (for example, a MessagePackGeneratorOptions property that suppresses emission), read in the generator and used in the templates to skip the attribute. Snapshots stay attributed by default."
+      }
+    ]
+  },
+  "input_tokens": 13374,
+  "output_tokens": 1211,
+  "ms": 9558,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

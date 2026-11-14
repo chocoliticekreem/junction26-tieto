@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "New analyzer diagnostics MsgPack019-022 are registered in SupportedDiagnostics but the hunks show no AnalyzerReleases.Unshipped.md update. This would trigger RS2000 in the analyzer build, which is warnings-as-errors in this repo. The generator also reports diagnostics from the generator, not the analyzer, so these IDs are declared by the analyzer but never reported by it.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check AnalyzerReleases.Unshipped.md for MsgPack019-022 entries and build the SourceGenerator project to see whether RS2000 fires."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated formatter class is emitted as `partial class Name` with no accessibility modifier, and the constraints and nesting come from EmitNestingTypesAndNamespaces. The existing resolver template registers formatters by name. A user formatter that is `public`, `internal`, or nested is fine, but a user partial class declared `sealed` or `static`, or with other modifiers, matches the generated part. For users who already declare an `IMessagePackFormatter<T>` partial class with `[GeneratedMessagePackFormatter]`, the only effect is opt-in, so compatibility is fine. However, GeneratorUtilities excludes any class carrying the attribute from the hand-written formatter registration regardless of whether Collect succeeds. If the attribute is rejected (not partial, a generic data type, no parameterless ctor), the formatter is silently dropped from the resolver, though the diagnostic is reported.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:35",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with [GeneratedMessagePackFormatter] on a partial class implementing a formatter for a generic type, and check the resolver output and diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In contractless mode, members are ordered by Ordinal name with IntKey assigned by index, and read-only or private-setter members are dropped. Standard contractless (ContractlessStandardResolver) serializes in declaration order and includes get-only members for serialization. Bytes from a generated formatter for T therefore differ from the existing dynamic contractless resolver for the same type, which could silently change the wire format for users who migrate from the dynamic contractless resolver to the generated formatter.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize `class P { public int B; public int A; public int RO { get; } }` with ContractlessStandardResolver (base) and with the generated formatter (head); compare map key order and keys."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "Must the generated contractless wire format match the existing ContractlessStandardResolver (declaration order, get-only members), or is name-sorted, read-write-only acceptable?",
+        "options": [
+          "Match ContractlessStandardResolver bytes",
+          "Name-sorted read-write-only is acceptable"
+        ],
+        "why_it_matters": "If it must match, the ordering and membership finding is a real compatibility defect. If not, it is intended behavior.",
+        "area": "source-generator",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 18534,
+  "output_tokens": 1226,
+  "ms": 9541,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

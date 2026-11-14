@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "ReportIfLocatedInCompilation drops a diagnostic only when its location is in source but in another syntax tree. A metadata member has no declaring syntax, so the changed MemberNeedsKey site now builds its diagnostic with a null location (Location.None). IsInSource is false for that location, so the filter lets it through. Concrete input: the referenced assembly defines `[MessagePackObject] public struct Item<T> { public int Value; }` (built without the analyzer, or with MsgPack004 suppressed), and the app has a member of type `Item<int>`. On head the analyzer reports MsgPack004, an Error per L2, with no location in the consuming compilation, so a build that only crashed with warnings on base now fails. This contradicts L8 (metadata types are deliberately not diagnosed by the consumer) and the helper's own remark that such problems are dropped. The same leak applies with AllowPrivate=true, where metadata backing fields such as `<Key>k__BackingField` are private fields without [Key].",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.MetadataGenericStructDiagnosticLeakTests.NoMsgPackDiagnosticsForClosedGenericStructFromReferencedAssembly. It compiles lib to an image reference, runs all MessagePack analyzers on the app compilation and expects no MsgPack*/AD0001 diagnostics. On head it fails with a location-less MsgPack004 for Item<int>.Value."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement names three unguarded `DeclaringSyntaxReferences[0]` sites in GetObjectInfo (reported at 735, 1009 and 1101). The diff fixes only the two later ones (now ~985 and ~1077). Both shifted by 24 lines, so the first site sits at about line 711 on head and is not in any hunk. If that diagnostic path is reached for a closed generic value type from metadata, it still throws IndexOutOfRangeException. That would leave the acceptance criterion 'diagnostics that need a source location do not crash when the symbol has no declaring syntax' unmet.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:711",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "grep `DeclaringSyntaxReferences\\[0\\]` in src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs on head. Any remaining hit inside GetObjectInfo is an unguarded index reachable for metadata symbols via CollectGeneric."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataGenericStructDiagnosticLeakTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MetadataGenericStructDiagnosticLeakTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public MetadataGenericStructDiagnosticLeakTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task NoMsgPackDiagnosticsForClosedGenericStructFromReferencedAssembly()\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        var refs = new List<MetadataReference>(framework);\n        refs.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n\n        string libSource = \"\"\"\n            using MessagePack;\n            namespace Lib\n            {\n                [MessagePackObject]\n                public struct Item<T>\n                {\n                    public int Value;\n                }\n            }\n            \"\"\";\n\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(libSource, parseOptions) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        using var ms = new MemoryStream();\n        var emit = lib.Emit(ms);\n        emit.Success.Should().BeTrue(string.Join(Environment.NewLine, emit.Diagnostics));\n        MetadataReference libRef = MetadataReference.CreateFromImage(ms.ToArray());\n\n        string appSource = \"\"\"\n            using MessagePack;\n            using Lib;\n            namespace App\n            {\n                [MessagePackObject]\n                public class Cmd\n                {\n                    [Key(0)]\n                    public Item<int> Member { get; set; }\n                }\n            }\n            \"\"\";\n\n        var appRefs = new List<MetadataReference>(refs) { libRef };\n        CSharpCompilation app = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(appSource, parseOptions) },\n            appRefs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        var analyzers = typeof(MessagePack.SourceGenerator.MessagePackGenerator).Assembly.GetTypes()\n            .Where(t => typeof(DiagnosticAnalyzer).IsAssignableFrom(t) && !t.IsAbstract && t.GetConstructor(Type.EmptyTypes) != null)\n            .Select(t => (DiagnosticAnalyzer)Activator.CreateInstance(t)!)\n            .ToImmutableArray();\n        analyzers.Should().NotBeEmpty();\n\n        ImmutableArray<Diagnostic> diagnostics = await app.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n        foreach (Diagnostic d in diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        diagnostics.Where(d => d.Id.StartsWith(\"MsgPack\", StringComparison.Ordinal) || d.Id == \"AD0001\")\n            .Should().BeEmpty(\"types from a referenced assembly are not diagnosed by the consuming compilation\");\n    }\n}\n",
+        "test_names": [
+          "NoMsgPackDiagnosticsForClosedGenericStructFromReferencedAssembly"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10194,
+  "output_tokens": 10518,
+  "ms": 93679,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

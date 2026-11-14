@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new early return for generic types whose OriginalDefinition has no syntax runs before the generic handling, so closed generic types from referenced assemblies (structs and classes alike) no longer get a formatter in the consuming assembly's generated resolver. Previously closed generic classes from metadata (the 'ok' rows) went through GetObjectInfo and got a formatter registered. The requirement says those 'keep working as before' and expects a generated resolver. Generated output and runtime formatter selection for trimmed/AOT apps change.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with two compilations: a lib with [MessagePackObject] class Item<T> and struct Item2<T>, and an app with Cmd having Item<int> and Item2<int> members. Regenerate with base and head and diff GeneratedMessagePackResolver.g.cs. Head drops the formatter entries for the closed generics that base emitted for the class."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The early return also applies to closed generic types from metadata that are not [MessagePackObject] at all, such as BCL or third-party generics whose OriginalDefinition is metadata-only. It sits before the Generic types branch, which may handle collection-like generics or generic type arguments. Skipping it can stop recursion into the type arguments, so a user type nested as a type argument, e.g. a generic metadata type containing a source-declared type, is no longer collected or registered.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:640",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Snapshot test: app has a [MessagePackObject] type with a member of type LibGeneric<AppType>, where LibGeneric<T> is a metadata struct or class. Compare the base and head generated resolver for AppType's formatter."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The reportDiagnostic wrapper now silently drops every diagnostic whose location is not in a syntax tree of the compilation, including diagnostics with Location.None. Diagnostics that previously reached users' builds with no location are no longer reported, such as ones created with null locations by the GetLocation/GetParameterListLocation helpers and the new FirstOrDefault()?.GetLocation() path. This can remove MsgPack003/004/005 errors that users currently see, and the analyzer's behavior changes beyond the crash fix.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a source type whose diagnostic is created with a null location, e.g. MsgPack005 or MsgPack006 for a constructor parameter via GetParameterListLocation returning null. Assert the diagnostic is still reported on head as on base."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7445,
+  "output_tokens": 1065,
+  "ms": 8740,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

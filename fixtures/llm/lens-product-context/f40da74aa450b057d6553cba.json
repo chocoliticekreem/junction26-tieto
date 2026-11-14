@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "A one-line change in MessagePackSecurity.cs replaces the TypeAccessException with EqualityComparer<T>.Default in the hash-resistant comparer fallback. That silently disables hash-collision protection for untrusted data. The change is unrelated to REQ-2129 and nothing in the ledger sanctions it. Ledger L12 says the project has deliberately moved toward secure-by-default.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:215",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Deserialize a Dictionary<CustomKeyType,int> with MessagePackSecurity.UntrustedData. Base throws TypeAccessException; head returns a result using the default comparer, so a test asserting the throw fails on head. Cite [L12]."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode here skips public get-only members and readonly fields and deserializes through a parameterless constructor only. ContractlessStandardResolver serializes them, using a matching constructor. The README states this limitation, so the behaviour is recorded, and [L21] says to follow the requirement, which asks only for public members. This is checked and acceptable.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:157",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L21] No preference; follow the requirement. The README documents the read-only skip."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The collector never honours MessagePack attributes that T itself carries ([MessagePackObject], [Key], [DataContract]), and only the surrogate is read. The requirement says to use T's attributes if they are present. The README does not state this limitation. Recorded answer [L20] says to follow the requirement, so the omission is a gap.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:92",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a source-generator test where T is in the same compilation with [MessagePackObject] and [Key(0)] members, formatted with [GeneratedMessagePackFormatter]. The output should be an int-key array; instead it will be a string-key map."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Surrogate keys are not checked against L3's keyAsPropertyName or the analyzer rules (MsgPack004). MsgPack005 and MsgPack006 are reused from the existing set. The new diagnostics MsgPack019-022 do have release notes and docs.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:131",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare surrogate key validation with TypeCollector for the keyAsPropertyName and MsgPack004 behaviour."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Contractless by default, plus an optional SurrogateType whose [Key] and [IgnoreMember] members map by name. T's own MessagePack attributes are ignored. Implemented as GeneratedFormatterCollector with CreateContractlessMembers and CreateSurrogateMembers."
+      },
+      {
+        "label": "B",
+        "summary": "Contractless only when T has no [MessagePackObject] or [DataContract]. If T has MessagePack attributes, GeneratedFormatterCollector honours them via TypeCollector-style key and ignore reading. SurrogateType is dropped or secondary."
+      }
+    ]
+  },
+  "input_tokens": 30074,
+  "output_tokens": 1274,
+  "ms": 9558,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The README says the attribute is not emitted for netstandard2.0/.NET Framework, but ExcludeFromCodeCoverage exists in netstandard2.0 with .NET Standard 2.0 API surface (System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute is available in netstandard2.0 and .NET Framework 4.0+). The guard likely drops the attribute needlessly, so 'all generated code' is not decorated for those targets and the requirement is only partly met. Also, NETSTANDARD2_0 and NETFRAMEWORK symbols are defined only for the consuming project's TFM, and the README does not document the exclusion rationale.",
+        "location": "README.md:1639",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check docs for ExcludeFromCodeCoverageAttribute applicability: it is in netstandard2.0 (mscorlib/System.Diagnostics). Compile a netstandard2.0 consumer with [ExcludeFromCodeCoverage] to confirm it builds, which would show the #if guard is unnecessary."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is applied only to top-level generated types (formatters, resolver, nested helper classes). Nesting partial types emitted by EmitNestingTypesAndNamespaces and other generated pieces, such as the GeneratedMessagePackResolver attribute or the check-in-generated static helpers, are not decorated, so 'all generated code' is read narrowly. This is a scope-interpretation matter.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun snapshot tests and grep the generated outputs for types lacking ExcludeFromCodeCoverage, such as nesting partial types."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditional, no setting: add the attribute (guarded by #if !NETSTANDARD2_0 && !NETFRAMEWORK) to every generated formatter, resolver, and helper class emitted by the templates, with no opt-out option."
+      },
+      {
+        "label": "B",
+        "summary": "Add an opt-out setting (e.g. a property on GeneratedMessagePackResolver or an MSBuild property) so users can disable ExcludeFromCodeCoverage emission, with the templates conditionally writing the attribute based on that option and the default left on."
+      }
+    ]
+  },
+  "input_tokens": 13183,
+  "output_tokens": 894,
+  "ms": 7076,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

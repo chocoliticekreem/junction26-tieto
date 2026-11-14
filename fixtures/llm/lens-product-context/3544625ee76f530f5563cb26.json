@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The README says the attribute is only emitted for netstandard2.0 or .NET Framework targets where it is unavailable. That is the conditional emission ledger entry [L9] discusses, but L9 answers 'Add an opt-out setting'. No opt-out setting is added, and the requirement says one is optional. The change follows the requirement but not the recorded team decision.",
+        "location": "README.md:1639",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L9] says 'Add an opt-out setting' for the attribute, but no option (for example a GeneratedMessagePackResolver or MessagePackGenerator property) exists in the diff. Grep the diff and generator options for an opt-out switch."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "MessagePackSecurity.cs drops the copy of HashCollisionResistant in the copy constructor. This is unrelated to code-coverage attributes and out of scope for REQ-2297. The copy-constructor change makes a derived security option, such as WithMaximumObjectGraphDepth, silently lose collision-resistant hashing, which weakens the secure-by-default behaviour in [L4].",
+        "location": "src/MessagePack/MessagePackSecurity.cs:63",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Create MessagePackSecurity.UntrustedData (HashCollisionResistant is true), call WithMaximumObjectGraphDepth(10), and assert HashCollisionResistant is still true. It fails on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement asks for all generated code to be decorated, but the change leaves out some emitted types. For example, helper classes in the resolver templates and any extra generated types may not carry the attribute. It also skips netstandard2.0 and .NET Framework, so those targets are not covered, contrary to 'all generated code'.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:45",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests. List every class, struct and enum declaration in the generated outputs and check that each is preceded by the guarded attribute."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The TransformUtilities change from `{` to `{\\r\\n` for the nesting-type constraints case changes generated output formatting. It is incidental to the requirement and ripples across the snapshots.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests and diff the generated files for nested generic types with constraints. Confirm the only change is whitespace."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditional attribute with no new setting. The change adds a guarded `[ExcludeFromCodeCoverage]` to every generated formatter and resolver type, wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, and has no opt-out."
+      },
+      {
+        "label": "B",
+        "summary": "The attribute is emitted by default, but an opt-out setting is also added (as [L9] says). For example, add a generator option or an MSBuild property that the templates read, and emit the attribute only when the option is not disabled."
+      }
+    ]
+  },
+  "input_tokens": 13655,
+  "output_tokens": 1194,
+  "ms": 9730,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

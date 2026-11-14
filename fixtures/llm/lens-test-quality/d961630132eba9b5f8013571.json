@@ -1,0 +1,83 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `continue` added in the mixed-key branch (field loop) is not what makes the mixed-key test pass. The test uses a property-based Member2 with a string key after an int key, so it exercises the property loop. The field-loop `continue` at the second hunk (~line 1145) has no test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148 delete-statement: continue; -> (removed); expected to survive because every mixed-key test in SuppressSourceGenerationAnalyzerTests uses properties and none declares fields with mixed key kinds."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ContainsKey guard in the field-loop string-key path has no test. Duplicate string keys are tested only on properties, so removing the guard at the field site would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1176 remove-guard: if (!stringMembers.ContainsKey(member.StringKey)) -> unconditional Add; expected to survive because DuplicateStringKeysAreReportedWithoutAnalyzerFailure only uses properties."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test covers duplicate keys on public fields. Neither the int-key nor the string-key duplicate path in the field loop is exercised.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test with two `[Key(0)] public string F1; [Key(0)] public string F2;` fields and expect MsgPack005; run it with the field-loop guards mutated away."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The MsgPack003/004/005/015 analyzer tests with suppression do not show the bug is fixed. The fix in TypeCollector (the ContainsKey guards and `continue`) only avoids duplicate-key crashes. The test names say `WithoutAnalyzerFailure`, and the assertions are only diagnostic markup. Nothing records that these tests fail on base, so MemberWithoutKeyIsReported, AllowPrivateRequiredIsReported and MemberTypeMustBeMessagePackObjectIsReported may pass on base too and not reproduce the bug.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:19",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the SuppressSourceGenerationAnalyzerTests on the base commit, i.e. with the TypeCollector changes reverted, and check which fail. Tests that pass on base do not reproduce the issue."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The duplicate-key tests on suppressed types and on the generated type both expect MsgPack005 on duplicates, but they do not check that no analyzer crash occurs beyond the diagnostic markup. The DuplicateKeysAreReportedWithoutAnalyzerFailureForGeneratedTypes test is not about suppression and likely passed on base.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:125",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run DuplicateKeysAreReportedWithoutAnalyzerFailureForGeneratedTypes against base-built code to see whether it already passes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The mixed-key test expects MsgPack005 on Member2, which has a string key after an int key. The `continue` is meant to make the diagnostic path robust, but the test marks the DoNotMixStringAndIntKeys descriptor with the same markup id as duplicates. With UseFirstDescriptor and no other negative cases, it cannot distinguish the expected diagnostic from an unrelated one.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:104",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the test markup and confirm that DoNotMixStringAndIntKeys and the duplicate-key descriptor both use id MsgPack005."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The execution tests for the suppressed type are weak. NoFormatterIsGeneratedForSuppressedType only checks that the generated resolver returns null, and the round-trip test would pass on base since the dynamic resolver is unchanged. Neither exercises the analyzer or TypeCollector change.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:20",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressedSourceGenerationTests on base-built code; both tests are expected to pass there, so they do not detect the regression."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 8283,
+  "output_tokens": 1910,
+  "ms": 12621,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

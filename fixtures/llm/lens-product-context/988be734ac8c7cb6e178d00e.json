@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The generator emits a formatter in the consuming assembly for a type from a referenced assembly (ExternalPerson, etc.). Without context this looks like it contradicts the TypeCollector rule that metadata-only types get no formatter. Ledger L11 says that rule covers automatic collection from the compiling assembly. This change is opt-in via the explicit [GeneratedMessagePackFormatter] class and bypasses TypeCollector.CollectCore. Not a defect.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] metadata-only types are deliberately skipped by TypeCollector.CollectCore; the explicit opt-in attribute path is separate. Also [L18] says to follow the requirement on contractless default plus SurrogateType."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode skips public get-only properties and readonly fields. The requirement's contractless behaviour and ContractlessStandardResolver serialize them via a matching constructor. Ledger L19 says no preference and to follow the requirement. The requirement only mandates public members and contractless; the docs state the limitation explicitly.",
+        "location": "README.md:1660",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L19] no preference on get-only members; follow the requirement. README documents that read-only members are skipped."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new analyzer diagnostics MsgPack019-022 are registered in AnalyzerReleases.Unshipped.md and have docs pages and index entries. However the diagnostics are reported only from the generator (via RegisterSourceOutput), not from DiagnosticAnalyzer.AnalyzeSymbol. The descriptors are listed in SupportedDiagnostics of an analyzer that never reports them, so the analyzer packaging convention is slightly off. Also the generator's own diagnostic descriptors may need to be exposed to the generator's release tracking.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:378",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read MsgPack00xMessagePackAnalyzer.Initialize: no registration reports GeneratedFormatterMustBePartial and the other new descriptors; they are reported only from MessagePackGenerator.generatedFormatterDiagnostics."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Implement contractless by default plus an optional SurrogateType on the attribute. Surrogate [Key]/[IgnoreMember] attributes are read at compile time, and the formatted type's own MessagePack attributes are not honored."
+      },
+      {
+        "label": "B",
+        "summary": "Implement contractless by default and honor the formatted type's own [MessagePackObject]/[Key]/[DataContract] attributes when present, as the maintainer said ('if there are attributes on it, fine, we'll use them'). Drop SurrogateType, since no design was settled in the thread. CreateContractlessMembers would check the type's attributes and take keys from them."
+      }
+    ]
+  },
+  "input_tokens": 29478,
+  "output_tokens": 1154,
+  "ms": 8999,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

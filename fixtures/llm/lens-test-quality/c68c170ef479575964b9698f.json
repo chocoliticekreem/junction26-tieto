@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change deletes the `case <= byte.MaxValue` branch in the unsigned-integer writer (UInt8 encoding for values 128..255). This is unrelated to REQ-2283. Values 128..255 now fall to the UInt16 branch and encode as 0xCD 2 bytes instead of 0xCC 1 byte, which changes the wire format and is not minimal. No test in the diff covers it.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize uint/ulong/int values 128..255 (e.g. 200) with base-built and head-built MessagePack and compare bytes: expect base 0xCC 0xC8 vs head 0xCD 0x00 0xC8. Also run the existing MessagePackWriter/primitives tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new ReportIfLocatedInCompilation wrapper filters every diagnostic whose location is not in the compilation, including the null-location diagnostics produced by FirstOrDefault()?.GetSyntax(). No test asserts that diagnostics for source-declared types are still reported (the MsgPack004 MemberNeedsKey and BothStringAndIntKeyAreNull cases). If the guard were removed, or the IsInSource condition negated, the new tests (which expect zero diagnostics) would still pass for the metadata case. Mutants on the guard are only weakly detected; existing analyzer tests are not in this diff.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1446 negate-condition: if (diagnostic.Location.IsInSource && ...) -> if (!(diagnostic.Location.IsInSource && ...)); expected to survive in the new tests because they only assert no diagnostics for metadata types and add no positive in-source diagnostic case. Run only the three new tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The fix to GetPropertyIdentifierLocation (BothStringAndIntKeyAreNull) is never exercised. No test makes a metadata property have a null key. Reverting it to DeclaringSyntaxReferences[0] would not fail any new test. Likewise the MemberNeedsKey FirstOrDefault change is only exercised by the UnkeyedMember test, whose type is reached via a path that may exit earlier.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 delete-statement/revert: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no new test has a metadata property lacking an integer or string key."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new tests bypass the real two-project flow. The first and third tests use LanguageVersion.CSharp7_3, and the first and third have a class-based consumer. The analyzer-side test uses SkipGeneratedSourcesCheck, so the generated output is never checked and only a hint name is asserted. The tests never check that a formatter for the closed generic is registered, as the requirement says trimmed and AOT apps need. Whether the resolver is complete is unasserted.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:630",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "RunWithMetadataReferenceAsync sets TestBehaviors.SkipGeneratedSourcesCheck and asserts only Assert.Contains(hintName); no check that the resolver content is correct or includes the closed-generic formatter."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 11262,
+  "output_tokens": 1472,
+  "ms": 11505,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

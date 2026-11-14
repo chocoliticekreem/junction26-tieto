@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change raises `MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth` from 500 to 5000. This has nothing to do with REQ-2283, and it weakens the protection for untrusted input. A payload nested between 501 and 5000 levels (for example 1000 nested 1-element arrays, `0x91`…`0xC0`) used to be rejected with `MessagePackSerializationException`. It is now accepted. Recursion up to 5000 deep in the formatters gives attackers more room to exhaust the stack (an unrecoverable `StackOverflowException`, i.e. denial of service). The ledger records a 500 depth limit as a deliberate secure-by-default decision.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:38",
+        "severity": "critical",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.UntrustedDataDepthLimitReceipts.UntrustedData_RejectsGraphNestedDeeperThan500. It deserializes 1000 nested arrays as `object` with `UntrustedData`. It passes on base (an exception is thrown) and fails on head (no exception). Also cite ledger L9 (stack depth limit of 500)."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "A source-declared positional record property such as `record R([property: Key((string)null)] string Name)` loses its BothStringAndIntKeyAreNull diagnostic. Its DeclaringSyntaxReference is a `ParameterSyntax`, not a `PropertyDeclarationSyntax`, so `GetPropertyIdentifierLocation` returns null and the diagnostic gets `Location.None`. The new `ReportIfLocatedInCompilation` filter then drops it because `!IsInSource`. Before, the hard cast threw (AD0001), so the error was at least visible. Now a source type with an invalid key gets no error at all, even though it should be reported at the parameter location.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1436",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run MsgPack00xMessagePackAnalyzer through `compilation.WithAnalyzers` on a C# 9 source with `[MessagePackObject] public record R([property: Key((string)null)] string Name);` (plus an IsExternalInit shim if needed). Assert that the BothStringAndIntKeyAreNull descriptor is reported. On head it is silently absent."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "`ReportIfLocatedInCompilation` filters every analyzer diagnostic whose location is not in a source tree of the compilation. That also drops diagnostics about SOURCE `[MessagePackObject]` types whose offending member is inherited from a metadata base class. Example: `[MessagePackObject] class Derived : Lib.Base`, where `Base` has a public property without `[Key]`. MemberNeedsKey (MsgPack004) is then located on the metadata member, gets a null location and is discarded. The formatter for `Derived` is still generated, so the inherited member silently goes unserialized. Ledger L8 only exempts types that themselves come from metadata, not source types that inherit metadata members. A better fix is to fall back to the derived type's identifier location instead of dropping the diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile a library with `public class Base { public int X { get; set; } }` to a MetadataReference. Then run the analyzers on `[MessagePackObject] public class Derived : Base { [Key(0)] public int Y { get; set; } }` referencing it. Assert that a MsgPack004 diagnostic is reported, located on Derived. On head, no diagnostic is reported."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/UntrustedDataDepthLimitReceipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class UntrustedDataDepthLimitReceipts\n{\n    [Fact]\n    public void UntrustedData_RejectsGraphNestedDeeperThan500()\n    {\n        const int depth = 1000;\n        byte[] bytes = new byte[depth + 1];\n        for (int i = 0; i < depth; i++)\n        {\n            bytes[i] = 0x91; // fixarray with one element\n        }\n\n        bytes[depth] = 0xC0; // nil\n\n        MessagePackSerializerOptions options = MessagePackSerializerOptions.Standard.WithSecurity(MessagePackSecurity.UntrustedData);\n        Exception? ex = Record.Exception(() => MessagePackSerializer.Deserialize<object>(bytes, options));\n        Assert.NotNull(ex);\n    }\n\n    [Fact]\n    public void UntrustedData_MaximumObjectGraphDepthIsAtMost500()\n    {\n        Assert.True(MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth <= 500, $\"UntrustedData depth limit was {MessagePackSecurity.UntrustedData.MaximumObjectGraphDepth}\");\n    }\n}\n",
+        "test_names": [
+          "UntrustedData_RejectsGraphNestedDeeperThan500",
+          "UntrustedData_MaximumObjectGraphDepthIsAtMost500"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 9839,
+  "output_tokens": 6843,
+  "ms": 64204,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

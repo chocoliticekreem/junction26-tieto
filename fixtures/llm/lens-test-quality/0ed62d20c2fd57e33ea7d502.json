@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The ReportIfLocatedInCompilation filter wrapper has no negative test: no test checks that a diagnostic on a source-located symbol in the compilation is still reported. If the guard is inverted or removed, tests with metadata types still pass because they only assert no diagnostics. Dropping all diagnostics (e.g. negating the condition) would not be caught either, since no test expects a diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445 negate-condition: if (!diagnostic.Location.IsInSource || ContainsSyntaxTree(...)) -> if (diagnostic.Location.IsInSource && !ContainsSyntaxTree(...)); expected to survive because the added tests only assert zero diagnostics and no test expects a MsgPack diagnostic to still be reported for a same-assembly type."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The MsgPack004 (MemberNeedsKey) change to FirstOrDefault()?.GetSyntax().GetLocation() is covered only by an assertion of no diagnostics. A mutation reverting to [0] would be caught only if that path is reached. The unkeyed-member test uses a public property on a metadata struct; whether the path is reached depends on earlier code, and the same-assembly MemberNeedsKey diagnostic is not re-asserted, so a regression that breaks location for source types would go unnoticed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 delete-statement: FirstOrDefault()?.GetSyntax().GetLocation() -> null location; expected to survive because no test expects MsgPack004 at a specific location for source-declared members."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test exercises the BothStringAndIntKeyAreNull path (GetPropertyIdentifierLocation) with a metadata type. The three new tests use valid [Key(n)] attributes, so line 985 is never reached for a metadata property. Reverting to DeclaringSyntaxReferences[0] would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985 delete-statement: GetPropertyIdentifierLocation(item) -> ((PropertyDeclarationSyntax)item.DeclaringSyntaxReferences[0].GetSyntax()).Identifier.GetLocation(); expected to survive because no added test has a key attribute with null int and string key on a metadata type."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests assert that the resolver hint name is generated, but never check that a formatter for the closed generic type (e.g. MyGenericStruct<int>) is in the output (SkipGeneratedSourcesCheck is set). The resolver could be generated without handling the generic member and the tests would still pass, so the requirement 'a generated resolver exists' is checked only at the weakest level.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:630",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector closed-generic branch (CollectGeneric): delete-statement for the GetObjectInfo call on the metadata closed generic; expected to survive because tests only assert warnings are absent and the resolver hint name exists."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests include no regression checks for the 'ok' rows: closed generic classes from metadata and non-generic structs. These are the rows that must keep working as before, but there is no test for them. A guard change that dropped them would go undetected.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:499",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "TypeCollector.cs:1445 swap-boolean: return/skip all reports for metadata locations; expected to survive because no test covers class<T> or non-generic struct from metadata."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10721,
+  "output_tokens": 1619,
+  "ms": 11036,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "An unrelated change in the uint writer removes the `case <= byte.MaxValue` → `TryWriteUInt8` branch. Values 128..255 are now written as uint16 (0xcd, 3 bytes) instead of uint8 (0xcc, 2 bytes). The output is still decodable, but it is no longer the most compact encoding. It changes the serialized bytes for every such value written through this path, which is a wire-format change outside the scope of REQ-2283.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ReceiptsUInt8RangeEncodingTests.UInt32_InUInt8Range_UsesUInt8Encoding (values 128, 200, 255). It expects written == 2 and buffer[0] == 0xcc, and it fails on head with written == 3 and buffer[0] == 0xcd. A byte-diff of MessagePackSerializer.Serialize(200u) between base and head would also show the difference."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "BothStringAndIntKeyAreNull is now silently dropped for record positional properties declared in the compiling assembly, e.g. `record R([property: Key((string)null)] string X)`. For such a property, DeclaringSyntaxReferences[0] is a ParameterSyntax, not a PropertyDeclarationSyntax. GetPropertyIdentifierLocation therefore returns null, the diagnostic gets Location.None, and the new ReportIfLocatedInCompilation wrapper discards it because the location is not in source. The base code crashed here on the cast; head reports nothing for a source symbol that should get the error. A fallback to item.Locations[0], or handling ParameterSyntax, is needed.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:985",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read GetPropertyIdentifierLocation (TypeCollector.cs:1434), which uses `as PropertyDeclarationSyntax` and returns null for a ParameterSyntax. Then read ReportIfLocatedInCompilation (TypeCollector.cs:1444), which requires Location.IsInSource. To confirm, run the analyzer on a C# 9 positional record with `[property: Key((string)null)]` and observe that no BothStringAndIntKeyAreNull diagnostic is reported."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper only filters diagnostics after Diagnostic.Create has already run, so it cannot prevent a crash. Any remaining direct `DeclaringSyntaxReferences[0]` index in GetObjectInfo still throws for the metadata closed-generic struct. The reporter named three sites (735, 1009, 1101). The diff only changes the two at new lines 985 and 1077. No hunk touches the first site, which would be about 27 lines earlier, near line 708 under the same offset. If that site is reached for `Item<int>` from a referenced assembly, CS8785/AD0001 still occur and acceptance criteria 1-4 are unmet.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Compile lib (`[MessagePackObject] public partial record struct Item<T>([property: Key(0)] string Key);` plus `struct Item2<T>` with a [Key(0)] field) to a MetadataReference via EmitToImageReference. Compile app with `Cmd` holding `[Key(1)] public Item<int> Member` and a `[GeneratedMessagePackResolver] partial class R {}`. Run CSharpGeneratorDriver with MessagePackGenerator and assert GetRunResult().Results[0].Exception is null and a resolver file is generated. Also run compilation.WithAnalyzers(MsgPack00xMessagePackAnalyzer) and assert there is no AD0001. Separately, grep TypeCollector.cs for `DeclaringSyntaxReferences[0]`."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ReceiptsUInt8RangeEncodingTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ReceiptsUInt8RangeEncodingTests\n{\n    [Theory]\n    [InlineData(128u)]\n    [InlineData(200u)]\n    [InlineData(255u)]\n    public void UInt32_InUInt8Range_UsesUInt8Encoding(uint value)\n    {\n        Span<byte> buffer = stackalloc byte[16];\n        Assert.True(MessagePackPrimitives.TryWrite(buffer, value, out int written));\n        Assert.Equal(2, written);\n        Assert.Equal((byte)0xcc, buffer[0]);\n        Assert.Equal((byte)value, buffer[1]);\n    }\n\n    [Theory]\n    [InlineData(128ul)]\n    [InlineData(200ul)]\n    [InlineData(255ul)]\n    public void UInt64_InUInt8Range_UsesUInt8Encoding(ulong value)\n    {\n        Span<byte> buffer = stackalloc byte[16];\n        Assert.True(MessagePackPrimitives.TryWrite(buffer, value, out int written));\n        Assert.Equal(2, written);\n        Assert.Equal((byte)0xcc, buffer[0]);\n        Assert.Equal((byte)value, buffer[1]);\n    }\n}\n",
+        "test_names": [
+          "UInt32_InUInt8Range_UsesUInt8Encoding",
+          "UInt64_InUInt8Range_UsesUInt8Encoding"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 10735,
+  "output_tokens": 8246,
+  "ms": 77924,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The test for an explicit-interface callback receiver (needsCast) has no coverage. Neither ExternalPerson, ExternalPoint nor ExternalWidget implements IMessagePackSerializationCallbackReceiver, so the hasCallbackReceiver/needsCast logic is untested.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:81",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:81 negate-condition: hasCallbackReceiver -> !hasCallbackReceiver; expected to survive because no test type implements IMessagePackSerializationCallbackReceiver"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Diagnostics MsgPack019-022 are only checked for the default-severity error path; the NoDeserializingConstructor path (class without a parameterless constructor), the inaccessible data type path, and the KeysMustBeUnique/MemberNeedsKey surrogate paths have no tests. The SurrogateKeysMustNotMixStringAndInt test also expects the MsgPack005 diagnostic only, so it does not check that no formatter is emitted.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:75",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:75 remove-guard: delete the 'isClass && !type.InstanceConstructors.Any(...)' check; expected to survive because no test uses a formatted class without a public parameterless constructor"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The contractless ordering and IntKey assignment is untested: ContractlessClassUsesStringKeysForPublicReadWriteMembers checks only fixmap header and JSON content, not key order. Ordering via OrderBy(Name) -> any other order would still pass. Also, public fields, inherited members, and a member that is public-get/private-set are never exercised in contractless mode, so IsPublicReadWrite and GetInstanceMembers base-type walking mutants survive.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:131",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:~255 negate-condition in IsPublicReadWrite IFieldSymbol branch '!field.IsReadOnly' -> 'field.IsReadOnly'; expected to survive because no test type has public fields"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate type-match check and the surrogate ignore path are tested only at the diagnostic level, via a unit test whose diagnostic expectations ignore generator output. The one execution test checks Id/Name/Internal round trip but does not verify int keys 3 and 7 map to the right members (only array length 8), so swapped key assignments would survive.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:63",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs: CreateMember(target, intKey: intKey,...) -> intKey: intKey + 0 swap of keys 3 and 7; expected to survive because round trip is symmetric and only array length 8 is asserted"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities guard excluding [GeneratedMessagePackFormatter] classes from hand-written FormatterDescriptor registration is not specifically tested; GeneratedFormattersAreRegisteredInGeneratedResolver may pass without it, since a duplicate registration might not break the type check.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:38 remove-guard: delete the '!symbol.GetAttributes().Any(...GeneratedMessagePackFormatterAttributeName)' clause; check whether any test in the diff fails (expected to survive unless duplicate registration causes a compile error)"
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No snapshot/regeneration test covers the template change for the IsUserDeclaredFormatter 'partial class' vs 'internal sealed class' branch in the int-key and string-key templates; only execution tests cover it, and no test asserts that non-user formatters are unchanged. A generator snapshot test would catch accidental regressions of the existing output.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests (MessagePack.SourceGenerator.Tests) to confirm existing generated output is unchanged, and add a snapshot for a [GeneratedMessagePackFormatter] class"
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25607,
+  "output_tokens": 1840,
+  "ms": 12912,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

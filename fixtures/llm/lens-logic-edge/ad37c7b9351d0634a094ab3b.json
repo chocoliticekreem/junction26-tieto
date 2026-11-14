@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "`ReportIfLocatedInCompilation` claims to drop diagnostics about metadata members, but it only drops diagnostics that have a source location in another compilation. For a member of a PE-referenced type, the new `FirstOrDefault()` / `GetPropertyIdentifierLocation` calls return null, so `Diagnostic.Create` gets `Location.None`. `Location.None.IsInSource` is false, so the guard `!diagnostic.Location.IsInSource || ...` passes and the diagnostic is reported. Concrete input: `lib` (built without the MessagePack analyzer, e.g. analyzer assets excluded, F#, or an older package) declares `[MessagePackObject] public struct Item<T> { [Key(0)] public string Key {get;set;} public int Unkeyed {get;set;} }`; `app` uses `Item<int>` as a keyed member. On base this crashed. On head the consuming assembly gets a location-less MsgPack004 (an Error, L2) about a type it does not own. The same applies to MsgPack003/BothStringAndIntKeyAreNull and other Location.None reports. This contradicts L8 (the defining assembly owns validating its own types) and breaks the app build instead of producing a clean one.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.MetadataGenericStructDiagnosticsTests.MetadataGenericStruct_UnkeyedMember_NotReportedInConsumer. It emits Lib to a PE image, references it from App, and runs MsgPack00xMessagePackAnalyzer. It asserts no MsgPack004 is reported. Expected to fail on head with a MsgPack004 at Location.None."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/MetadataGenericStructDiagnosticsTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing System.IO;\nusing FluentAssertions;\nusing MessagePack.SourceGenerator.Analyzers;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class MetadataGenericStructDiagnosticsTests(ITestOutputHelper logger)\n{\n    private const string LibSource = \"\"\"\n        using MessagePack;\n        namespace Lib\n        {\n            [MessagePackObject]\n            public struct Item<T>\n            {\n                [Key(0)]\n                public string Key { get; set; }\n\n                public int Unkeyed { get; set; }\n            }\n        }\n        \"\"\";\n\n    private const string AppSource = \"\"\"\n        using MessagePack;\n        using Lib;\n        namespace App\n        {\n            [MessagePackObject]\n            public class Cmd\n            {\n                [Key(0)]\n                public Item<int> Member { get; set; }\n            }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task MetadataGenericStruct_UnkeyedMember_NotReportedInConsumer()\n    {\n        CSharpParseOptions parseOptions = new CSharpParseOptions(LanguageVersion.Latest);\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        MetadataReference[] baseRefs = Enumerable.Concat<MetadataReference>(framework, ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToArray();\n\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(LibSource, parseOptions) },\n            baseRefs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        using MemoryStream stream = new MemoryStream();\n        var emitResult = lib.Emit(stream);\n        foreach (Diagnostic d in emitResult.Diagnostics)\n        {\n            logger.WriteLine(\"lib: \" + d.ToString());\n        }\n\n        emitResult.Success.Should().BeTrue();\n        MetadataReference libRef = MetadataReference.CreateFromImage(stream.ToArray());\n\n        CSharpCompilation app = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(AppSource, parseOptions) },\n            baseRefs.Concat(new[] { libRef }),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new MsgPack00xMessagePackAnalyzer());\n        ImmutableArray<Diagnostic> diagnostics = await app.WithAnalyzers(analyzers).GetAnalyzerDiagnosticsAsync();\n        foreach (Diagnostic d in diagnostics)\n        {\n            logger.WriteLine(\"app: \" + d.ToString());\n        }\n\n        diagnostics.Where(d => d.Id == \"AD0001\").Should().BeEmpty();\n        diagnostics.Where(d => d.Id == \"MsgPack004\").Should().BeEmpty(\"members of types defined in a referenced assembly are validated by that assembly, not the consumer\");\n    }\n}\n",
+        "test_names": [
+          "MetadataGenericStruct_UnkeyedMember_NotReportedInConsumer"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 9575,
+  "output_tokens": 8767,
+  "ms": 79034,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

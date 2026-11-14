@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "ReportIfLocatedInCompilation drops every diagnostic whose location is not IsInSource within the compilation. Diagnostics created with a null location (e.g. FirstOrDefault()?.GetSyntax().GetLocation() yielding null, or Location.None) are silently dropped. This also changes behavior for existing same-assembly cases where a diagnostic was previously reported with a location-less/None location (e.g. type-level diagnostics using GetIdentifierLocation that returns null for partial/unusual declarations). Users could lose diagnostics (MsgPack003/004/005 etc.) they previously saw.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] type whose diagnostic location resolves to null/Location.None in the same compilation (e.g. via GetIdentifierLocation returning null) - assert the diagnostic is still reported on head as on base. Also run the full analyzer test suite (MsgPack003-018) for regressions."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Wrapping reportDiagnostic changes filtering for ALL diagnostics globally, not just metadata types. A diagnostic whose location is in a syntax tree from the compilation but obtained from a different compilation instance (e.g. generator-produced trees, or the compilation passed to TypeCollector differing from the analyzer's compilation) is now dropped. This is a broader filter than the crash fix required.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read TypeCollector constructor and callers that pass a compilation: confirm the compilation used in ContainsSyntaxTree is the same one whose trees produce diagnostic locations; compare reported diagnostics in the existing analyzer test suite on base vs head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The MemberNeedsKey / key-is-null check is now skipped entirely for types without declaring syntax. Closed generic types from metadata whose members lack [Key] no longer produce anything. This is consistent with L8, but the guard also skips the AOTDerivedKeyAttribute diagnostic and the subsequent logic in that block; any non-diagnostic side effect in that block (e.g. suppress/continue behavior) for metadata types is changed, possibly altering which members are included in the generated formatter for the closed generic.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:916",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run generator snapshot tests with a closed generic struct from a referenced assembly having an unkeyed public member; compare the generated output on base (crash-free variant) vs head to verify the member set is unchanged."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7294,
+  "output_tokens": 1056,
+  "ms": 8268,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

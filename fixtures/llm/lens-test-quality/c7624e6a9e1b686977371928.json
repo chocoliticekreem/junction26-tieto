@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The unit tests never cover a formatted type that carries [MessagePackObject]/[Key]. Surrogate mode is exercised only through user-written surrogates. The requirement says T's own MessagePack attributes must be honoured, and the collector ignores them, so no test would fail on that gap. (L19 says to follow the requirement.)",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:100",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test where T is annotated with [MessagePackObject] and [Key(5)] members. Serialize it with the generated formatter and assert the wire layout uses the declared keys. This is expected to fail because the collector always uses contractless or surrogate members."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test for the contractless ordering rule is too weak. The hand-written serialization tests only check the fixmap header and the presence of key names in JSON. The OrderBy(Name) call could be deleted (declaration order instead) and every test would still pass, because contractless deserialization is order-insensitive and Contains checks ignore order.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:139",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:139 delete-statement: .OrderBy(m => m.Name, StringComparer.Ordinal) -> removed; expected to survive because no test asserts the key order in the bytes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate-mode execution test only checks the array header length. A mutation that gives members the wrong key (e.g. using members.Count instead of the declared intKey) would not be noticed, because the round trip is symmetric. No test checks that the Id value sits at slot 3 or the Name value at slot 7.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:62",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:~222 swap: CreateMember(target, intKey: intKey, ...) -> CreateMember(target, intKey: members.Count, ...); expected to survive because the array length assertion still holds for 2 members only if MaxKey is changed, and the round trip is symmetric."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "No test covers several guards: the NoDeserializingConstructor path, the inaccessible-type and generic-type rejection, the KeysMustBeUnique path, the MemberNeedsKey path, or the all-string-key surrogate. Removing those guards would leave every test green.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:69",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:69 remove-guard: the isClass && !InstanceConstructors.Any(...) check -> removed; expected to survive because no test uses a type without a parameterless constructor."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities change that excludes [GeneratedMessagePackFormatter] classes from the hand-written formatter registration has no direct test. The registration test only checks the resolver returns the right type, which could also pass if the formatter were registered twice. A duplicate registration could cause a compile error, but there is no negative assertion.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:38 remove-guard: the !symbol.GetAttributes().Any(...) check -> removed; expected to survive only if the duplicate registration is deduplicated, otherwise it fails to compile. This is unverified."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Generator snapshot tests were not added for the new templates (IsUserDeclaredFormatter output). The Tests project asserts only diagnostics, and it uses hand-written members in them. The partial class output for the int-key template path is covered only indirectly by the execution tests, and the string-key template change is not clearly covered by the surrogate test.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests over a [GeneratedMessagePackFormatter] class and check for generated output files. No snapshot exists, so changes to the template go unverified."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 25938,
+  "output_tokens": 1761,
+  "ms": 12482,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

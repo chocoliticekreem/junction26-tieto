@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The attribute is added to the public MessagePack.Annotations API and four new diagnostics (MsgPack019-022) are added; the analyzer release notes, docs index and per-diagnostic docs are updated, which matches convention. README documents the feature. Contractless-by-default skipping read-only members is a deliberate scoped choice (L19: no preference; follow the requirement), so it is not flagged.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L19] no preference on get-only members in contractless mode; follow the requirement. [L18] contractless default plus optional SurrogateType was acknowledged as acceptable."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change generates a formatter in the consuming assembly for a type from a referenced assembly, which looks like it contradicts the TypeCollector early-return for metadata types. [L11] says that early return is deliberate for the automatic path, and this change adds a separate explicit opt-in path (GeneratedFormatterCollector), so it does not violate the ledger.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] referenced-assembly types are not analysed by default; the new explicit attribute path is separate and does not change TypeCollector.CollectCore."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "MsgPack019-022 diagnostics are reported by the generator's RegisterSourceOutput, but descriptors are also added to the analyzer's SupportedDiagnostics; the analyzer itself never reports them. Usage and enablement are inconsistent with how MsgPack0xx diagnostics are normally reported.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:378",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that MsgPack00xMessagePackAnalyzer.Initialize registers no action that reports GeneratedFormatterMustBePartial and the other three new descriptors; they are only emitted from MessagePackGenerator."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Implemented: contractless by default over public read-write members only, plus an optional SurrogateType; the formatted type's own MessagePack attributes ([MessagePackObject], [Key], [DataContract]) are NOT read."
+      },
+      {
+        "label": "B",
+        "summary": "The requirement says that if T carries MessagePack attributes they are honoured, and that no [DataContract]/[MessagePackObject] means contractless. B requires GeneratedFormatterCollector to check T for [MessagePackObject]/[Key]/[IgnoreMember]/[DataContract]/[DataMember] and use those keys when present, falling back to contractless otherwise; the surrogate would be optional or omitted."
+      }
+    ]
+  },
+  "input_tokens": 29661,
+  "output_tokens": 1058,
+  "ms": 8392,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

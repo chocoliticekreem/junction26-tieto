@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Ledger L12 records the decision to add an opt-out setting for ExcludeFromCodeCoverage, but the change adds only unconditional (framework-guarded) emission and no opt-out option. The README also documents no setting.",
+        "location": "README.md:1639",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L12] 'Add an opt-out setting' vs. diff: no new generator option or property in any template or README; every template emits the attribute unconditionally under the #if guard."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The TransformUtilities.EmitNestingTypesAndNamespaces change from \"{\" to \"{\\r\\n\" when constraints exist is unrelated to the requirement. It alters output for nested generic-constrained types and likely shifts the snapshots. It is probably needed because the new #if lines must start on their own line, but it is unexplained.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests, including the nested generic constraint cases, and confirm the only diffs are the added attribute and a newline after the brace."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The decimal formatter now passes StandardFormat('F') in StandardClassLibraryFormatter. This changes the serialized bytes for decimals (no exponent notation) and is entirely unrelated to the code-coverage requirement, which is a scope creep in a serializer-format path. L8 notes numeric serialization is bug-prone.",
+        "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize decimals such as 1E-10, 1E+20 and 79228162514264337593543950335m with base-built and head-built MessagePack and compare bytes; also check whether the 'F' output fits MaxFixStringLength."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README states the attribute is emitted only where available, but the #if !NETSTANDARD2_0 && !NETFRAMEWORK guard misses targets such as netcoreapp2.x and older .NET Core and .NET Standard 2.1 variants, where the attribute may be absent or present. The guard is also not scoped to 'all generated code', and the README says 'formatters and resolvers' only.",
+        "location": "README.md:1639",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Compare the guard symbols in the templates against the target frameworks that MessagePack consumers can use, and check ExcludeFromCodeCoverage availability per TFM."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Unconditional emission with no setting: the attribute goes on all generator-emitted types (formatters, resolvers, helper classes) behind a TFM #if guard, and there is no opt-out property, matching the change as implemented."
+      },
+      {
+        "label": "B",
+        "summary": "Same emission, but with an opt-out setting, such as a MessagePackGeneratedCodeCoverageExclusion option on the generator attribute or an MSBuild property, that suppresses the attribute. Templates would take an option flag and wrap the attribute in a conditional; snapshots would be added for both modes."
+      }
+    ]
+  },
+  "input_tokens": 13952,
+  "output_tokens": 1193,
+  "ms": 10627,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

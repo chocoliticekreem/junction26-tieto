@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Off-by-one change in DepthStep: `>=` became `>`, so the effective maximum nesting depth grows by one. Input nested exactly MaximumObjectGraphDepth+1 deep used to throw InsufficientExecutionStackException and now deserializes. This is a security-relevant behavior change on untrusted data, and it has nothing to do with the analyzer/SuppressSourceGeneration requirement. Users who set a small limit, or who rely on the documented 500 limit, will see different accept/reject behavior without opting in.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Set MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(N) (e.g. N=3). Deserialize an object[] nested N+1 levels deep, built with MessagePackWriter. On base it throws InsufficientExecutionStackException. On head it succeeds. Compare the outcome of base and head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` on a key-kind mismatch changes generator output for types that mix int and string keys. Previously the mismatched member fell through and was added to the member dictionaries, and the formatter was generated with it. Now that member is dropped from the generated formatter, so the emitted code differs for users who check in or snapshot generator output. The MsgPack diagnostic is still reported, so the build already fails for these types, but the output change is still visible. This is only partly tied to the requirement, which asks for the analyzer to work under SuppressSourceGeneration.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests on a [MessagePackObject] type with one [Key(0)] member and one [Key(\"a\")] member. Compare the generated formatter on base and head. Head omits the mismatched member."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate [Key] values (int or string) are now silently deduplicated with ContainsKey, so the first member wins and the later one is dropped from the generated formatter. Base threw ArgumentException on the duplicate Add, which the generator or analyzer may have surfaced as a crash. If the duplicate-key diagnostic (MsgPack006) is reported elsewhere, this is safe. If it is not, a generated formatter can now silently lose a member, with no wire-format error. The diff does not show whether MsgPack006 is always reported before this point.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test on a [MessagePackObject] type with two members both marked [Key(0)]. Assert MsgPack006 is reported and that no exception is thrown. Also run the generator on the same type and check the generated Serialize for the dropped member."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5785,
+  "output_tokens": 1072,
+  "ms": 8524,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

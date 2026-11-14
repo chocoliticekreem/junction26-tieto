@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Requirement says that if T carries MessagePack attributes (e.g. [MessagePackObject]/[Key]/[DataContract]) they are honoured. The collector ignores attributes on T entirely: it always uses contractless over public read-write members, or the surrogate. Attributes on T are never read, so the acceptance criterion is not met. Ledger L18 says to follow the requirement, so it does not excuse this.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:113",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a generator/execution test where T is decorated with [MessagePackObject] and [Key(5)] on a member, with a [GeneratedMessagePackFormatter] class for it. Assert the serialized bytes use the declared key (array layout) rather than a string-key map."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless mode skips public get-only properties and readonly fields. The requirement says contractless over public members, and ContractlessStandardResolver serializes them via a matching constructor. Constructor parameters are also never matched, so types with only parameterized constructors are rejected (MsgPack009). L19 says to follow the requirement.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:226",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with a public get-only property using ContractlessStandardResolver and using the generated formatter, then compare the bytes. The generated output omits the member."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute lives in MessagePack.Annotations. A new public API plus the new MsgPack019-022 diagnostics require PublicAPI.Unshipped entries. The diff shows none for the new attribute, and the Unshipped analyzer release notes only list rules. Convention-wise this is likely missing.",
+        "location": "src/MessagePack.Annotations/Attributes.cs:142",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check whether PublicAPI.Unshipped.txt exists for MessagePack.Annotations and lacks GeneratedMessagePackFormatterAttribute entries."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The collector reports MsgPack009 (NoDeserializingConstructor) and other existing diagnostics (MemberNeedsKey, DoNotMixStringAndIntKeys, KeysMustBeUnique) in the same way as for [MessagePackObject] types. Types from referenced assemblies being skipped by the TypeCollector is deliberate. Per L11, the consuming assembly generating no formatter for a metadata type is not a defect, and this attribute is an explicit opt-in.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:74",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] metadata-only types get no automatic formatter; the explicit attribute is a separate opt-in path, so this is fine."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "The change implements contractless-by-default plus an optional SurrogateType. Attributes on T are ignored. Surrogate keys are matched by name and type. Only classes and structs with a parameterless constructor are supported."
+      },
+      {
+        "label": "B",
+        "summary": "Contractless-only with no surrogate. The collector reads [MessagePackObject]/[Key]/[DataContract] on T when present, and falls back to contractless otherwise. The SurrogateType property, MsgPack022 and the surrogate code are removed. T's own attributes drive keys."
+      }
+    ]
+  },
+  "input_tokens": 29661,
+  "output_tokens": 1331,
+  "ms": 9731,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

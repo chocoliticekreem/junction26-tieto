@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Requirement says that if T carries MessagePack attributes (e.g. [MessagePackObject]/[Key]/[DataContract]) they are honoured. The collector only uses contractless mode or the surrogate and never reads attributes on T. Ledger L19 says to follow the requirement, so this is an unmet acceptance criterion.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:78",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test in which T is declared in the same compilation with [MessagePackObject] and [Key(1)]/[Key(0)] members, with a [GeneratedMessagePackFormatter] class for it. Serialize and assert the output is an array with the attribute keys, not a string-key map. It will fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless ordering and membership (name-sorted, read-write-only) differ from ContractlessStandardResolver's wire format (declaration order, get-only members). Ledger L20 accepts this, so it is deliberate.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:152",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L20] Name-sorted read-write-only is acceptable; [L18] contractless by default with optional surrogate."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The attribute is marked [Conditional(\"NEVERDEFINED\")] so it is not emitted into user assemblies. This is deliberate for generator-only attributes.",
+        "location": "src/MessagePack.Annotations/Attributes.cs:164",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L14] Attributes consumed only by the analyzer or source generator are marked Conditional(\"NEVERDEFINED\") on purpose."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new diagnostics MsgPack019-022 are declared in the analyzer and listed in AnalyzerReleases.Unshipped.md. However, the analyzer never reports them. They are only reported via the generator's RegisterSourceOutput path, and the generator does not declare SupportedDiagnostics. Whether analyzer-only hosts or IDE live analysis show them is unverified.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:318",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that MsgPack00xMessagePackAnalyzer has no RegisterSymbolAction handling GeneratedMessagePackFormatterAttribute, and that the diagnostics come only from MessagePackGenerator.cs. This relies on reading the code alone."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Contractless by default with an optional SurrogateType whose [Key]/[IgnoreMember] annotations define the contract. Attributes on T are ignored. The change implements this."
+      },
+      {
+        "label": "B",
+        "summary": "Contractless by default, but attributes on T ([MessagePackObject]/[Key]/[DataContract]) are honoured when present, via the existing TypeCollector path. There is no surrogate."
+      }
+    ]
+  },
+  "input_tokens": 30003,
+  "output_tokens": 1186,
+  "ms": 8498,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

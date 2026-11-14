@@ -1,0 +1,47 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "No visible hunk changes how `SuppressSourceGeneration = true` types are gated in the analyzer. The only source changes are a `continue` after the mixed-key diagnostic and duplicate-key guards on the `intMembers`/`stringMembers` dictionaries. If the 3.1.1 regression is an early exit or skip for suppressed types elsewhere in TypeCollector or the analyzer, this change does not restore diagnostics such as MsgPack004 for them. The first acceptance criterion would then be unmet.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SuppressedSourceGenerationAnalyzerTests.MissingKey_OnSuppressedType_ReportsMsgPack004 on head. It must pass, reporting MsgPack004 on the unkeyed field of a [MessagePackObject(SuppressSourceGeneration = true)] type with no AD0001."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys skips all remaining per-member processing for the offending member. That includes the member-type serializability check and the [MessagePackFormatter] lookup, so diagnostics such as MsgPack003 on that member's type are no longer reported. The README added in this change says the analyzer still checks that member types are serializable for these types.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1148",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Write a test with a suppressed [MessagePackObject] type that has [Key(0)] public int A; and [Key(\"b\")] public NonSerializable B; where NonSerializable has no attributes. On base (absent any crash), MsgPack003 is expected on B's type. On head, check whether only MsgPack005 appears and MsgPack003 is missing."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SuppressedSourceGenerationAnalyzerTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis.Testing;\nusing VerifyCS = CSharpSourceGeneratorVerifier<MessagePack.SourceGenerator.MessagePackGenerator>;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SuppressedSourceGenerationAnalyzerTests\n{\n    private static async Task RunAsync(string source)\n    {\n        var test = new VerifyCS.Test\n        {\n            TestBehaviors = TestBehaviors.SkipGeneratedSourcesCheck,\n        };\n        test.TestState.Sources.Add(source);\n        await test.RunAsync();\n    }\n\n    [Fact]\n    public async Task MissingKey_OnSuppressedType_ReportsMsgPack004()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A;\n\n                public int {|MsgPack004:B|};\n            }\n            \"\"\";\n        await RunAsync(source);\n    }\n\n    [Fact]\n    public async Task DuplicateIntKeys_OnSuppressedType_ReportsMsgPack005()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A;\n\n                [Key(0)]\n                public int {|MsgPack005:B|};\n            }\n            \"\"\";\n        await RunAsync(source);\n    }\n\n    [Fact]\n    public async Task MixedKeys_OnSuppressedType_ReportsMsgPack005()\n    {\n        string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject(SuppressSourceGeneration = true)]\n            public class MyObject\n            {\n                [Key(0)]\n                public int A;\n\n                [Key(\"b\")]\n                public int {|MsgPack005:B|};\n            }\n            \"\"\";\n        await RunAsync(source);\n    }\n}\n",
+        "test_names": [
+          "MissingKey_OnSuppressedType_ReportsMsgPack004",
+          "DuplicateIntKeys_OnSuppressedType_ReportsMsgPack005",
+          "MixedKeys_OnSuppressedType_ReportsMsgPack005"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": false,
+    "interpretations": []
+  },
+  "input_tokens": 9892,
+  "output_tokens": 4648,
+  "ms": 41560,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

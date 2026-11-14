@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The decimal formatter change (adding StandardFormat('F')) alters the serialized bytes of decimals, but no test in the diff covers it. It is unrelated to the requirement and would survive any mutation.",
+        "location": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack/Formatters/StandardClassLibraryFormatter.cs:148 delete-statement: remove `new System.Buffers.StandardFormat('F')` argument; expected to survive because no test hunk touches decimal serialization. Also byte-diff: serialize decimal values like 1E-20 or 1E+28 with base and head and compare bytes."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests only check text containment. Neither test compiles the generated output, so they would not catch a broken #if guard, broken line layout, or the attribute landing in a position that fails to compile. The requirement says generated code must still compile on every target framework.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:97",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 delete-statement: revert `{\\r\\n` -> `{`; expected to survive because the tests check only attribute text and do not compile or assert the surrounding layout."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests assert only that the attribute appears at least once per file. A file with several emitted types (the resolver has FormatterCache and GetFormatterHelper, plus the resolver class itself) would still pass if one type's attribute were dropped. The count of attributes is never compared to the count of emitted types.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:73",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:48 delete-statement: remove the attribute and guard on GetFormatterHelper; expected to survive because the resolver file still contains other attributes, so the Contains and count>0 checks pass."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test source contains no generic types, nested types, or types with constraints. It therefore never exercises the nesting path where the TransformUtilities `{\\r\\n` change matters, or the generic formatter path.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:15",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap: `{\\r\\n` -> `{` for the constrained case; expected to survive because TestSource has no nested generic types with constraints."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 13150,
+  "output_tokens": 1069,
+  "ms": 9160,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

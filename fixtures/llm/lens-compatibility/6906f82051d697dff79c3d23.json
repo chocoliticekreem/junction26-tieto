@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The case for values in 128..255 was removed from the uint-writing switch in MessagePackPrimitives, so those values now go to TryWriteUInt16 and are encoded as 0xcd + 2 bytes instead of the canonical 0xcc + 1 byte. This changes the serialized bytes for every user of that method and is unrelated to the generator crash. Payloads grow by 1 byte, and byte-exact comparisons, hashes and signatures change.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:476",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize values 127, 128, 200 and 255 (as uint, or as the integer type that reaches this method) using base-built and head-built MessagePack. Compare the bytes: base gives CC 80, CC C8 and CC FF, while head gives CD 00 80, CD 00 C8 and CD 00 FF."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper in TypeCollector drops every diagnostic whose location is not in the compilation's syntax trees. This includes diagnostics with Location.None, which is what AOTDerivedKeyAttribute or other diagnostics produce when the location is null. Previously these were reported, so users may lose existing MsgPack004/MemberNeedsKey and similar diagnostics. For example, MemberNeedsKey on a source type whose location resolves to null is now suppressed. The filter also applies to all diagnostics, not just those from metadata symbols.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run the existing analyzer tests (MsgPack003/004/005/etc.) on source types, plus a case with a diagnostic using a null or None location. Verify that the expected diagnostics still appear. Also check for diagnostics reported on partial or generated trees outside the compilation."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7791,
+  "output_tokens": 712,
+  "ms": 6065,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

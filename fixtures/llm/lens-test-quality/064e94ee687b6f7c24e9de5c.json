@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "GetPropertyIdentifierLocation still indexes DeclaringSyntaxReferences[0] and casts unguarded, despite its doc saying it returns null for metadata. For a metadata property this throws IndexOutOfRangeException, so the BothStringAndIntKeyAreNull path is not fixed. The wrapper ReportIfLocatedInCompilation only filters after the location is computed, so it cannot prevent the throw. No test exercises this path.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1433 delete-statement: `property.DeclaringSyntaxReferences[0]` -> `property.DeclaringSyntaxReferences.FirstOrDefault()?`; expected to survive because no test in the diff has a metadata generic struct with a property whose Key attribute yields a null int and string key. Also write a test with that shape (e.g. [Key] with a null argument) that fails with IndexOutOfRangeException."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new filter in ReportIfLocatedInCompilation has no test that kills a mutation of its condition. The tests only assert zero diagnostics, so negating or removing the guard (always report) would still pass whenever the unguarded diagnostic is never produced. Nothing proves that metadata-located diagnostics are dropped or that source-located ones are still reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1445 remove-guard: `if (diagnostic.Location.IsInSource && this.compilation.ContainsSyntaxTree(...))` -> `if (true)`; expected to survive because the tests only assert no diagnostics, and a diagnostic with Location.None would not make the tests fail. No positive test confirms in-source diagnostics (MsgPack004) are still reported through the wrapper."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Tests do not fail on the specific crash path. In the UnkeyedMember test, Unkeyed is public and has no Key, so it reaches the MemberNeedsKey line, but the test gives no evidence that this was the throwing line. The other two tests cover no diagnostic path at all. The FirstOrDefault()?.GetSyntax() change at 1077 is only reachable via the unkeyed test. Because Diagnostic.Create is given a null location, Location.None is used and the wrapper drops it, so a regression is only caught indirectly.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:557",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077 delete-statement: `.FirstOrDefault()?.GetSyntax().GetLocation()` -> `[0].GetSyntax().GetLocation()`; should be killed by ClosedGenericStruct_FromMetadataReference_UnkeyedMember. Run it to confirm. Similarly mutate line 985 to confirm that nothing covers it."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The tests do not cover the same-assembly regression row of the requirement. There is no test that an in-source closed generic struct with an unkeyed member still reports MsgPack004. Since the reportDiagnostic wrapper now filters every diagnostic, a wrong filter could silently drop legitimate analyzer diagnostics.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GenericsFormatterTests.cs:499",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a test with a same-assembly `MyGenericStruct<int>` containing an unkeyed public member and expect MsgPack004. It should pass on both base and head. Run it to verify the wrapper does not suppress the diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 10091,
+  "output_tokens": 1504,
+  "ms": 10636,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

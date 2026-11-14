@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "ReportIfLocatedInCompilation only drops diagnostics whose location is in source of another compilation. Diagnostics with no location (Location.None, from FirstOrDefault() null) pass the filter (IsInSource is false). Diagnostics for metadata-only closed generic structs (MsgPack004 MemberNeedsKey, MsgPack003 etc.) are therefore still reported with no location in users' builds, so a defining assembly's non-annotated members could surface as new location-less errors/warnings in the consuming project. MsgPack004 is an Error (L2), so a previously silent build (generator crashed) may now fail. The filter condition is inverted relative to its doc comment.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1443",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: lib defines generic struct Item<T> with a public member lacking [Key] and [IgnoreMember]; app has [MessagePackObject] Cmd with Item<int> member. Assert no MsgPack004/MsgPack003 diagnostics are reported in app. Expect failure due to Location.None diagnostics passing the filter."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The wrapper only affects the analyzer callback path. The reporting of diagnostics is wrapped, but the actual crash sites in GetObjectInfo for metadata symbols (the other DeclaringSyntaxReferences[0] sites noted by reporter, around line 735 and similar) are not changed in the diff. If any remain, the IndexOutOfRange still fires for closed generic structs. Also, the generator path passes null reportDiagnostic, so the guard does nothing there. The requirement's CS8785 fix depends on the remaining sites being safe.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:735",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generator test with the two-project repro (lib Item<T> record struct/struct, app Cmd with Item<int>). Assert no CS8785 and that GeneratedMessagePackResolver is emitted; also run the analyzer for AD0001."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Closed generic metadata structs would now be fully analyzed and could generate a formatter in the consuming assembly, a generated-output change for users with Item<T> from referenced assemblies. Existing 'ok' cases such as class Item<T> should remain byte-identical in the generated output.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshot tests for generic class from referenced assembly and non-generic struct cases; confirm no snapshot changes."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 7250,
+  "output_tokens": 1023,
+  "ms": 8183,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

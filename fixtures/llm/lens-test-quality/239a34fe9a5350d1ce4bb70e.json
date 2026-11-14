@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The MessagePackSecurity.DepthStep change from >= to > is an unrelated off-by-one behavior change with no test in the diff; no test would fail if it were reverted or mutated further. It also alters the security depth limit, which is out of scope for the requirement.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack/MessagePackSecurity.cs:233 off-by-one: `reader.Depth > this.MaximumObjectGraphDepth` -> `reader.Depth >= this.MaximumObjectGraphDepth`; expected to survive because no test in the diff exercises DepthStep or the depth boundary."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The `continue` added after the DoNotMixStringAndIntKeys diagnostic in the property loop is not pinned by any test. MixedKeyKindsAreReportedWithoutAnalyzerFailure only expects MsgPack005 on the second member and would pass whether or not the member is skipped. The same applies to the field-loop `continue`, and there is no mixed-key test with a member in the field path.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008 delete-statement: `continue;` -> removed; expected to survive because the mixed-key test asserts only the diagnostic, not that the member is skipped, and the ContainsKey guard may mask any failure. Repeat at line 1148 for the field loop, which has no mixed-key test."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ContainsKey guards before intMembers.Add and stringMembers.Add in the field loop are not covered: all duplicate-key tests use properties, so removing the guard in the field loop would not fail any test.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1163 remove-guard: `if (!intMembers.ContainsKey(member.IntKey)) { Add }` -> unconditional Add; expected to survive because every duplicate-key test uses properties (`{ get; set; }`), never fields. Same for stringMembers at line 1179."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The key requirement, that the analyzer does not work with SuppressSourceGeneration=true, comes from a regression in 3.1.1, but no test checks that the analyzer-side gating itself changed. The tests are not shown to fail on base: MemberWithoutKey, AllowPrivate and MemberType may already pass on base if the real fix is in code outside the shown hunks. The only source hunks are duplicate-key guards, so tests like MsgPack004 and MsgPack003 likely pass on base and do not reproduce the bug.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs:19",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run SuppressSourceGenerationAnalyzerTests on the base commit. MemberWithoutKeyIsReported, AllowPrivateRequiredIsReported and MemberTypeMustBeMessagePackObjectIsReported should fail on base if they reproduce the bug; if they pass, they are not regression tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "NoFormatterIsGeneratedForSuppressedType asserts only that GetFormatter returns null on the generated resolver. The 'generation stays suppressed' criterion is not otherwise verified, e.g. via a generator snapshot, so it would not catch an extra emitted file.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/SuppressedSourceGenerationTests.cs:20",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests with a SuppressSourceGeneration=true type and confirm no formatter or resolver entry is emitted for it."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 8894,
+  "output_tokens": 1549,
+  "ms": 11507,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

@@ -1,0 +1,54 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The Str8 branch was removed from `MessagePackPrimitives.TryWriteStringHeader`. Strings of 32–255 UTF-8 bytes now get a 3-byte Str16 header (0xda) instead of a 2-byte Str8 header (0xd9). Example: byteCount=100 now gives bytesWritten=3 and first byte 0xda, not bytesWritten=2 and 0xd9. A 2-byte destination with byteCount=200 used to succeed and now returns false. This changes serialized output for very common string lengths, makes it larger, and breaks byte-for-byte compatibility with 3.1.0. It is unrelated to the analyzer requirement and violates 'behaviour does not change'.",
+        "location": "src/MessagePack/MessagePackPrimitives.Writers.cs:916",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.StringHeaderStr8Receipts. StringHeader_100Bytes_UsesStr8 should fail on head (written==3, header 0xda). StringHeader_200Bytes_FitsTwoByteBuffer should fail on head (returns false). Confirm with a byte-diff of MessagePackSerializer.Serialize(new string('a', 100)) between base and head: 0xd9 0x64 versus 0xda 0x00 0x64."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Duplicate keys are now dropped silently: `if (!intMembers.ContainsKey(...))` keeps the first member and drops the second. Example: two members both marked `[Key(0)]`, or two marked `[Key(\"a\")]`. On base, `Dictionary.Add` threw, so the problem surfaced as a generator/analyzer failure. On head, unless a separate duplicate-key diagnostic exists elsewhere, the generator emits a formatter that never serializes the second member. That is silent data loss, and it diverges from DynamicObjectResolver, which throws 'key is duplicated' at run time. The guard hides the condition instead of reporting it.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Generate a resolver for `[MessagePackObject] public class C { [Key(0)] public int A {get;set;} [Key(0)] public int B {get;set;} }` with the analyzers enabled. Check whether any error diagnostic is reported. If none is, check that the generated CFormatter never references `B`. Same check for string keys at TypeCollector.cs:1039, and for the second code path at lines 1163 and 1179."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new `continue` after DoNotMixStringAndIntKeys skips the rest of the member's processing, not just its dictionary insertion. That includes the [MessagePackFormatter] attribute validation and member-type collection that follow. Diagnostics that would have been reported for that member's type or formatter are now dropped, but only when a mixed-key error is also present.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read TypeCollector.cs lines 1008 and 1148. Everything after the `continue` in the loop body, including the messagePackFormatter lookup and its diagnostics, no longer runs for a member with a mismatched key kind."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/StringHeaderStr8Receipts.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class StringHeaderStr8Receipts\n{\n    [Fact]\n    public void StringHeader_100Bytes_UsesStr8()\n    {\n        byte[] buffer = new byte[8];\n        bool ok = MessagePackPrimitives.TryWriteStringHeader(100u, buffer.AsSpan(), out int written);\n        Assert.True(ok);\n        Assert.Equal(2, written);\n        Assert.Equal(MessagePackCode.Str8, buffer[0]);\n        Assert.Equal((byte)100, buffer[1]);\n    }\n\n    [Fact]\n    public void StringHeader_200Bytes_FitsTwoByteBuffer()\n    {\n        byte[] buffer = new byte[2];\n        bool ok = MessagePackPrimitives.TryWriteStringHeader(200u, buffer.AsSpan(), out int written);\n        Assert.True(ok);\n        Assert.Equal(2, written);\n        Assert.Equal(MessagePackCode.Str8, buffer[0]);\n        Assert.Equal((byte)200, buffer[1]);\n    }\n}\n",
+        "test_names": [
+          "StringHeader_100Bytes_UsesStr8",
+          "StringHeader_200Bytes_FitsTwoByteBuffer"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8797,
+  "output_tokens": 6250,
+  "ms": 59276,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

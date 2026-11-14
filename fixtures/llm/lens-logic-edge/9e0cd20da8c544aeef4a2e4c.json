@@ -1,0 +1,34 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "`DepthStep` changed from `>=` to `>`, an off-by-one that admits one more nesting level than `MaximumObjectGraphDepth`. With the default `UntrustedData` limit of 500, a 501-deep graph is now accepted. A configured limit of N now allows N+1 levels, and a limit of 0 now allows one level. This weakens the stack-depth protection described in L9. It is unrelated to REQ-2234 (analyzer behaviour with `SuppressSourceGeneration`), and the acceptance criteria require unrelated behaviour to stay unchanged.",
+        "location": "src/MessagePack/MessagePackSecurity.cs:233",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.SecurityDepthStepOffByOneTests. With `MaximumObjectGraphDepth = 1` and `reader.Depth = 1`, `DepthStep` throws `InsufficientExecutionStackException` on base but not on head. With limit 0 and depth 0 it also throws on base only."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/SecurityDepthStepOffByOneTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack;\n\nnamespace Receipts.GeneratedTests;\n\npublic class SecurityDepthStepOffByOneTests\n{\n    [Fact]\n    public void DepthStep_ThrowsWhenDepthEqualsMaximum()\n    {\n        MessagePackSecurity security = MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(1);\n        var reader = new MessagePackReader(new ReadOnlyMemory<byte>(new byte[] { 0xc0 }));\n        reader.Depth = 1;\n        bool threw = false;\n        try\n        {\n            security.DepthStep(ref reader);\n        }\n        catch (InsufficientExecutionStackException)\n        {\n            threw = true;\n        }\n\n        Assert.True(threw, \"DepthStep must reject stepping beyond MaximumObjectGraphDepth (depth 1 with max 1).\");\n    }\n\n    [Fact]\n    public void DepthStep_ZeroMaximumRejectsAnyNesting()\n    {\n        MessagePackSecurity security = MessagePackSecurity.UntrustedData.WithMaximumObjectGraphDepth(0);\n        var reader = new MessagePackReader(new ReadOnlyMemory<byte>(new byte[] { 0xc0 }));\n        reader.Depth = 0;\n        bool threw = false;\n        try\n        {\n            security.DepthStep(ref reader);\n        }\n        catch (InsufficientExecutionStackException)\n        {\n            threw = true;\n        }\n\n        Assert.True(threw, \"With MaximumObjectGraphDepth = 0 no nesting step may be allowed.\");\n    }\n}\n",
+        "test_names": [
+          "DepthStep_ThrowsWhenDepthEqualsMaximum",
+          "DepthStep_ZeroMaximumRejectsAnyNesting"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 8729,
+  "output_tokens": 6776,
+  "ms": 63427,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}
