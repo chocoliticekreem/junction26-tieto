@@ -187,8 +187,12 @@ def call_json(
 
     import anthropic
 
+    from . import anthropic_spend
+
+    rid = anthropic_spend.reserve(anthropic_spend.worst_usd(params), f"live {purpose}")
     client = anthropic.Anthropic(api_key=config.ANTHROPIC_API_KEY, timeout=300, max_retries=2)
     t0 = time.monotonic()
+    msg = None
     try:
         with client.messages.stream(**params) as stream:
             msg = stream.get_final_message()
@@ -196,6 +200,11 @@ def call_json(
         raise LLMUnavailable(f"connection error: {e}") from e
     except anthropic.APIStatusError as e:
         raise LLMUnavailable(f"API error {e.status_code}: {e.message}") from e
+    finally:
+        tin, tout = (msg.usage.input_tokens, msg.usage.output_tokens) if msg else (0, 0)
+        anthropic_spend.settle(rid, f"live {purpose}", cost_usd(model, tin, tout), model=model,
+                               input_tokens=tin, output_tokens=tout,
+                               status=msg.stop_reason if msg else "error")
     ms = int((time.monotonic() - t0) * 1000)
     data = _parse_message(msg, purpose)
     _write_fixture(purpose, key, model, data, msg.usage.input_tokens, msg.usage.output_tokens, ms,

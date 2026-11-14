@@ -1,5 +1,11 @@
-"""RuleRouter: deterministic scoring from file kind and code area. Always runs first (SPEC 5.2)."""
+"""RuleRouter: deterministic scoring from file kind and code area. Always runs first (SPEC 5.2).
 
+Blast radius (notes/blast-radius.md): when context["impact"] holds the impact tool's output, a hunk
+inside an existing member that other code calls gets a higher floor (impact.blast_floor): 8 for a
+modified member with a caller outside the change, 9 for a deleted one. No router may score below it.
+"""
+
+from .. import impact
 from ..models import Hunk, RouteResult
 
 FLOOR_RISK = 6
@@ -28,7 +34,15 @@ class RuleRouter:
     usd_per_token = 0.0
 
     def route(self, hunk: Hunk, requirement_text: str, context: dict) -> RouteResult:
-        area = context.get("area", "")
+        res = self._route(hunk, context.get("area", ""))
+        blast = impact.blast_floor(hunk, context.get("impact"))
+        if blast is None or blast[0] <= res.risk:
+            return res
+        return res.model_copy(update={"risk": blast[0], "category": "compatibility",
+                                      "confidence": 0.9, "floor_applied": True,
+                                      "reason": blast[1]})
+
+    def _route(self, hunk: Hunk, area: str) -> RouteResult:
         if hunk.kind == "generated":
             return RouteResult(hunk_id=hunk.id, risk=1, category="generated", confidence=1.0,
                                router=self.name, reason="generated file: verified by regeneration")

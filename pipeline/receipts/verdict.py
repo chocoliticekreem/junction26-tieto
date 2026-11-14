@@ -5,7 +5,9 @@ Verdict, first match wins:
                   or an existing test that passed on base fails on head
   decision-A-B    interpretations present (genuine ambiguity: the human picks A or B)
   auto-ready      max risk < 5, every command and evidence green, no high/critical hunch, no risky
-                  area touched, every touched area at trust >= 3, and the AI lenses actually ran
+                  area touched, no modified existing member with callers outside the change
+                  (blast radius, impact.json), every touched area at trust >= 3, and the AI
+                  lenses actually ran
   needs-sign-off  everything else
 """
 
@@ -55,6 +57,7 @@ class VerdictInputs:
     skip_mutation: bool = False
     lens_unavailable_reason: str = ""
     adapter: str = "dotnet"  # the sandbox adapter that produced commands/evidence (adapters/)
+    impact: dict | None = None  # impact.json (blast radius); None when the analysis did not run
 
 
 def load_trust() -> dict[str, int]:
@@ -145,6 +148,12 @@ def _derived_not_checked(inp: VerdictInputs) -> list[NotChecked]:
     return out
 
 
+def _blast_members(inp: VerdictInputs) -> list[dict]:
+    members = [m for m in (inp.impact or {}).get("members", [])
+               if m["kind"] != "new" and m["callers_outside_change"] > 0]
+    return sorted(members, key=lambda m: -m["callers_outside_change"])
+
+
 def _decide(inp: VerdictInputs, verified: list[Finding], hunches: list[Finding], risk: int,
             areas: list[str], trust: dict[str, int]) -> tuple[str, str]:
     blockers = [f for f in verified if f.severity in HIGH]
@@ -178,6 +187,11 @@ def _decide(inp: VerdictInputs, verified: list[Finding], hunches: list[Finding],
     risky = sorted(set(areas) & RISKY_AREAS)
     if risky:
         reasons.append("risky area touched: " + ", ".join(risky))
+    blast = _blast_members(inp)
+    if blast:
+        reasons.append("modifies existing code used elsewhere (blast radius): " + ", ".join(
+            f"{m['name']} ({m['callers_outside_change']} caller(s) outside the change)"
+            for m in blast[:3]))
     low_trust = sorted(a for a in areas if trust.get(a, DEFAULT_TRUST) < AUTO_READY_MIN_TRUST)
     if low_trust:
         reasons.append("area trust below 3: " + ", ".join(
@@ -242,6 +256,14 @@ def _residual(inp: VerdictInputs, verdict: str, risk: int, areas: list[str],
     risky = sorted(set(areas) & RISKY_AREAS)
     if risky:
         parts.append(f"It touches risky areas ({', '.join(risky)}), so a human must sign off.")
+    blast = _blast_members(inp)
+    if blast:
+        s = (inp.impact or {}).get("summary", {})
+        parts.append(
+            f"It modifies {len(blast)} existing member(s) that {s.get('callers_outside_change', 0)} "
+            f"call site(s) outside the change rely on; {s.get('untested_callers', 0)} of those call "
+            "sites are not exercised by any test, and characterization tests showed "
+            f"{s.get('behaviour_changes', 0)} behaviour change(s).")
     parts.append(f"{len(not_checked)} thing(s) were not checked, including "
                  + "; ".join(n.what for n in not_checked[:3])
                  + ". By signing off, the signer accepts any defect that only those unchecked "
