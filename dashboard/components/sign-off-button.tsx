@@ -13,7 +13,9 @@ export function SignOffButton({
   decision,
   refusal,
   verdict,
+  readOnly = false,
 }: {
+  readOnly?: boolean;
   changeId: string;
   human: string | null;
   decision?: Decision;
@@ -68,7 +70,7 @@ export function SignOffButton({
 
   return (
     <div className="flex flex-col items-start gap-1.5">
-      <Button onClick={() => void signOff()} disabled={busy || !human} size="lg" className="px-4 text-[15px]" data-testid="sign-off">
+      <Button onClick={() => void signOff()} disabled={readOnly || busy || !human} size="lg" className="px-4 text-[15px]" data-testid="sign-off">
         <PenLine data-icon="inline-start" />
         {human ? `Sign off as ${human}` : "Pick your name to sign off"}
       </Button>

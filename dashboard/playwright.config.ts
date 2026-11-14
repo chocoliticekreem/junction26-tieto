@@ -8,6 +8,8 @@ const PORT = 3111;
 export default defineConfig({
   testDir: "./e2e",
   testMatch: /.*\.spec\.ts/,
+  // Needs its own server with RECEIPTS_READONLY=1: playwright.readonly.config.ts.
+  testIgnore: /readonly\.spec\.ts/,
   globalSetup: "./e2e/global-setup.ts",
   fullyParallel: false,
   workers: 1,

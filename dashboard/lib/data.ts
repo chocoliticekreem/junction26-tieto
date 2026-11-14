@@ -289,6 +289,11 @@ export function isSampleChange(id: string): boolean {
   return id.startsWith("ju26-issue-");
 }
 
+/** A run of the same change on another model provider (e.g. `ju26-issue-2283@verda`). */
+export function isProviderRun(id: string): boolean {
+  return id.includes("@");
+}
+
 /** Changes reviewed by the SQL sandbox adapter (examples/make_sql_repo.sh branches). */
 export function isSqlChange(id: string): boolean {
   return id.startsWith("sql-");

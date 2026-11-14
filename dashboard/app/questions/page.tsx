@@ -2,6 +2,8 @@ import Link from "next/link";
 import { MessageCircleQuestion } from "lucide-react";
 import { loadLatestRuns, pendingQuestions, readLedger } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
+import { isReadOnly } from "@/lib/readonly";
+import { DemoNote } from "@/components/demo-note";
 import { lensLabel } from "@/lib/humanize";
 import { QuestionForm } from "@/components/question-form";
 import { EmptyState, PageTitle, Panel, Section } from "@/components/section";
@@ -14,6 +16,7 @@ export default async function QuestionsPage() {
   const pending = pendingQuestions(runs);
   const ledger = readLedger().slice().reverse();
   const human = await currentHuman();
+  const readOnly = isReadOnly();
 
   return (
     <div className="space-y-8">
@@ -26,6 +29,7 @@ export default async function QuestionsPage() {
           <EmptyState>No pending questions.</EmptyState>
         ) : (
           <div className="space-y-3">
+            {readOnly && <DemoNote />}
             {pending.map((q) => (
               <Panel key={q.id} className="space-y-3 p-4 [overflow-wrap:anywhere]" data-testid="pending-question">
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -38,7 +42,7 @@ export default async function QuestionsPage() {
                 </div>
                 <p className="text-base font-medium leading-6 tracking-tight">{q.text}</p>
                 <p className="text-sm text-muted-foreground">{q.why_it_matters}</p>
-                <QuestionForm q={q} human={human} />
+                <QuestionForm q={q} human={human} readOnly={readOnly} />
               </Panel>
             ))}
           </div>

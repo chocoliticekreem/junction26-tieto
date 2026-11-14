@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { loadRun, readDecision, writeDecision } from "@/lib/data";
 import { branchSha, mergeIntoMain } from "@/lib/git-merge";
 import { nowIso, requireHuman } from "@/lib/human";
+import { readOnlyRefusal } from "@/lib/readonly";
 import { dirs } from "@/lib/paths";
 import type { Decision } from "@/lib/types";
 
 export async function POST(req: Request) {
+  const readOnly = readOnlyRefusal();
+  if (readOnly) return readOnly;
   const auth = await requireHuman();
   if ("error" in auth) return auth.error;
   const body = await req.json().catch(() => ({}));

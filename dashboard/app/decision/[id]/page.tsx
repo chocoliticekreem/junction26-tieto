@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { ChevronRight, CircleCheck, Info, Users } from "lucide-react";
 import { loadRun, readDecision } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
+import { isReadOnly } from "@/lib/readonly";
+import { DemoNote } from "@/components/demo-note";
 import { abMismatchMessage, firstSentence, humanizeTitle, quotedRequirement, readerVote } from "@/lib/humanize";
 import { Disclosure } from "@/components/disclosure";
 import { EvidenceCard } from "@/components/evidence-card";
@@ -158,6 +160,7 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
   const runA = loadRun(`${changeId}__A`);
   const runB = loadRun(`${changeId}__B`);
   const human = await currentHuman();
+  const readOnly = isReadOnly();
   const decision = readDecision(changeId);
   const blocked = Object.fromEntries(
     (
@@ -234,7 +237,8 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
                 {decision ? `Decided: ${decision.who} picked reading ${decision.choice}.` : bothBlocked ? "Neither reading can be merged yet: both share a proven defect." : "Pick the reading that matches what you meant. The merge is recorded under your name."}
               </p>
             </div>
-            <MergeButtons changeId={changeId} human={human} decision={decision} interpretations={interps} blocked={blocked} />
+            <MergeButtons changeId={changeId} human={human} decision={decision} interpretations={interps} blocked={blocked} readOnly={readOnly} />
+            {readOnly && !decision && <DemoNote />}
           </Panel>
         </StoryStep>
 

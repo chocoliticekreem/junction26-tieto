@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AB_SUFFIX, isSampleChange, isSqlChange, loadLatestRuns, pendingQuestions, readDecision, receiptCounts } from "@/lib/data";
+import { AB_SUFFIX, isProviderRun, isSampleChange, isSqlChange, loadLatestRuns, pendingQuestions, readDecision, receiptCounts } from "@/lib/data";
 import { humanizeVerdict } from "@/lib/humanize";
 import { impactQueueClause } from "@/lib/impact-summary";
 import { decideSentence, wrongSentence } from "@/lib/plain-summary";
@@ -73,8 +73,9 @@ function Group({ title, cards, testId }: { title: string; cards: QueueCardData[]
 
 export default function QueuePage() {
   const all = loadLatestRuns().filter((r) => !AB_SUFFIX.test(r.changeId));
-  const latest = all.filter((r) => isSampleChange(r.changeId));
-  const practice = all.filter((r) => !isSampleChange(r.changeId) && !isSqlChange(r.changeId)).length;
+  // The queue is the reviewer's own provider; reruns on another provider are linked from each change.
+  const latest = all.filter((r) => isSampleChange(r.changeId) && !isProviderRun(r.changeId));
+  const practice = all.filter((r) => !isSampleChange(r.changeId) && !isSqlChange(r.changeId) && !isProviderRun(r.changeId)).length;
   const sql = all.filter((r) => isSqlChange(r.changeId)).length;
   const pending = pendingQuestions(latest);
   const pendingByChange = new Map<string, number>();
