@@ -1,0 +1,104 @@
+{
+  "purpose": "ab-variant",
+  "model": "claude-opus-5-5",
+  "data": {
+    "summary": "SurrogateType now makes the generated formatter copy T into a [MessagePackObject] surrogate and back, matching members by name, and delegate to the surrogate's own formatter so its keys and other attributes apply; contractless default unchanged",
+    "quote_supporting_both": "AArnott suggested a surrogate-type design: `[GeneratedMessagePackFormatter(SurrogateType = typeof(ProjectASurrogate))]`, keys mapped by property name; reporter: \"Looks good.\" No design was settled in the thread.",
+    "edits": [
+      {
+        "path": "src/MessagePack.Annotations/Attributes.cs",
+        "search": "    /// To control keys and membership without touching <c>T</c>, set <see cref=\"SurrogateType\"/> to a type whose\n    /// <see cref=\"KeyAttribute\"/> and <see cref=\"IgnoreMemberAttribute\"/> annotations describe the wire contract.\n    /// The surrogate is only read at compile time and is never instantiated at run time.\n    /// Surrogate members are matched to members of <c>T</c> by name.",
+        "replace": "    /// To control keys, membership and other settings without touching <c>T</c>, set <see cref=\"SurrogateType\"/> to a\n    /// <see cref=\"MessagePackObjectAttribute\"/>-annotated type that mirrors <c>T</c>. Surrogate members are matched to members of <c>T</c> by name.\n    /// The generated formatter copies <c>T</c> into a new surrogate instance (and back) and serializes it with the surrogate's own formatter,\n    /// so every MessagePack attribute on the surrogate is honoured."
+      },
+      {
+        "path": "src/MessagePack.Annotations/Attributes.cs",
+        "search": "        /// All keys in the surrogate must be the same kind (all integer or all string).\n        /// </remarks>",
+        "replace": "        /// All keys in the surrogate must be the same kind (all integer or all string).\n        /// The surrogate must carry <see cref=\"MessagePackObjectAttribute\"/> and have an accessible parameterless constructor,\n        /// because it is instantiated at run time and serialized by its own formatter.\n        /// </remarks>"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs",
+        "search": "        else\n        {\n            members = CreateSurrogateMembers(type, surrogate, referenceSymbols, reportDiagnostic, location, out isIntKey);\n        }",
+        "replace": "        else\n        {\n            members = CreateSurrogateMembers(type, surrogate, referenceSymbols, reportDiagnostic, location, out isIntKey);\n\n            // The generated formatter converts to the surrogate and serializes it with the surrogate's own formatter.\n            if (members is not null && !surrogate.GetAttributes().Any(a => SymbolEqualityComparer.Default.Equals(a.AttributeClass, referenceSymbols.MessagePackObjectAttribute)))\n            {\n                reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.TypeMustBeMessagePackObject, location, surrogate.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)));\n                return null;\n            }\n\n            if (members is not null\n                && (surrogate.TypeKind is not (TypeKind.Class or TypeKind.Struct)\n                    || surrogate.IsAbstract\n                    || (surrogate.TypeKind == TypeKind.Class && !surrogate.InstanceConstructors.Any(c => c.Parameters.Length == 0 && compilation.IsSymbolAccessibleWithin(c, formatter)))))\n            {\n                reportDiagnostic?.Invoke(Diagnostic.Create(MsgPack00xMessagePackAnalyzer.NoDeserializingConstructor, location));\n                return null;\n            }\n        }"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs",
+        "search": "            IsUserDeclaredFormatter = true,\n        };",
+        "replace": "            IsUserDeclaredFormatter = true,\n            SurrogateTypeName = surrogate?.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),\n        };"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs",
+        "search": "            if (target is null || !IsPublicReadWrite(target) || !SymbolEqualityComparer.Default.Equals(GetMemberType(target), GetMemberType(surrogateMember)))",
+        "replace": "            if (target is null || !IsPublicReadWrite(target) || !IsPublicReadWrite(surrogateMember) || !SymbolEqualityComparer.Default.Equals(GetMemberType(target), GetMemberType(surrogateMember)))"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs",
+        "search": "    public bool IsUserDeclaredFormatter { get; init; }\n",
+        "replace": "    public bool IsUserDeclaredFormatter { get; init; }\n\n    /// <summary>\n    /// Gets the fully qualified name of the surrogate type that a user-declared formatter converts to and from,\n    /// or <see langword=\"null\"/> when the formatter serializes the members of the data type directly.\n    /// </summary>\n    public string? SurrogateTypeName { get; init; }\n"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs",
+        "search": "    public virtual bool Equals(ObjectSerializationInfo? other)\n    {",
+        "replace": "    /// <summary>\n    /// Gets the <c>Serialize</c> and <c>Deserialize</c> methods of a formatter that copies the data type into a new\n    /// <see cref=\"SurrogateTypeName\"/> instance (and back) and delegates to the surrogate's own formatter.\n    /// </summary>\n    /// <returns>The C# source of both methods, without a trailing line break.</returns>\n    public string GetSurrogateConversionCode()\n    {\n        string dataType = this.DataType.GetQualifiedName(Qualifiers.GlobalNamespace, GenericParameterStyle.Identifiers);\n        string surrogate = this.SurrogateTypeName ?? throw new InvalidOperationException(\"No surrogate type.\");\n        string surrogateFormatter = $\"global::MessagePack.FormatterResolverExtensions.GetFormatterWithVerify<{surrogate}>(options.Resolver)\";\n        StringBuilder builder = new();\n\n        builder.Append($\"\\t\\tpublic void Serialize(ref global::MessagePack.MessagePackWriter writer, {dataType} value, global::MessagePack.MessagePackSerializerOptions options)\\r\\n\");\n        builder.Append(\"\\t\\t{\\r\\n\");\n        if (this.IsClass)\n        {\n            builder.Append(\"\\t\\t\\tif (value is null)\\r\\n\\t\\t\\t{\\r\\n\\t\\t\\t\\twriter.WriteNil();\\r\\n\\t\\t\\t\\treturn;\\r\\n\\t\\t\\t}\\r\\n\\r\\n\");\n        }\n\n        if (this.HasIMessagePackSerializationCallbackReceiver)\n        {\n            builder.Append(this.NeedsCastOnBefore\n                ? \"\\t\\t\\t((global::MessagePack.IMessagePackSerializationCallbackReceiver)value).OnBeforeSerialize();\\r\\n\"\n                : \"\\t\\t\\tvalue.OnBeforeSerialize();\\r\\n\");\n        }\n\n        builder.Append($\"\\t\\t\\tvar ____surrogate = new {surrogate}()\\r\\n\\t\\t\\t{{\\r\\n\");\n        foreach (MemberSerializationInfo member in this.Members)\n        {\n            builder.Append($\"\\t\\t\\t\\t{member.Name} = value.{member.Name},\\r\\n\");\n        }\n\n        builder.Append(\"\\t\\t\\t};\\r\\n\");\n        builder.Append($\"\\t\\t\\t{surrogateFormatter}.Serialize(ref writer, ____surrogate, options);\\r\\n\");\n        builder.Append(\"\\t\\t}\\r\\n\\r\\n\");\n\n        builder.Append($\"\\t\\tpublic {dataType} Deserialize(ref global::MessagePack.MessagePackReader reader, global::MessagePack.MessagePackSerializerOptions options)\\r\\n\");\n        builder.Append(\"\\t\\t{\\r\\n\\t\\t\\tif (reader.TryReadNil())\\r\\n\\t\\t\\t{\\r\\n\");\n        builder.Append(this.IsClass\n            ? \"\\t\\t\\t\\treturn null;\\r\\n\"\n            : \"\\t\\t\\t\\tthrow new global::System.InvalidOperationException(\\\"typecode is null, struct not supported\\\");\\r\\n\");\n        builder.Append(\"\\t\\t\\t}\\r\\n\\r\\n\");\n        builder.Append($\"\\t\\t\\tvar ____surrogate = {surrogateFormatter}.Deserialize(ref reader, options);\\r\\n\");\n        builder.Append($\"\\t\\t\\tvar ____result = new {dataType}()\\r\\n\\t\\t\\t{{\\r\\n\");\n        foreach (MemberSerializationInfo member in this.Members)\n        {\n            builder.Append($\"\\t\\t\\t\\t{member.Name} = ____surrogate.{member.Name},\\r\\n\");\n        }\n\n        builder.Append(\"\\t\\t\\t};\\r\\n\");\n        if (this.HasIMessagePackSerializationCallbackReceiver)\n        {\n            builder.Append(this.NeedsCastOnAfter\n                ? \"\\t\\t\\t((global::MessagePack.IMessagePackSerializationCallbackReceiver)____result).OnAfterDeserialize();\\r\\n\"\n                : \"\\t\\t\\t____result.OnAfterDeserialize();\\r\\n\");\n        }\n\n        builder.Append(\"\\t\\t\\treturn ____result;\\r\\n\\t\\t}\");\n        return builder.ToString();\n    }\n\n    public virtual bool Equals(ObjectSerializationInfo? other)\n    {"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/CodeAnalysis/ObjectSerializationInfo.cs",
+        "search": "            && IsUserDeclaredFormatter == other.IsUserDeclaredFormatter\n",
+        "replace": "            && IsUserDeclaredFormatter == other.IsUserDeclaredFormatter\n            && SurrogateTypeName == other.SurrogateTypeName\n"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt",
+        "search": "\t{\n<# foreach (var item in Info.Members) { #>\n<# if (item.CustomFormatter != null) { #>\n\t\tprivate readonly <#= item.CustomFormatter.InstanceTypeName",
+        "replace": "\t{\n<# if (Info.SurrogateTypeName is not null) { #>\n<#= Info.GetSurrogateConversionCode() #>\n<# } else { #>\n<# foreach (var item in Info.Members) { #>\n<# if (item.CustomFormatter != null) { #>\n\t\tprivate readonly <#= item.CustomFormatter.InstanceTypeName"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt",
+        "search": "\t\t\treader.Depth--;\n\t\t\treturn ____result;\n<# } #>\n\t\t}\n\t}\n<# } #>",
+        "replace": "\t\t\treader.Depth--;\n\t\t\treturn ____result;\n<# } #>\n\t\t}\n<# } #>\n\t}\n<# } #>"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs",
+        "search": "            this.Write(\"\\t{\\r\\n\");",
+        "replace": "            this.Write(\"\\t{\\r\\n\");\n if (Info.SurrogateTypeName is not null) { \n            this.Write(this.ToStringHelper.ToStringWithCulture(Info.GetSurrogateConversionCode()));\n            this.Write(\"\\r\\n\");\n } else { "
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs",
+        "search": "            this.Write(\"\\t\\t}\\r\\n\\t}\\r\\n\");",
+        "replace": "            this.Write(\"\\t\\t}\\r\\n\");\n } \n            this.Write(\"\\t}\\r\\n\");"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.tt",
+        "search": "\t{\n<# foreach (var item in Info.Members) { #>\n<# if (item.CustomFormatter != null) { #>\n\t\tprivate readonly <#= item.CustomFormatter.Name.GetQualifiedName() #>",
+        "replace": "\t{\n<# if (Info.SurrogateTypeName is not null) { #>\n<#= Info.GetSurrogateConversionCode() #>\n<# } else { #>\n<# foreach (var item in Info.Members) { #>\n<# if (item.CustomFormatter != null) { #>\n\t\tprivate readonly <#= item.CustomFormatter.Name.GetQualifiedName() #>"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.tt",
+        "search": "\t\t\treturn ____result;\n\t\t}\n\t}\n\n<# } #>",
+        "replace": "\t\t\treturn ____result;\n\t\t}\n<# } #>\n\t}\n\n<# } #>"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.cs",
+        "search": "            this.Write(\"\\t{\\r\\n\");",
+        "replace": "            this.Write(\"\\t{\\r\\n\");\n if (Info.SurrogateTypeName is not null) { \n            this.Write(this.ToStringHelper.ToStringWithCulture(Info.GetSurrogateConversionCode()));\n            this.Write(\"\\r\\n\");\n } else { "
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.cs",
+        "search": "            this.Write(\"\\t\\t\\treturn ____result;\\r\\n\\t\\t}\\r\\n\\t}\\r\\n\\r\\n\");",
+        "replace": "            this.Write(\"\\t\\t\\treturn ____result;\\r\\n\\t\\t}\\r\\n\");\n } \n            this.Write(\"\\t}\\r\\n\\r\\n\");"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypes.cs",
+        "search": "/// <summary>\n/// Describes the wire contract of <see cref=\"ExternalWidget\"/>. It is only read at compile time and is never instantiated.\n/// </summary>\npublic class ExternalWidgetSurrogate",
+        "replace": "/// <summary>\n/// Describes the wire contract of <see cref=\"ExternalWidget\"/>. The generated formatter converts each widget to this type and serializes it with this type's own formatter.\n/// </summary>\n[MessagePackObject]\npublic class ExternalWidgetSurrogate"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs",
+        "search": "    [Fact]\n    public void MessagePackObjectCanContainExternalTypes()",
+        "replace": "    [Fact]\n    public void SurrogateFormatterConvertsThroughSurrogate()\n    {\n        var widget = new ExternalWidget { Id = 2, Name = \"two\", Internal = 5 };\n\n        byte[] bytes = MessagePackSerializer.Serialize(widget, Options);\n\n        // The formatter copies the widget into the surrogate and serializes it with the surrogate's own formatter.\n        Assert.Equal(MessagePackSerializer.Serialize(new ExternalWidgetSurrogate { Id = 2, Name = \"two\" }, Options), bytes);\n        ExternalWidgetSurrogate surrogate = MessagePackSerializer.Deserialize<ExternalWidgetSurrogate>(bytes, Options);\n        Assert.Equal(2, surrogate.Id);\n        Assert.Equal(\"two\", surrogate.Name);\n    }\n\n    [Fact]\n    public void MessagePackObjectCanContainExternalTypes()"
+      }
+    ]
+  },
+  "input_tokens": 70091,
+  "output_tokens": 25299,
+  "ms": 205896,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

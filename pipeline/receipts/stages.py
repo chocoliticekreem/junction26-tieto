@@ -139,11 +139,13 @@ def _citation_evidence(citations: list[Finding], ledger: list[dict],
 
 
 def run_lenses(ctx: ReviewContext) -> StageResult:
-    """[4] Six independent lenses (lenses.run_all_lenses), each with minimal context."""
+    """[4] Six independent lenses (lenses.run_all_lenses), each with minimal context, then the
+    requirement-reading panel (lenses.readers), whose vote alone decides ambiguity."""
     from . import context as review_context
     from . import runstore
     from .lenses import run_all_lenses
     from .lenses.harness import TEST_PROJECT_DIR
+    from .lenses.readers import run_panel
 
     areas_by_file = {f.path: f.area for f in ctx.intake.files}
     touched = sorted({f.area for f in ctx.intake.files if f.kind != "generated"})
@@ -151,6 +153,13 @@ def run_lenses(ctx: ReviewContext) -> StageResult:
     out = run_all_lenses(ctx.requirement_id, ctx.requirement_text, ctx.intake.hunks,
                          ctx.routing.routes, ledger, _style_examples(ctx),
                          change_id=ctx.change_id, areas=areas_by_file)
+    # The reading panel's vote replaces the lenses' ambiguity flag; the lens flag stays on record.
+    panel = run_panel(ctx.requirement_id, ctx.requirement_text, ledger, ctx.intake.hunks,
+                      areas_by_file)
+    runstore.write(ctx.run_dir, "readers.json", panel.to_json())
+    refusals = [r for r in out.refusals if "(A or B)" not in r.what]
+    if panel.refusal is not None:
+        refusals.append(panel.refusal)
 
     for t in out.generated_tests:
         rel = t.path.removeprefix(TEST_PROJECT_DIR + "/")
@@ -169,6 +178,10 @@ def run_lenses(ctx: ReviewContext) -> StageResult:
         "total_cost_usd": out.total_cost_usd,
         "ledger_entries": len(ledger),
         "ambiguity": out.ambiguity,
+        "lens_interpretations": [i.model_dump(mode="json") for i in out.interpretations],
+        "ambiguity_decided_by": "readers.json",
+        "readers_ambiguity": panel.ambiguity,
+        "readers_cost_usd": panel.cost_usd,
         "candidate_questions": len(out.candidate_questions),
         "questions_after_budget": len(out.questions),
         "generated_tests": [{"lens": t.lens, "path": t.path, "test_names": t.test_names,
@@ -180,9 +193,9 @@ def run_lenses(ctx: ReviewContext) -> StageResult:
         + unconfirmed,
         evidence=cited,
         questions=out.questions,
-        not_checked=out.not_checked,
-        refused=out.refusals,
-        interpretations=out.interpretations,
+        not_checked=out.not_checked + panel.not_checked,
+        refused=refusals,
+        interpretations=panel.interpretations,
         ran=ran,
     )
 

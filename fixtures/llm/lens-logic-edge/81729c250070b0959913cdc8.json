@@ -1,0 +1,97 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The requirement says MessagePack attributes on T must be honoured, but they are ignored. In contractless mode the collector never reads T's attributes: CreateContractlessMembers takes every public read-write member, sorts it by name and gives it a string key. For a metadata type with [MessagePackObject], [Key(0)] Id and [IgnoreMember] Secret, the generated formatter writes a string-keyed map with 'Id' and also serializes 'Secret', which T explicitly excluded. The wire format also differs from T's own formatter.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:91",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.GeneratedFormatterLogicReceiptsTests.AttributesOnFormattedTypeAreHonoured. ProjectA.MyType (emitted to metadata) has [MessagePackObject], [Key(0)] Id and [IgnoreMember] Secret. The generated MyTypeFormatter source contains 'Secret' on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "In surrogate mode every instance field or property of the surrogate, including private ones, must carry [Key] or [IgnoreMember]. Otherwise MemberNeedsKey is reported and no formatter is generated. A normal [MessagePackObject] surrogate with a private helper field is therefore rejected, although the regular analyzer only requires keys on public members (L5).",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:188",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run GeneratedFormatterLogicReceiptsTests.SurrogateWithPrivateFieldIsAccepted. The generator run result contains a MemberNeedsKey diagnostic for the private field 'cache'."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "A surrogate declared [MessagePackObject(true)] (keyAsPropertyName, L3) needs no [Key] attributes. The surrogate collector still demands a Key on every member, so it reports MemberNeedsKey and generates nothing. The keyAsPropertyName argument is never read, which contradicts the documented 'every MessagePack attribute on the surrogate is honoured'.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:187",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run GeneratedFormatterLogicReceiptsTests.KeyAsPropertyNameSurrogateIsAccepted. The run result has a MemberNeedsKey diagnostic on head."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Generated formatter models are added to the same model set whose output is gated by Options.IsGeneratingSource. If the project declares no [GeneratedMessagePackResolver] class, the user's body-less 'partial class X : IMessagePackFormatter<T>' appears to get no implementation and fails with CS0535. The requirement's example declares only the formatter.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:135",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run GeneratedFormatterLogicReceiptsTests.FormatterIsGeneratedWithoutResolverDeclaration. No generated tree contains 'class MyTypeFormatter' when no resolver is declared."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "If T is declared in the same compilation with [MessagePackObject] and also targeted by [GeneratedMessagePackFormatter], both the regular collector and GeneratedFormatterCollector add an ObjectSerializationInfo for the same data type. The resolver then registers two formatters for one type. Nothing de-duplicates them and no diagnostic is reported.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:74",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "MessagePackGenerator.cs:70-76 adds generatedModel without checking whether modelPerType already holds an ObjectInfo for the same DataType. The regular path at lines 60-68 collects the [MessagePackObject] type independently."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "If SurrogateType names a type that is not an INamedTypeSymbol (for example typeof(int[])), the transform's 'as INamedTypeSymbol' yields null. The formatter then silently falls back to contractless mode instead of reporting an invalid surrogate.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:34",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "MessagePackGenerator.cs:34 casts NamedArguments[SurrogateType].Value with 'as INamedTypeSymbol'. A null surrogate goes to CreateContractlessMembers (GeneratedFormatterCollector.cs:89-93) with no diagnostic."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Must a [GeneratedMessagePackFormatter] class get its implementation even when the project declares no [GeneratedMessagePackResolver] class?",
+        "options": [
+          "Yes, the formatter must be generated standalone, as in the requirement's example",
+          "No, a [GeneratedMessagePackResolver] declaration is a documented prerequisite"
+        ],
+        "why_it_matters": "If yes, gating generated formatters on IsGeneratingSource is a high-severity defect: a body-less formatter fails to compile. If no, the behaviour is intended, but it needs a diagnostic or documentation instead of a CS0535 error.",
+        "area": "source-generator",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/GeneratedFormatterLogicReceiptsTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing MessagePack.SourceGenerator;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class GeneratedFormatterLogicReceiptsTests\n{\n    private static readonly CSharpParseOptions ParseOptions = new(LanguageVersion.Latest);\n\n    private const string PlainProjectA = \"\"\"\n        namespace ProjectA\n        {\n            public class MyType\n            {\n                public int Id { get; set; }\n\n                public string Name { get; set; }\n            }\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task AttributesOnFormattedTypeAreHonoured()\n    {\n        ImmutableArray<MetadataReference> references = await GetReferencesAsync();\n        MetadataReference projectA = CompileProjectA(\"\"\"\n            using MessagePack;\n            namespace ProjectA\n            {\n                [MessagePackObject]\n                public class MyType\n                {\n                    [Key(0)]\n                    public int Id { get; set; }\n\n                    [IgnoreMember]\n                    public string Secret { get; set; }\n                }\n            }\n            \"\"\", references);\n\n        GeneratorDriverRunResult result = RunGenerator(\"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n            namespace ProjectB\n            {\n                [GeneratedMessagePackFormatter]\n                public partial class MyTypeFormatter : IMessagePackFormatter<ProjectA.MyType> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\", references.Add(projectA));\n\n        List<string> formatterSources = GetFormatterSources(result);\n        Assert.NotEmpty(formatterSources);\n        Assert.DoesNotContain(formatterSources, s => s.Contains(\"Secret\"));\n    }\n\n    [Fact]\n    public async Task SurrogateWithPrivateFieldIsAccepted()\n    {\n        ImmutableArray<MetadataReference> references = await GetReferencesAsync();\n        MetadataReference projectA = CompileProjectA(PlainProjectA, references);\n\n        GeneratorDriverRunResult result = RunGenerator(\"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n            namespace ProjectB\n            {\n                [MessagePackObject]\n                public class MyTypeSurrogate\n                {\n                    private int cache = 1;\n\n                    [Key(0)]\n                    public int Id { get; set; }\n\n                    [Key(1)]\n                    public string Name { get; set; }\n\n                    public int GetCache() => cache;\n                }\n\n                [GeneratedMessagePackFormatter(SurrogateType = typeof(MyTypeSurrogate))]\n                public partial class MyTypeFormatter : IMessagePackFormatter<ProjectA.MyType> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\", references.Add(projectA));\n\n        Assert.Empty(result.Diagnostics);\n    }\n\n    [Fact]\n    public async Task KeyAsPropertyNameSurrogateIsAccepted()\n    {\n        ImmutableArray<MetadataReference> references = await GetReferencesAsync();\n        MetadataReference projectA = CompileProjectA(PlainProjectA, references);\n\n        GeneratorDriverRunResult result = RunGenerator(\"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n            namespace ProjectB\n            {\n                [MessagePackObject(true)]\n                public class MyTypeSurrogate\n                {\n                    public int Id { get; set; }\n\n                    public string Name { get; set; }\n                }\n\n                [GeneratedMessagePackFormatter(SurrogateType = typeof(MyTypeSurrogate))]\n                public partial class MyTypeFormatter : IMessagePackFormatter<ProjectA.MyType> { }\n\n                [GeneratedMessagePackResolver]\n                partial class MyResolver { }\n            }\n            \"\"\", references.Add(projectA));\n\n        Assert.Empty(result.Diagnostics);\n    }\n\n    [Fact]\n    public async Task FormatterIsGeneratedWithoutResolverDeclaration()\n    {\n        ImmutableArray<MetadataReference> references = await GetReferencesAsync();\n        MetadataReference projectA = CompileProjectA(PlainProjectA, references);\n\n        GeneratorDriverRunResult result = RunGenerator(\"\"\"\n            using MessagePack;\n            using MessagePack.Formatters;\n            namespace ProjectB\n            {\n                [GeneratedMessagePackFormatter]\n                public partial class MyTypeFormatter : IMessagePackFormatter<ProjectA.MyType> { }\n            }\n            \"\"\", references.Add(projectA));\n\n        Assert.NotEmpty(GetFormatterSources(result));\n    }\n\n    private static async Task<ImmutableArray<MetadataReference>> GetReferencesAsync()\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        return framework.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n    }\n\n    private static MetadataReference CompileProjectA(string source, ImmutableArray<MetadataReference> references)\n    {\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ProjectA\",\n            new[] { CSharpSyntaxTree.ParseText(source, ParseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        using MemoryStream stream = new();\n        var emitResult = compilation.Emit(stream);\n        Assert.True(emitResult.Success, string.Join(Environment.NewLine, emitResult.Diagnostics));\n        return MetadataReference.CreateFromImage(stream.ToArray());\n    }\n\n    private static GeneratorDriverRunResult RunGenerator(string source, IEnumerable<MetadataReference> references)\n    {\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ProjectB\",\n            new[] { CSharpSyntaxTree.ParseText(source, ParseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(new[] { new MessagePackGenerator().AsSourceGenerator() }, parseOptions: ParseOptions);\n        driver = driver.RunGenerators(compilation);\n        return driver.GetRunResult();\n    }\n\n    private static List<string> GetFormatterSources(GeneratorDriverRunResult result)\n    {\n        return result.GeneratedTrees\n            .Select(t => t.ToString())\n            .Where(s => s.Contains(\"class MyTypeFormatter\"))\n            .ToList();\n    }\n}\n",
+        "test_names": [
+          "AttributesOnFormattedTypeAreHonoured",
+          "SurrogateWithPrivateFieldIsAccepted",
+          "KeyAsPropertyNameSurrogateIsAccepted",
+          "FormatterIsGeneratedWithoutResolverDeclaration"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 24959,
+  "output_tokens": 21385,
+  "ms": 184090,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}
