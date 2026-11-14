@@ -1,0 +1,142 @@
+{
+  "change_id": "ju26-issue-2283",
+  "requirement_id": "REQ-2283",
+  "requirement_title": "Fix IndexOutOfRangeException on closed generic struct from referenced assembly",
+  "requirement_text": "The MsgPack00x analyzer throws IndexOutOfRangeException (surfaced as AD0001) when a [MessagePackObject] type has a field whose type is a closed generic struct declared in a referenced assembly. The analyzer must not crash; it must either resolve the formatter for the closed generic or report a proper diagnostic. Existing behaviour for generics declared in the same assembly must be unchanged.",
+  "run_ts": "20261114T063000Z",
+  "head_sha": "9f3c1a7e2b4d5c6f8a9b0c1d2e3f4a5b6c7d8e9f",
+  "verdict": "needs-sign-off",
+  "verdict_reason": "All receipts green except one surviving mutant on the new assembly-equality branch. Requirement tests written from REQ-2283 fail on base and pass on head. The surviving mutant means the change's own tests would not notice if the referenced-assembly path were inverted; a human should accept or request a test.",
+  "risk": 7,
+  "areas": [
+    "source-generator/analyzer",
+    "source-generator/tests"
+  ],
+  "area_trust": {
+    "source-generator/analyzer": 1,
+    "source-generator/tests": 2
+  },
+  "checked": [
+    {
+      "what": "Base and head compile",
+      "by": "sandbox",
+      "evidence_id": "E-build-head",
+      "result": "pass"
+    },
+    {
+      "what": "Existing 167 source-generator tests on head",
+      "by": "sandbox",
+      "evidence_id": "E-existing",
+      "result": "pass"
+    },
+    {
+      "what": "Requirement tests fail on base, pass on head",
+      "by": "requirement-tests",
+      "evidence_id": "E-req",
+      "result": "pass"
+    },
+    {
+      "what": "Mutants on changed lines killed by the change's tests",
+      "by": "test-quality",
+      "evidence_id": "E-mut",
+      "result": "partial"
+    },
+    {
+      "what": "Serialized bytes unchanged for 12 fixture types",
+      "by": "compatibility",
+      "evidence_id": "E-compat",
+      "result": "pass"
+    },
+    {
+      "what": "MessagePackSecurity and untrusted-data paths",
+      "by": "security",
+      "evidence_id": "",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F-2283-1",
+      "lens": "test-quality",
+      "claim": "The change's tests do not distinguish a generic closed over a type from the current assembly from one closed over a referenced-assembly type: mutant M-2283-3 (negated assembly-equality check in TypeCollector.CollectGeneric) survives the full suite.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:490",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "mutation",
+        "detail": "negate the assembly-equality condition, rerun GenerationTests + Req2283Tests"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "E-mut"
+      ],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "hunches": [
+    {
+      "id": "H-2283-1",
+      "lens": "logic-edge",
+      "claim": "A generic struct closed over a nested generic (Wrapper<Inner<T>>) from a referenced assembly might still recurse into CollectGeneric with an unresolved type parameter.",
+      "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:495",
+      "severity": "medium",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "edge test with Wrapper<Inner<int>> from a referenced assembly; not generated within budget"
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    },
+    {
+      "id": "H-2283-2",
+      "lens": "security",
+      "claim": "No security-relevant surface touched; MessagePackSecurity settings untouched.",
+      "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs",
+      "severity": "low",
+      "receipt_plan": {
+        "kind": "code-citation",
+        "detail": "informational; no receipt planned"
+      },
+      "verified": false,
+      "evidence_ids": [],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "refused": [],
+  "not_checked": [
+    {
+      "what": "MessagePack.SourceGenerator.ExecutionTests",
+      "why": "Project builds in 4m10s, over the 3-minute sandbox budget; not run."
+    },
+    {
+      "what": "UnityClient and NativeAOT targets",
+      "why": "Not built in the sandbox; the analyzer runs at compile time so runtime targets are unaffected, but this is inferred, not executed."
+    },
+    {
+      "what": "Public API surface diff",
+      "why": "ApiCompat not wired in this run; the touched files are internal analyzer code."
+    }
+  ],
+  "residual_risk": "You accept that the referenced-assembly branch in TypeCollector is covered by behaviour, not by a test that would fail if it were inverted (one surviving mutant). Execution tests and Unity/NativeAOT targets were not exercised. Everything else that was claimed was executed and is linked above.",
+  "routing": {
+    "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs": "deep",
+    "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs": "deep",
+    "src/MessagePack.SourceGenerator/CodeAnalysis/ReferenceSymbols.cs": "light",
+    "tests/MessagePack.SourceGenerator.Tests/GenerationTests.cs": "light",
+    "tests/MessagePack.SourceGenerator.Tests/Resources/ReferencedAssemblyClosedGenericStruct.cs": "light"
+  },
+  "counts": {
+    "files": 5,
+    "hunks": 2,
+    "deep": 2,
+    "light": 3,
+    "regeneration": 0,
+    "receipts": 6,
+    "findings": 1,
+    "hunches": 2
+  },
+  "questions": [],
+  "interpretations": [],
+  "narrative": "",
+  "mock_llm": true
+}
