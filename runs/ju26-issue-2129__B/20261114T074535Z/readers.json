@@ -1,0 +1,116 @@
+{
+  "model": "claude-sonnet-5-5",
+  "effort": "medium",
+  "votes_needed": 2,
+  "pair_match_threshold": 0.25,
+  "ledger_answers": 0,
+  "readers": [
+    {
+      "reader": "maintainer",
+      "framing": "a maintainer of the library who has to implement this requirement and wants to know exactly what code to write",
+      "status": "ok",
+      "detail": "",
+      "flagged": true,
+      "output": {
+        "readings": [
+          {
+            "summary": "Add a [GeneratedMessagePackFormatter] attribute for partial formatter classes; the generator emits the formatter body for T in contractless mode over public members, honoring any MessagePack attributes already on T, with no surrogate type or extra settings.",
+            "code_difference": "Defines only a parameterless attribute (shipped by the library/generator package), discovers annotated partial classes implementing IMessagePackFormatter<T>, and emits Serialize/Deserialize into that class using contractless defaults when T lacks [MessagePackObject]/[DataContract]; no SurrogateType property or key-mapping mechanism."
+          },
+          {
+            "summary": "Also provide a configuration mechanism (e.g. SurrogateType, or a way to specify keys/union settings) on the attribute so that T can be customized without attributes on T.",
+            "code_difference": "The attribute gains additional members (such as SurrogateType or key/union options) and the generator reads a surrogate type or user-defined attribute copies to map keys and unions, which the minimal reading would not implement."
+          }
+        ],
+        "materially_different": true,
+        "quote": "For attribute-based property keys and other settings (such as Union), the issue lists three alternatives: (1) use `System.Runtime.Serialization.DataMember` and related attributes; (2) let the generator and analyzers work with user-defined copies of the MessagePack attributes; (3) source-generate the attributes themselves via `RegisterPostInitializationOutput`."
+      },
+      "input_tokens": 2092,
+      "output_tokens": 490,
+      "cost_usd": 0.009084,
+      "from_fixture": true
+    },
+    {
+      "reader": "issue-author",
+      "framing": "the person who filed this issue, later checking whether what shipped is what they asked for",
+      "status": "ok",
+      "detail": "",
+      "flagged": true,
+      "output": {
+        "readings": [
+          {
+            "summary": "Add [GeneratedMessagePackFormatter] for a partial class implementing IMessagePackFormatter<T>, generating a contractless formatter over T's public members (honouring any MessagePack attributes present) in the declaring assembly, with no surrogate type.",
+            "code_difference": "Generator discovers classes with the attribute, reads T from the IMessagePackFormatter<T> interface, and emits Serialize/Deserialize directly for T's public members, defaulting to contractless when T has no [MessagePackObject]/[DataContract]; no SurrogateType property."
+          },
+          {
+            "summary": "Add [GeneratedMessagePackFormatter] with an optional SurrogateType property, where a user-defined surrogate type in Project B mirrors T's shape and keys are mapped by property name, so attribute-based keys and Union settings can be supplied without touching Project A.",
+            "code_difference": "Attribute has a SurrogateType property; generator reads keys/union attributes from the surrogate and emits conversion code between T and the surrogate, which the contractless-only reading would not do."
+          }
+        ],
+        "materially_different": true,
+        "quote": "Proposed solution: add a `[GeneratedMessagePackFormatter]` attribute that works for partial classes implementing `IMessagePackFormatter<T>`:"
+      },
+      "input_tokens": 2087,
+      "output_tokens": 437,
+      "cost_usd": 0.008544,
+      "from_fixture": true
+    },
+    {
+      "reader": "qa-engineer",
+      "framing": "a QA engineer who has to write acceptance tests for this requirement before any code exists",
+      "status": "ok",
+      "detail": "",
+      "flagged": true,
+      "output": {
+        "readings": [
+          {
+            "summary": "Add a [GeneratedMessagePackFormatter] attribute for partial formatter classes where the generator emits a contractless (public members only) formatter for T, honouring any MessagePack attributes already on T, with no surrogate or key-mapping mechanism.",
+            "code_difference": "Attribute has no SurrogateType or key-configuration property; generator treats T with no [MessagePackObject]/[DataContract] as contractless and fills in the IMessagePackFormatter<T> implementation in the annotated class."
+          },
+          {
+            "summary": "Add the attribute with a SurrogateType (or similar) parameter so a type in Project B mirrors T's members and supplies keys/unions, with the generated formatter mapping between them.",
+            "code_difference": "Attribute exposes a SurrogateType property; generator reads a surrogate type's attributes/keys by property name and emits conversion code between surrogate and T, which the contractless-only reading would not do."
+          }
+        ],
+        "materially_different": true,
+        "quote": "For attribute-based property keys and other settings (such as Union), the issue lists three alternatives: (1) use `System.Runtime.Serialization.DataMember` and related attributes; (2) let the generator and analyzers work with user-defined copies of the MessagePack attributes; (3) source-generate the attributes themselves via `RegisterPostInitializationOutput`."
+      },
+      "input_tokens": 2089,
+      "output_tokens": 453,
+      "cost_usd": 0.008708,
+      "from_fixture": true
+    }
+  ],
+  "vote": {
+    "flagged": 3,
+    "of": 3,
+    "ambiguity": true,
+    "text": "3 of 3 independent readers found two readings"
+  },
+  "pair": {
+    "from_reader": "issue-author",
+    "support": {
+      "maintainer": 1,
+      "issue-author": 2,
+      "qa-engineer": 1
+    },
+    "A": {
+      "summary": "Add [GeneratedMessagePackFormatter] for a partial class implementing IMessagePackFormatter<T>, generating a contractless formatter over T's public members (honouring any MessagePack attributes present) in the declaring assembly, with no surrogate type.",
+      "code_difference": "Generator discovers classes with the attribute, reads T from the IMessagePackFormatter<T> interface, and emits Serialize/Deserialize directly for T's public members, defaulting to contractless when T has no [MessagePackObject]/[DataContract]; no SurrogateType property."
+    },
+    "B": {
+      "summary": "Add [GeneratedMessagePackFormatter] with an optional SurrogateType property, where a user-defined surrogate type in Project B mirrors T's shape and keys are mapped by property name, so attribute-based keys and Union settings can be supplied without touching Project A.",
+      "code_difference": "Attribute has a SurrogateType property; generator reads keys/union attributes from the surrogate and emits conversion code between T and the surrogate, which the contractless-only reading would not do."
+    },
+    "quote": "Proposed solution: add a `[GeneratedMessagePackFormatter]` attribute that works for partial classes implementing `IMessagePackFormatter<T>`:"
+  },
+  "orientation": {
+    "implements": "both",
+    "why": "The diff adds the attribute with contractless default generation (first reading) and also an optional SurrogateType property with surrogate-based key mapping and conversion code via GetSurrogateConversionCode (second reading), so it supports both.",
+    "input_tokens": 30325,
+    "output_tokens": 87,
+    "cost_usd": 0.06152,
+    "from_fixture": true
+  },
+  "cost_usd": 0.087856
+}

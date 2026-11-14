@@ -1,7 +1,8 @@
 """[5] Receipt checks (SPEC 5.5): every check executes something and returns Evidence.
 
   requirement tests  ctx.generated_tests run on base and head (fail-before-pass-after / new-api)
-  mutation           mutants on added lines of risky source hunks vs the change's own tests
+  mutation           mutants on added lines of risky source hunks vs the change's own tests;
+                     survivors re-run against the full test project
   regeneration       generated snapshot files mapped to the SourceGenerator tests that verify them
   byte-diff          compat.run_compat when the runtime/annotations or a compatibility hunk changed
 
@@ -22,7 +23,7 @@ from pathlib import Path
 from . import compat, config, sandbox
 from .intake import classify
 from .models import Evidence, Finding, Mutant, NotChecked, ReceiptPlan, TestRun
-from .mutants import MutantSpec, generate
+from .mutants import OPERATORS, MutantSpec, generate
 from .stages import ReviewContext, StageResult
 
 MUTANT_TIMEOUT_S = 180
@@ -222,12 +223,54 @@ def mutant_status(run: TestRun, exit_code: int, log_text: str) -> tuple[str, lis
     return "survived", []
 
 
-def run_mutation(ctx: ReviewContext) -> tuple[list[Evidence], list[Mutant], list[Finding],
-                                              list[NotChecked], bool]:
+def two_tier_status(own: tuple[str, list[str]],
+                    suite: tuple[str, list[str]] | None) -> tuple[str, list[str]]:
+    """Fate of a mutant from its run on the change's own tests and, for a survivor, its re-run on
+    the full test project. Without a suite run (no own test class: the first run already was the
+    full project) a survivor stays survived."""
+    if own[0] != "survived" or suite is None:
+        return own
+    if suite[0] == "killed":
+        return "killed-by-suite", suite[1]
+    return suite
+
+
+def mutation_findings(mutants: list[Mutant]) -> list[Finding]:
+    """Medium finding per full-suite survivor; one low finding per file for mutants that only the
+    wider suite catches (one per file keeps a list of lines from flooding the findings panel)."""
+    out = [Finding(
+        id=f"mutation-survivor-{m.id}", lens="test-quality",
+        claim=f"no test in the suite detects {m.operator} at {m.file}:{m.line}",
+        location=f"{m.file}:{m.line}", severity="medium",
+        receipt_plan=ReceiptPlan(kind="mutation",
+                                 detail=f"{m.original} -> {m.mutated or '(statement deleted)'}"),
+        verified=True, evidence_ids=["mutation"]) for m in mutants if m.status == "survived"]
+    by_file: dict[str, list[Mutant]] = {}
+    for m in mutants:
+        if m.status == "killed-by-suite":
+            by_file.setdefault(m.file, []).append(m)
+    for file, ms in by_file.items():
+        lines = sorted({m.line for m in ms})
+        where = f"{file}:{', '.join(str(n) for n in lines)}"
+        out.append(Finding(
+            id=f"mutation-suite-only-{Path(file).stem}", lens="test-quality",
+            claim=(f"the change's own tests do not catch mutants at {where}; "
+                   "the existing suite does"),
+            location=f"{file}:{lines[0]}", severity="low",
+            receipt_plan=ReceiptPlan(kind="mutation", detail="; ".join(
+                f"{Path(m.file).name}:{m.line} {m.operator}: {m.original} -> "
+                f"{m.mutated or '(statement deleted)'}" for m in ms)),
+            verified=True, evidence_ids=["mutation"]))
+    return out
+
+
+def run_mutation(ctx: ReviewContext) -> tuple[list[Evidence], list[Mutant], list[NotChecked],
+                                              bool]:
+    """Findings come from mutation_findings once lens claims have taken their mutants."""
     if ctx.skip_mutation:
-        return [], [], [], [], False
+        return [], [], [], False
     if not ctx.head_build_ok or ctx.head_wt is None:
-        return [], [], [], [NotChecked(what="mutation testing", why="head does not build")], False
+        return [], [], [NotChecked(what="mutation testing", why="head does not build")], False
     specs = mutation_targets(ctx)
     if not specs:
         risky = sum(1 for r in ctx.routing.routes if r.risk >= config.MUTATION_RISK_THRESHOLD
@@ -236,7 +279,7 @@ def run_mutation(ctx: ReviewContext) -> tuple[list[Evidence], list[Mutant], list
                "none has an added line the mutation operators apply to" if risky else
                f"no changed source hunk routed at risk >= {config.MUTATION_RISK_THRESHOLD} "
                "(mutation threshold)")
-        return [], [], [], [NotChecked(what="mutation testing", why=why)], False
+        return [], [], [NotChecked(what="mutation testing", why=why)], False
 
     classes = changed_test_classes(ctx)
     head_cases = ctx.head_tests.cases if ctx.head_tests else []
@@ -250,60 +293,75 @@ def run_mutation(ctx: ReviewContext) -> tuple[list[Evidence], list[Mutant], list
         ev = Evidence(id="mutation", kind="mutation", result="error",
                       title="Mutation not meaningful: the selected tests already fail on head",
                       details={"test_scope": scope, "baseline_failed": baseline_failed[:20]})
-        return [ev], [], [], [], True
+        return [ev], [], [], True
 
     wt = sandbox.worktree("mut", ctx.head_sha, name=f"mut-{ctx.change_id}")
     mutants: list[Mutant] = []
+    command_ids: list[str] = []
     with sandbox.lock(wt):
         sandbox.reset(wt)
         for n, spec in enumerate(specs, start=1):
             rid = f"mutant-{n}"
             try:
                 _apply(wt, spec)
-                run = sandbox.test(wt, ctx.run_dir, rid, "head", filter=flt,
-                                   commands=ctx.commands, timeout=MUTANT_TIMEOUT_S)
+                own = _mutant_run(ctx, wt, rid, flt, no_build=False)
+                command_ids.append(rid)
+                suite = None
+                if own[0] == "survived" and flt:
+                    # Same mutated build, whole test project: separates "the change's tests miss
+                    # it" from "nothing in the suite detects it" (notes/stryker.md).
+                    suite = _mutant_run(ctx, wt, f"{rid}-suite", None, no_build=True)
+                    command_ids.append(f"{rid}-suite")
             finally:
                 sandbox.reset(wt)
-            ctx.tests.append(run)
-            receipt = next(c for c in reversed(ctx.commands) if c.id == rid)
-            log = (ctx.run_dir / receipt.log_path).read_text(errors="replace")
-            status, killing = mutant_status(run, receipt.exit_code, log)
+            status, killing = two_tier_status(own, suite)
             mutants.append(Mutant(id=f"m{n}", file=spec.file, line=spec.line,
                                   operator=spec.operator, original=spec.original.strip(),
                                   mutated=spec.mutated.strip(), status=status,
                                   killing_tests=killing[:10]))
         sandbox.reset(wt)
 
-    counts = {s: sum(m.status == s for m in mutants)
-              for s in ("killed", "survived", "compile-error", "timeout")}
-    if counts["killed"] + counts["survived"] == 0:
+    counts = {s: sum(m.status == s for m in mutants) for s in MUTANT_STATUSES}
+    if counts["killed"] + counts["killed-by-suite"] + counts["survived"] == 0:
         result = "error"
     elif counts["survived"]:
         result = "partial"
     else:
         result = "pass"
     files = sorted({m.file for m in mutants})
-    title = (f"Mutation: {counts['killed']} killed, {counts['survived']} survived, "
+    title = (f"Mutation: {counts['killed']} killed by the change's tests, "
+             f"{counts['killed-by-suite']} caught only by the existing suite, "
+             f"{counts['survived']} survive the full suite, "
              f"{counts['compile-error']} compile errors, {counts['timeout']} timeouts "
              f"({len(mutants)} mutants on {', '.join(Path(f).name for f in files)})")
     survivors = [m for m in mutants if m.status == "survived"]
     ev = Evidence(
-        id="mutation", kind="mutation", title=title, result=result,
-        command_ids=[f"mutant-{i}" for i in range(1, len(mutants) + 1)],
+        id="mutation", kind="mutation", title=title, result=result, command_ids=command_ids,
         details={**counts, "total": len(mutants), "test_scope": scope, "test_filter": flt or "",
+                 "suite_scope": (f"full {TEST_PROJECT_DIR}, re-run for each mutant the change's "
+                                 "own tests miss" if flt else "same as test_scope"),
                  "risk_threshold": config.MUTATION_RISK_THRESHOLD,
                  "mutants_per_hunk_cap": config.MUTANTS_PER_HUNK,
-                 "survivors": [f"{m.file}:{m.line} {m.operator}" for m in survivors]},
-        excerpt="\n".join(f"survived {m.operator} at {Path(m.file).name}:{m.line}: "
-                          f"{m.original} -> {m.mutated or '(deleted)'}" for m in survivors[:5]))
-    findings = [Finding(
-        id=f"mutation-survivor-{m.id}", lens="test-quality",
-        claim=f"the change's tests do not detect {m.operator} at {m.file}:{m.line}",
-        location=f"{m.file}:{m.line}", severity="medium",
-        receipt_plan=ReceiptPlan(kind="mutation",
-                                 detail=f"{m.original} -> {m.mutated or '(statement deleted)'}"),
-        verified=True, evidence_ids=["mutation"]) for m in survivors]
-    return [ev], mutants, findings, [], True
+                 "survivors": [f"{m.file}:{m.line} {m.operator}" for m in survivors],
+                 "killed_by_suite": [f"{m.file}:{m.line} {m.operator}" for m in mutants
+                                     if m.status == "killed-by-suite"]},
+        excerpt="\n".join(f"survived the full suite: {m.operator} at {Path(m.file).name}:"
+                          f"{m.line}: {m.original} -> {m.mutated or '(deleted)'}"
+                          for m in survivors[:5]))
+    return [ev], mutants, [], True
+
+
+MUTANT_STATUSES = ("killed", "killed-by-suite", "survived", "compile-error", "timeout")
+
+
+def _mutant_run(ctx: ReviewContext, wt: Path, rid: str, flt: str | None,
+                no_build: bool) -> tuple[str, list[str]]:
+    run = sandbox.test(wt, ctx.run_dir, rid, "head", filter=flt, commands=ctx.commands,
+                       timeout=MUTANT_TIMEOUT_S, no_build=no_build)
+    ctx.tests.append(run)
+    receipt = next(c for c in reversed(ctx.commands) if c.id == rid)
+    log = (ctx.run_dir / receipt.log_path).read_text(errors="replace")
+    return mutant_status(run, receipt.exit_code, log)
 
 
 # Regeneration --------------------------------------------------------------------------------
@@ -458,11 +516,14 @@ def verify_findings(findings: list[Finding], evidence: list[Evidence],
         if plan == "test" and f.lens in ("requirement-tests", "logic-edge"):
             ids = [e.id for e in test_ev if test_backs(f, e)]
         elif plan == "mutation":
-            if matching_survivors(f, mutants):
+            backing = matching_survivors(f, mutants)
+            if backing:
                 ids = ["mutation"]
-                # A surviving mutant proves a gap in the change's tests, not a defect in the code.
-                if f.severity in ("high", "critical"):
-                    f = f.model_copy(update={"severity": "medium"})
+                # A surviving mutant proves a test gap, not a defect in the code; one the wider
+                # suite catches is only a gap in the change's own tests.
+                cap = ("medium" if any(m.status == "survived" for m in backing) else "low")
+                if SEVERITY_RANK[f.severity] > SEVERITY_RANK[cap]:
+                    f = f.model_copy(update={"severity": cap})
         elif plan == "byte-diff":
             ids = [e.id for e in by_kind.get("byte-diff", []) if byte_diff_backs(f, e)]
         elif plan == "regeneration":
@@ -547,18 +608,20 @@ def refuted_findings(findings: list[Finding], evidence: list[Evidence]) -> dict[
 
 
 MUTANT_LINE_WINDOW = 2
+SEVERITY_RANK = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+OWN_TESTS_MISS = ("survived", "killed-by-suite")
 
 
 def matching_survivors(f: Finding, mutants: list[Mutant]) -> list[Mutant]:
-    """Survivors that back a mutation-plan finding: same file, within MUTANT_LINE_WINDOW lines of a
-    line the finding names, and the same operator when the finding names one."""
+    """Mutants the change's own tests miss (survived, or caught only by the wider suite) that
+    back a mutation-plan finding: same file, within MUTANT_LINE_WINDOW lines of a line the finding
+    names, and the same operator when the finding names one."""
     path = f.location.split(":", 1)[0]
     text = f"{f.location} {f.receipt_plan.detail}"
     lines = {int(n) for n in re.findall(re.escape(Path(path).name) + r":(\d+)", text)}
-    ops = {op for op in ("negate-condition", "remove-guard", "off-by-one", "swap-boolean",
-                         "delete-statement") if op in f.receipt_plan.detail}
+    ops = {op for op in OPERATORS if op in f.receipt_plan.detail}
     return [m for m in mutants
-            if m.status == "survived" and m.file == path
+            if m.status in OWN_TESTS_MISS and m.file == path
             and any(abs(m.line - n) <= MUTANT_LINE_WINDOW for n in lines)
             and (not ops or m.operator in ops)]
 
@@ -578,7 +641,7 @@ def run_receipt_checks(ctx: ReviewContext) -> StageResult:
     res.not_checked += gaps
     res.ran += sorted(ran)
 
-    ev, mutants, survivor_findings, gaps, ran_mut = run_mutation(ctx)
+    ev, mutants, gaps, ran_mut = run_mutation(ctx)
     res.evidence += ev
     res.mutants += mutants
     res.not_checked += gaps
@@ -604,14 +667,12 @@ def run_receipt_checks(ctx: ReviewContext) -> StageResult:
             e.details["refutes"] = [{"id": f.id, "lens": f.lens, "claim": f.claim} for f in gone]
             e.title += f"; refutes {len(gone)} lens claim(s): {', '.join(f.id for f in gone)}"
     ctx.findings = [f for f in ctx.findings if f.id not in refuted]
-    claimed = {(m.file, m.line) for f in ctx.findings
+    claimed = {m.id for f in ctx.findings
                if f.verified and "mutation" in f.evidence_ids
                for m in matching_survivors(f, res.mutants)}
     compat_claimed = any(f.lens == "compatibility" and f.verified
                          and "compat-bytes" in f.evidence_ids for f in ctx.findings)
     res.findings = [*ctx.findings,
-                    *[f for f in survivor_findings
-                      if tuple(f.location.rsplit(":", 1)) not in
-                      {(p, str(n)) for p, n in claimed}],
+                    *mutation_findings([m for m in res.mutants if m.id not in claimed]),
                     *([] if compat_claimed else compat_findings)]
     return res

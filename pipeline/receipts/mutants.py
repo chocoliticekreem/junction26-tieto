@@ -1,23 +1,31 @@
 """Deterministic C# mutant generation on the added lines of a hunk (SPEC 5.5, no LLM).
 
 Operators, each applied to the first match on a line:
+  logical-operator  ` && ` <-> ` || `
   negate-condition  `if (c)` -> `if (!(c))`; else `is null` <-> `is not null`; else `==` <-> `!=`
   remove-guard      `if (c)` whose body exits (return/throw/continue/break) -> `if (false)`;
                     any other `if (c)` -> `if (true)` (the guarded block always runs)
-  off-by-one        `<=` -> `<`, `<` -> `<=`, `>=` -> `>`, `>` -> `>=`, `+ 1` <-> `- 1`,
+  linq-first        `.FirstOrDefault(` <-> `.First(`, `.SingleOrDefault(` <-> `.Single(`
+  off-by-one       `<=` -> `<`, `<` -> `<=`, `>=` -> `>`, `>` -> `>=`, `+ 1` <-> `- 1`,
                     `[0]` <-> `[1]`
   swap-boolean      `true` <-> `false`
   delete-statement  a complete single-line statement is blanked (line numbers stay stable)
 
 Selection per hunk: walk the added lines top to bottom, collecting candidates in operator order
 (an operator on a line whose text already appeared in the hunk is skipped); take the first
-candidate of each operator, then fill up to the cap in walk order.
+candidate of each operator in OPERATORS order, then fill up to the cap in walk order.
+
+OPERATORS is the priority order when a hunk offers more operators than the cap. The two operators
+taken from the Stryker.NET cross-check (notes/stryker.md) lead their peers because on 2283 each
+made the only mutants that survive the full test suite; delete-statement comes last because it is
+the coarsest and the most often killed by any test that merely runs the line.
 """
 
 import re
 from dataclasses import dataclass
 
-OPERATORS = ["negate-condition", "remove-guard", "off-by-one", "swap-boolean", "delete-statement"]
+OPERATORS = ["logical-operator", "negate-condition", "remove-guard", "linq-first", "off-by-one",
+             "swap-boolean", "delete-statement"]
 _EXITS = ("return", "throw", "continue;", "break;")
 _SKIP_PREFIXES = ("//", "/*", "*", "using ", "namespace ", "#", "[")
 _DECL_PREFIXES = ("public ", "private ", "protected ", "internal ", "static ", "readonly ",
@@ -131,6 +139,25 @@ def _off_by_one(line: str) -> str | None:
     return None
 
 
+def _logical_operator(line: str) -> str | None:
+    m = re.search(r" (&&|\|\|) ", line)
+    if not m:
+        return None
+    flip = "||" if m.group(1) == "&&" else "&&"
+    return f"{line[:m.start(1)]}{flip}{line[m.end(1):]}"
+
+
+_LINQ_SWAP = {"FirstOrDefault": "First", "First": "FirstOrDefault",
+              "SingleOrDefault": "Single", "Single": "SingleOrDefault"}
+
+
+def _linq_first(line: str) -> str | None:
+    m = re.search(r"\.(FirstOrDefault|First|SingleOrDefault|Single)\(", line)
+    if not m:
+        return None
+    return f"{line[:m.start(1)]}{_LINQ_SWAP[m.group(1)]}{line[m.end(1):]}"
+
+
 def _swap_boolean(line: str) -> str | None:
     m = re.search(r"\b(true|false)\b", line)
     if not m:
@@ -163,10 +190,14 @@ def candidates(lines: list[str], idx: int) -> list[tuple[str, str]]:
         return []
     out: list[tuple[str, str]] = []
     for op in OPERATORS:
-        if op == "negate-condition":
+        if op == "logical-operator":
+            mut = _logical_operator(line)
+        elif op == "negate-condition":
             mut = _negate(line)
         elif op == "remove-guard":
             mut = _remove_guard(lines, idx)
+        elif op == "linq-first":
+            mut = _linq_first(line)
         elif op == "off-by-one":
             mut = _off_by_one(line)
         elif op == "swap-boolean":

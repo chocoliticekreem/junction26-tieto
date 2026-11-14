@@ -127,7 +127,7 @@ Each lens is one LLM call (Claude Opus 5.5 `claude-opus-5-5` for requirement-tes
 
 ### 5.5 Receipt checks
 - **Fail-before / pass-after:** requirement tests must compile and fail on base and pass on head for bug fixes. For features where the new API does not exist on base, "does not compile on base" is accepted but labelled "new-API evidence (weaker)".
-- **Mutation (lightweight, built):** for each changed source hunk with risk >= 5, generate up to 5 mutants (negate condition, remove null/empty guard, off-by-one on bounds, swap boolean literal, delete a statement), rebuild, run the filtered tests. Report killed/survived. Stryker.NET is a stretch only.
+- **Mutation (lightweight, built):** for each changed source hunk with risk >= 5, generate up to 5 mutants (swap `&&`/`||`, negate condition, remove null/empty guard, `FirstOrDefault`/`First` and `SingleOrDefault`/`Single`, off-by-one on bounds, swap boolean literal, delete a statement), rebuild, run the change's own test classes; re-run each survivor against the full SourceGenerator test project. Report killed / killed-by-suite / survived. Stryker.NET cross-check: `notes/stryker.md`.
 - **Regeneration (generated files):** run the generator snapshot/verification tests on head; pass = all generated files verified as a block.
 - **Compatibility bytes:** a small console harness (`tools/compat-harness/`) serializes a fixed set of sample types with base and head builds and diffs the bytes.
 

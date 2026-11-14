@@ -139,10 +139,17 @@ export interface Mutant {
   id: string;
   file: string;
   line: number;
-  operator: "negate-condition" | "remove-guard" | "off-by-one" | "swap-boolean" | "delete-statement";
+  operator:
+    | "logical-operator"
+    | "negate-condition"
+    | "remove-guard"
+    | "linq-first"
+    | "off-by-one"
+    | "swap-boolean"
+    | "delete-statement";
   original: string;
   mutated: string;
-  status: "killed" | "survived" | "compile-error" | "timeout";
+  status: "killed" | "killed-by-suite" | "survived" | "compile-error" | "timeout";
   killing_tests?: string[];
 }
 

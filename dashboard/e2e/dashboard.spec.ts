@@ -41,6 +41,9 @@ test("change page shows receipts, collapsed hunches, not-checked list and log ex
   await expect(page.getByTestId("finding")).toHaveCount(1);
   await expect(page.getByTestId("finding").getByTestId("evidence-card")).toHaveCount(1);
   await expect(page.getByTestId("finding").getByTestId("mutant-table")).toContainText("survived");
+  const suiteOnly = page.getByTestId("finding").getByTestId("mutant-table").getByText("caught by existing suite");
+  await expect(suiteOnly).toHaveCount(1);
+  await expect(suiteOnly).toHaveAttribute("title", "caught by the existing suite, not by the change's tests");
 
   // Hunches collapsed by default, visually labelled when opened.
   await expect(page.getByTestId("hunches-toggle")).toContainText("2 unverified hunches withheld");
@@ -285,7 +288,7 @@ test("receipt markdown API returns a PR comment with the verdict and requirement
   expect(md).toContain("**Verdict: Needs sign-off**");
   expect(md).toContain("| Requirement tests fail on base, pass on head | requirement-tests | pass | `E-req` |");
   expect(md).toContain("`F-2283-1`");
-  expect(md).toContain("`E-mut` mutation: Mutants on changed lines: 4 killed, 1 survived — partial");
+  expect(md).toContain("`E-mut` mutation: Mutants on changed lines: 3 killed, 1 caught only by the existing suite, 1 survived — partial");
   expect(md).toContain("2 hunches withheld");
   expect(md).toContain("Signed off by:");
 

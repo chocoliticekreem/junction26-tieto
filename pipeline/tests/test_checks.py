@@ -74,9 +74,58 @@ def test_generate_is_deterministic_capped_and_diverse():
     a = generate("C.cs", FILE, hunk, 1, cap=5)
     b = generate("C.cs", FILE, hunk, 1, cap=5)
     assert a == b and len(a) == 5
-    assert {m.operator for m in a} == {"negate-condition", "remove-guard", "off-by-one",
-                                       "swap-boolean", "delete-statement"}
+    # Over the cap, OPERATORS order decides: delete-statement (last) is the one left out.
+    assert {m.operator for m in a} == {"logical-operator", "negate-condition", "remove-guard",
+                                       "off-by-one", "swap-boolean"}
     assert [m.line for m in a] == sorted(m.line for m in a)
+    assert "delete-statement" in {m.operator for m in generate("C.cs", FILE, hunk, 1, cap=6)}
+
+
+def test_logical_operator_swaps_the_first_and_or():
+    assert _cands(10)["logical-operator"] == "        if (i < a.Length || a[0] == 1)"
+    lines = ["        && x || y", "    var s = \"a&&b\";"]
+    assert dict(candidates(lines, 0))["logical-operator"] == "        || x || y"
+    assert "logical-operator" not in dict(candidates(lines, 1))  # needs spaces around it
+
+
+# 2283 TypeCollector.cs lines 1434 and 1446: the two Stryker.NET survivors of the full suite
+# (notes/stryker.md) that the first five operators never generated.
+STRYKER_2283 = [
+    "    private static Location? GetPropertyIdentifierLocation(IPropertySymbol property) => "
+    "(property.DeclaringSyntaxReferences.FirstOrDefault()?.GetSyntax() as "
+    "PropertyDeclarationSyntax)?.Identifier.GetLocation();",
+    "    private void ReportIfLocatedInCompilation(Action<Diagnostic> report, "
+    "Diagnostic diagnostic)",
+    "    {",
+    "        if (diagnostic.Location.IsInSource && "
+    "this.compilation.ContainsSyntaxTree(diagnostic.Location.SourceTree))",
+    "        {",
+    "            report(diagnostic);",
+    "        }",
+    "    }",
+]
+
+
+def test_linq_first_swaps_both_ways():
+    assert dict(candidates(STRYKER_2283, 0))["linq-first"] == STRYKER_2283[0].replace(
+        ".FirstOrDefault()", ".First()")
+    for orig, mut in ((".First()", ".FirstOrDefault()"),
+                      (".Single(x => x)", ".SingleOrDefault(x => x)"),
+                      (".SingleOrDefault()", ".Single()")):
+        got = dict(candidates([f"    var v = xs{orig};"], 0))["linq-first"]
+        assert got == f"    var v = xs{mut};"
+    assert "linq-first" not in dict(candidates(["    var v = xs.FirstName;"], 0))
+
+
+def test_generate_makes_the_stryker_survivors_of_2283():
+    hunk = "\n".join(f"+{ln}" for ln in STRYKER_2283)
+    file_lines = [""] * 1433 + STRYKER_2283
+    a = generate("T.cs", file_lines, hunk, 1434, cap=5)
+    assert a == generate("T.cs", file_lines, hunk, 1434, cap=5)
+    got = {(m.line, m.operator) for m in a}
+    assert {(1434, "linq-first"), (1437, "logical-operator")} <= got
+    assert [m.operator for m in a] == ["linq-first", "logical-operator", "negate-condition",
+                                       "remove-guard", "delete-statement"]
 
 
 def test_generate_skips_stale_lines_and_repeated_text():
@@ -141,6 +190,52 @@ def test_mutant_status():
         == "compile-error"
     assert checks.mutant_status(_run("head", compiled=False), 1, "host crashed")[0] == "killed"
     assert checks.mutant_status(_run("head", compiled=False), 124, "")[0] == "timeout"
+
+
+@pytest.mark.parametrize("own,suite,expected", [
+    (("killed", ["Own.A"]), None, ("killed", ["Own.A"])),
+    (("survived", []), ("killed", ["Other.B"]), ("killed-by-suite", ["Other.B"])),
+    (("survived", []), ("survived", []), ("survived", [])),
+    (("survived", []), ("timeout", []), ("timeout", [])),
+    (("survived", []), None, ("survived", [])),  # no own test class: first run was the suite
+    (("compile-error", []), None, ("compile-error", [])),
+])
+def test_two_tier_status(own, suite, expected):
+    assert checks.two_tier_status(own, suite) == expected
+
+
+def _mutant(mid, line, op, status, file="src/T.cs"):
+    return Mutant(id=mid, file=file, line=line, operator=op, original="a && b",
+                  mutated="a || b", status=status)
+
+
+def test_mutation_findings_map_fate_to_wording_and_severity():
+    ms = [_mutant("m1", 239, "negate-condition", "killed-by-suite"),
+          _mutant("m2", 985, "delete-statement", "killed-by-suite"),
+          _mutant("m3", 1446, "logical-operator", "survived"),
+          _mutant("m4", 1446, "negate-condition", "killed"),
+          _mutant("m5", 7, "swap-boolean", "killed-by-suite", file="src/U.cs"),
+          _mutant("m6", 8, "off-by-one", "compile-error")]
+    out = {f.id: f for f in checks.mutation_findings(ms)}
+    assert set(out) == {"mutation-survivor-m3", "mutation-suite-only-T", "mutation-suite-only-U"}
+    s = out["mutation-survivor-m3"]
+    assert (s.severity, s.verified, s.evidence_ids) == ("medium", True, ["mutation"])
+    assert s.claim == "no test in the suite detects logical-operator at src/T.cs:1446"
+    low = out["mutation-suite-only-T"]
+    assert (low.severity, low.verified, low.location) == ("low", True, "src/T.cs:239")
+    assert low.claim == ("the change's own tests do not catch mutants at src/T.cs:239, 985; "
+                         "the existing suite does")
+    assert "T.cs:985 delete-statement" in low.receipt_plan.detail
+
+
+def test_lens_mutation_claim_backed_only_by_the_suite_is_capped_low():
+    f = _finding("tq", "test-quality", "mutation", location="src/T.cs:239",
+                 detail="T.cs:239 negate-condition: expected to survive")
+    [out] = checks.verify_findings([f], [], [_mutant("m1", 239, "negate-condition",
+                                                     "killed-by-suite")])
+    assert out.verified and out.severity == "low"
+    [out] = checks.verify_findings([f], [], [_mutant("m1", 239, "negate-condition", "survived")])
+    assert out.verified and out.severity == "medium"
 
 
 # Finding verification mapping --------------------------------------------------------------------
