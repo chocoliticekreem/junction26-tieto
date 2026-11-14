@@ -9,12 +9,15 @@ import type {
   Finding,
   IntakeReport,
   LedgerEntry,
+  MetricsSummary,
   MetricsTable,
+  MetricsTableName,
   Mutant,
   Question,
   RoutingReport,
   RunBundle,
   TestRun,
+  TrustHistoryEvent,
   TrustLevels,
   TrustReceipt,
 } from "./types";
@@ -201,7 +204,7 @@ export function pendingQuestions(runs?: RunBundle[]): Question[] {
 
 // Metrics --------------------------------------------------------------------
 
-export function readMetricsTable(name: "T1" | "T3" | "T5"): MetricsTable | undefined {
+export function readMetricsTable(name: MetricsTableName): MetricsTable | undefined {
   const t = readJson<MetricsTable>(path.join(dirs.metrics(), `${name}.json`));
   if (!t || !Array.isArray(t.columns) || !Array.isArray(t.rows)) return undefined;
   return t;
@@ -210,6 +213,17 @@ export function readMetricsTable(name: "T1" | "T3" | "T5"): MetricsTable | undef
 export function readTrustLevels(): TrustLevels | undefined {
   const t = readJson<TrustLevels>(path.join(dirs.metrics(), "trust.json"));
   return t && typeof t === "object" && !Array.isArray(t) ? t : undefined;
+}
+
+export function readMetricsSummary(): MetricsSummary | undefined {
+  const s = readJson<MetricsSummary>(path.join(dirs.metrics(), "summary.json"));
+  return s && typeof s === "object" && !Array.isArray(s) ? s : undefined;
+}
+
+export function readTrustHistory(): TrustHistoryEvent[] {
+  return readJsonList<TrustHistoryEvent>(path.join(dirs.metrics(), "trust-history.json")).filter(
+    (e) => typeof e.seq === "number" && typeof e.area === "string" && typeof e.level === "number",
+  );
 }
 
 // Derived --------------------------------------------------------------------

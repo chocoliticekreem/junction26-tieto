@@ -17,7 +17,7 @@ npm run test:e2e       # next build + Playwright against a temp copy of e2e/fixt
 | `RECEIPTS_RUNS` | `../runs` | `<change-id>/latest`, `<change-id>/<run-ts>/*.json`, `logs/*.log` | never |
 | `RECEIPTS_CONTEXT` | `../context` | `REVIEW_CONTEXT.md`, `ledger.jsonl`, `status.json` | `ledger.jsonl` (append), `status.json` |
 | `RECEIPTS_DECISIONS` | `../decisions` | `<change-id>.json` | `<change-id>.json` (create once, never overwrite) |
-| `RECEIPTS_METRICS` | `../metrics` | `T1.json`, `T3.json`, `T5.json`, `trust.json` | never |
+| `RECEIPTS_METRICS` | `../metrics` | `summary.json`, `T1.json`…`T7.json`, `trust.json`, `trust-history.json` | never |
 | `RECEIPTS_MOCK_REPO` | `../mock-repo` | bare git repo | `git merge --no-ff` into `main` via a temporary worktree |
 
 Change ids are opaque. Ids with `/` (e.g. `mock/2283/logic`) map to nested folders under `runs/`; the inbox walks
@@ -52,7 +52,7 @@ runs of an A/B decision and are hidden from the inbox; `/decision/<id>` reads th
 
 ## Metrics shape (`metrics/*.json`)
 
-`T1.json`, `T3.json`, `T5.json`:
+`T1.json` … `T7.json` share one shape:
 
 ```json
 { "columns": ["lens", "planted_in_scope", "caught", "missed", "false_alarms", "recall", "precision"],
@@ -61,14 +61,29 @@ runs of an A/B decision and are hidden from the inbox; `/decision/<id>` reads th
 ```
 
 Rows are arrays aligned to `columns`; cells are `string | number | null`. Columns whose name matches
-`recall|precision|rate` and whose value is in 0..1 render as percentages; `usd|cost` columns render as dollars.
-Numeric columns right-align automatically.
+`recall|precision|rate|share` and whose value is in 0..1 render as percentages; `usd|cost` columns render as
+dollars. Numeric columns right-align automatically. A `note` shows its first sentence; the rest sits behind a
+"Definitions" disclosure. String cells over 48 characters collapse behind a disclosure (split on `;` or `,`).
 
-The two charts need these column names (case-insensitive):
+Column names the page keys on (case-insensitive):
 
-- Recall by lens (bar): `T1` columns `lens` and `recall`.
+- Headline tiles: `summary.json` keys `cold.{planted,caught,recall,escapes,false_alarm_cases,control_bait_cases,
+  questions_per_change,lens_cost_usd,router_cost_usd,cases}`, `warm.{questions_per_change,cases}`,
+  `ju26-issue-2297_routed_away_from_humans.{generated_files,files_total,share}`, `excluded_incomplete_runs`.
+  A tile is skipped when its keys are missing.
+- Recall by lens (bar, with caught/in-scope): `T1` columns `lens`, `recall`, `caught`, `planted_in_scope`, optional `kind`.
+  A null `recall` renders as "—" (nothing in scope).
 - Questions per change over the sequence (line, cold vs warm): `T5` columns `seq` (number), `questions` (number)
-  and `mode` (`cold` | `warm`; one line per distinct mode, `warm` dashed).
+  and `mode` (`cold` | `warm`; one line per distinct mode, `warm` dashed). The cold-vs-warm summary sums
+  `questions`, `bait_false_alarms`, `ledger_citations`, `repeat_questions` per mode (missing columns show "—").
+- Human load: `T4` column `change_id`; rows starting `ju26-issue-` render as cards (`files_to_human`, `files_total`,
+  `generated`, `generated_verified_by_regeneration`, `deep`, `light`, `minutes_saved`, `minutes_read_all`), the rest
+  behind a "bench rows" disclosure.
+- Receipts headline: `T6` row whose `lens` is `all`, columns `findings_shown`, `with_executed_receipt`,
+  `hunches_withheld`, `ledger_citations`.
+- `T7` renders with wrapped text cells; `T2`, `T3` as plain tables.
+- Area trust over the bench: `trust-history.json` = `[{seq, change_id, area, level, event}]`. Areas whose level
+  changed get a step chart each (events matching `reset|escape` are marked); the rest collapse into one line.
 
 Suggested columns, as used by the fixtures:
 
@@ -83,11 +98,11 @@ Suggested columns, as used by the fixtures:
 | Route | Reads | Writes |
 |---|---|---|
 | `/` | latest run per change, ledger (pending counts), decisions | |
-| `/change/[id]` | run bundle, decision, ledger | `POST /api/decisions/sign-off {change_id}` |
+| `/change/[id]` | run bundle, decision, ledger | `POST /api/decisions/sign-off {change_id}`; “Copy as PR comment” copies `GET /api/receipt-markdown?change=<id>` (GitHub markdown of the trust receipt, `text/markdown`) |
 | `/decision/[id]` | parent run + `__A`/`__B` runs, decision | `POST /api/decisions/merge {change_id, choice}` |
 | `/questions` | all latest runs' questions, ledger | `POST /api/questions/answer {question_id, change_id, answer}` |
 | `/context` | `REVIEW_CONTEXT.md`, `status.json`, ledger | `POST /api/context/confirm` |
-| `/track-record` | `metrics/T1,T3,T5,trust.json` | |
+| `/track-record` | `metrics/summary.json`, `T1`–`T7`, `trust.json`, `trust-history.json` | |
 | header | cookie | `POST /api/human {name}` |
 
 ## Tests
@@ -96,4 +111,6 @@ Suggested columns, as used by the fixtures:
 a context file, a ledger with one answer, and metrics. They validate against `models.py`. `e2e/global-setup.ts`
 copies them to `e2e/.tmp/` and creates a bare repo with `main`, `review/ju26-issue-2297/A` and `.../B`, so the
 Merge A test produces a real `--no-ff` commit authored by the named human. `e2e/screenshots.spec.ts` writes
-desktop (1440) and mobile (390) screenshots of every page to `e2e/screenshots/`.
+desktop (1440) and mobile (390) screenshots of every page to `e2e/screenshots/`. `e2e/receipt-markdown.spec.ts` unit-tests
+the PR-comment generator without a server. `e2e/screenshots/real-*.png` are taken by hand against the repo's real
+`runs/` and `metrics/` (`npm run build && npm run start -- -p 3111`, then a Playwright script).

@@ -2,6 +2,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadRun, pendingQuestions, readDecision, signOffRefusal } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
+import { receiptMarkdown } from "@/lib/receipt-markdown";
+import { CopyReceiptButton } from "@/components/copy-receipt-button";
 import { EvidenceCard } from "@/components/evidence-card";
 import { FindingCard, HunchList } from "@/components/finding-card";
 import { MutantTable } from "@/components/mutant-table";
@@ -27,6 +29,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
   const findingEvidenceIds = new Set(r.findings.flatMap((f) => f.evidence_ids ?? []));
   const otherEvidence = run.evidence.filter((e) => !findingEvidenceIds.has(e.id));
   const decisionHref = `/decision/${encodeURIComponent(changeId)}`;
+  const markdown = receiptMarkdown(run, decision);
 
   return (
     <div className="space-y-8">
@@ -42,6 +45,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
         title={r.requirement_title}
         right={
           <>
+            <CopyReceiptButton markdown={markdown} apiHref={`/api/receipt-markdown?change=${encodeURIComponent(changeId)}`} />
             {r.verdict === "decision-A-B" && (
               <Button render={<Link href={decisionHref} />} variant="outline" size="sm" data-testid="go-decision">
                 Open A/B decision

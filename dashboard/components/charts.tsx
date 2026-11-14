@@ -1,30 +1,34 @@
 // Inline SVG charts: no client JS, no library. Quiet by design.
 
-export function BarChart({ data, max = 1, format = (v: number) => `${Math.round(v * 100)}%` }: { data: { label: string; value: number }[]; max?: number; format?: (v: number) => string }) {
-  const rowH = 22;
-  const labelW = 130;
-  const width = 480;
-  const barW = width - labelW - 56;
-  const height = data.length * rowH + 8;
+export interface BarDatum {
+  label: string;
+  /** null = nothing in scope; renders a dash and no bar. */
+  value: number | null;
+  /** Shown before the percentage, e.g. "5/8". */
+  detail?: string;
+  /** Second, smaller line under the label (e.g. "check"). */
+  sublabel?: string;
+}
+
+export function BarChart({ data, max = 1, format = (v: number) => `${Math.round(v * 100)}%` }: { data: BarDatum[]; max?: number; format?: (v: number) => string }) {
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full max-w-xl" role="img" aria-label="bar chart">
-      {data.map((d, i) => {
-        const y = i * rowH + 4;
-        const w = Math.max(0, Math.min(1, d.value / max)) * barW;
+    <div className="grid max-w-2xl grid-cols-[minmax(7rem,max-content)_1fr_max-content] items-center gap-x-3 gap-y-1.5" role="img" aria-label="bar chart">
+      {data.map((d) => {
+        const w = d.value === null ? 0 : Math.max(0, Math.min(1, d.value / max)) * 100;
         return (
-          <g key={d.label}>
-            <text x={labelW - 8} y={y + 14} textAnchor="end" className="fill-muted-foreground font-mono text-[11px]">
-              {d.label}
-            </text>
-            <rect x={labelW} y={y + 3} width={barW} height={rowH - 8} className="fill-muted" rx={2} />
-            <rect x={labelW} y={y + 3} width={w} height={rowH - 8} className="fill-primary" rx={2} />
-            <text x={labelW + barW + 8} y={y + 14} className="fill-foreground font-mono text-[11px] tabular-nums">
-              {format(d.value)}
-            </text>
-          </g>
+          <div key={d.label} className="contents">
+            <div className="text-right leading-tight">
+              <div className="font-mono text-[11px] [overflow-wrap:anywhere]">{d.label}</div>
+              {d.sublabel && <div className="text-[9px] text-muted-foreground">{d.sublabel}</div>}
+            </div>
+            <div className="h-3.5 overflow-hidden rounded-sm bg-muted">
+              {d.value !== null && <div className="h-full rounded-sm bg-primary" style={{ width: `${w}%` }} />}
+            </div>
+            <div className="font-mono text-[11px] tabular-nums">{d.value === null ? "—" : `${d.detail ? d.detail + " · " : ""}${format(d.value)}`}</div>
+          </div>
         );
       })}
-    </svg>
+    </div>
   );
 }
 
@@ -98,5 +102,59 @@ export function LineChart({ series, yLabel }: { series: Series[]; yLabel?: strin
         ))}
       </div>
     </div>
+  );
+}
+
+export interface StepPoint {
+  x: number;
+  level: number;
+  /** A reset or escape: drawn as a hollow marker in the status colour. */
+  reset?: boolean;
+}
+
+/** One small step chart of a trust level (0-3) over the bench sequence. */
+export function TrustStepChart({ title, points, xMax }: { title: string; points: StepPoint[]; xMax: number }) {
+  const width = 300;
+  const height = 92;
+  const pad = { l: 22, r: 8, t: 8, b: 18 };
+  const pts = points.slice().sort((a, b) => a.x - b.x);
+  if (!pts.length) return null;
+  const sx = (x: number) => pad.l + ((x - 1) / Math.max(1, xMax - 1)) * (width - pad.l - pad.r);
+  const sy = (y: number) => pad.t + (1 - y / 3) * (height - pad.t - pad.b);
+  let d = `M${sx(pts[0].x).toFixed(1)},${sy(pts[0].level).toFixed(1)}`;
+  for (let i = 1; i < pts.length; i++) {
+    d += ` H${sx(pts[i].x).toFixed(1)} V${sy(pts[i].level).toFixed(1)}`;
+  }
+  const resets = pts.filter((p) => p.reset);
+  const xTicks = [1, Math.round(xMax / 2), xMax];
+  return (
+    <figure className="min-w-0 space-y-1">
+      <figcaption className="flex items-baseline justify-between gap-2 text-xs">
+        <span className="truncate font-mono">{title}</span>
+        <span className="shrink-0 text-muted-foreground">
+          L{pts[0].level} → L{pts[pts.length - 1].level}
+          {resets.length > 0 && ` · ${resets.length} reset${resets.length === 1 ? "" : "s"}`}
+        </span>
+      </figcaption>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={`trust level over the bench for ${title}`}>
+        {[0, 1, 2, 3].map((v) => (
+          <g key={v}>
+            <line x1={pad.l} x2={width - pad.r} y1={sy(v)} y2={sy(v)} className="stroke-border" strokeWidth={1} />
+            <text x={pad.l - 5} y={sy(v) + 3} textAnchor="end" className="fill-muted-foreground font-mono text-[9px] tabular-nums">
+              {v}
+            </text>
+          </g>
+        ))}
+        {xTicks.map((v) => (
+          <text key={v} x={sx(v)} y={height - 5} textAnchor="middle" className="fill-muted-foreground font-mono text-[9px] tabular-nums">
+            {v}
+          </text>
+        ))}
+        <path d={d} fill="none" className="stroke-primary" strokeWidth={2} strokeLinejoin="round" />
+        {resets.map((p) => (
+          <circle key={p.x} cx={sx(p.x)} cy={sy(p.level)} r={3.5} className="fill-background stroke-bad-foreground" strokeWidth={1.5} />
+        ))}
+      </svg>
+    </figure>
   );
 }
