@@ -10,7 +10,7 @@ const sans = Instrument_Sans({ subsets: ["latin"], variable: "--font-instrument"
 const mono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-plex-mono", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "Receipts",
+  title: "PullReceipts",
   description: "Auditable AI code review: every finding has a receipt, a named human decides.",
 };
 

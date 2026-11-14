@@ -60,7 +60,7 @@ test("markdown carries requirement, verdict, checked table, findings with receip
   expect(md).toContain("### Not checked (1)\n\n- **NativeAOT** — not built in the sandbox");
   expect(md).toContain("> Line one.\n> Line two.");
   expect(md).toContain("**Signed off by: — (pending)**");
-  expect(md).toContain("<sub>Receipts run 20261114T063000Z on 9f3c1a7e2b · change `mock/2283/logic`</sub>");
+  expect(md).toContain("<sub>PullReceipts run 20261114T063000Z on 9f3c1a7e2b · change `mock/2283/logic`</sub>");
 });
 
 test("empty sections say so instead of disappearing, and hunches are counted not listed", () => {

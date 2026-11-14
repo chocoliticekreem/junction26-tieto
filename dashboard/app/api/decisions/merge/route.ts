@@ -47,7 +47,7 @@ export async function POST(req: Request) {
 
   let mergeSha: string;
   try {
-    const message = `Merge ${branch}: ${run.receipt.requirement_id} interpretation ${choice}\n\nDecided by ${auth.who} in Receipts.${interp.summary ? `\n\n${interp.summary}` : ""}`;
+    const message = `Merge ${branch}: ${run.receipt.requirement_id} interpretation ${choice}\n\nDecided by ${auth.who} in PullReceipts.${interp.summary ? `\n\n${interp.summary}` : ""}`;
     mergeSha = mergeIntoMain(dirs.mockRepo(), branch, reviewedSha, auth.who, message);
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });

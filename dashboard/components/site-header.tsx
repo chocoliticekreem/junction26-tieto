@@ -10,7 +10,7 @@ export function SiteHeader({ human }: { human: string | null }) {
       <div className="mx-auto flex w-full max-w-6xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-2.5 sm:px-6">
         <Link href="/" className="flex items-center gap-2 rounded-sm">
           <SlipMark className="size-6" />
-          <span className="text-sm font-semibold tracking-tight">Receipts</span>
+          <span className="text-sm font-semibold tracking-tight">PullReceipts</span>
           <span className="hidden text-xs text-muted-foreground md:inline">AI review you can audit</span>
         </Link>
         <NavLinks />
