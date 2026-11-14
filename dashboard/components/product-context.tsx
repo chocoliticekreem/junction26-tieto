@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { BookOpenText, CircleCheck, MessageCircleQuestion, PencilLine } from "lucide-react";
+import { splitAreas } from "@/lib/context-doc";
 import { lensLabel } from "@/lib/humanize";
 import type { RunContext, RunContextCitation } from "@/lib/types";
+import { ContextNote } from "./context-doc";
 import { Disclosure } from "./disclosure";
 import { Panel, Section } from "./section";
 import { cn } from "@/lib/utils";
@@ -35,11 +37,11 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** The one line a decision-maker sees: "Used 10 notes about your product · 1 held back". */
+/** The one line a decision-maker sees: "10 notes used · 1 held back". */
 export function contextOneLiner(context: RunContext): string {
   const held = context.citations.filter((c) => c.effect === "suppressed-unconfirmed").length;
   const dropped = context.citations.filter((c) => c.effect === "withdrawn").length;
-  const parts = [`Used ${plural(context.entries.length, "note")} about your product`];
+  const parts = [`${plural(context.entries.length, "note")} used`];
   if (held) parts.push(`${held} held back`);
   if (dropped) parts.push(`${dropped} withdrawn`);
   if (!held && !dropped) parts.push(context.citations.length ? `${plural(context.citations.length, "finding")} shaped by it` : "nothing changed by it");
@@ -114,9 +116,7 @@ function ProductContextBody({ context, areas }: { context: RunContext; areas: st
           {context.citations.map((c, i) => (
             <div key={i} className="px-3 py-2.5 text-sm leading-6 [overflow-wrap:anywhere]" data-testid="context-citation" data-effect={c.effect}>
               {citationText(c)}
-              <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">
-                {lensLabel[c.lens] ?? c.lens} lens · {c.effect === "withdrawn" ? "finding withdrawn" : c.effect === "suppressed-unconfirmed" ? "kept as a hunch" : "cited"}
-              </div>
+              <div className="mt-0.5 font-mono text-[11px] text-muted-foreground">{lensLabel[c.lens] ?? c.lens} lens</div>
             </div>
           ))}
         </Panel>
@@ -124,23 +124,16 @@ function ProductContextBody({ context, areas }: { context: RunContext; areas: st
 
       {context.entries.length > 0 ? (
         <Disclosure label={`${context.entries.length} ${context.entries.length === 1 ? "note" : "notes"} the reviewer was given for ${shownAreas.join(", ") || "this change"}`} testId="context-entries-toggle">
-          <ul className="space-y-1.5 text-sm" data-testid="context-entries">
+          <ul className="space-y-1" data-testid="context-entries">
             {context.entries.map((e, i) => (
-              <li key={i} className="flex items-start gap-2 [overflow-wrap:anywhere]" data-testid="context-entry">
-                <span className="mt-2 size-1 shrink-0 rounded-full bg-muted-foreground/60" aria-hidden />
-                <span className="min-w-0">
-                  <span>{e.text}</span>
-                  <span className="ml-2 inline-flex flex-wrap items-center gap-1.5 align-baseline text-[11px] text-muted-foreground">
-                    <span className="font-mono">{e.area}</span>
-                    <span>{e.source}</span>
-                    {e.kind === "ledger" && (
-                      <span className="inline-flex items-center gap-0.5 rounded-full border border-info-foreground/25 bg-info px-1.5 py-px font-medium text-info-foreground" data-testid="context-entry-ledger">
-                        <MessageCircleQuestion className="size-3" aria-hidden /> from an answered question
-                      </span>
-                    )}
+              <ContextNote key={i} areas={splitAreas(e.area)} source={e.source} testId="context-entry">
+                {e.text}
+                {e.kind === "ledger" && (
+                  <span className="ml-1.5 inline-flex items-center gap-0.5 rounded-full border border-info-foreground/25 bg-info px-1.5 py-px align-[2px] text-[10px] font-medium leading-none text-info-foreground" data-testid="context-entry-ledger">
+                    <MessageCircleQuestion className="size-3" aria-hidden /> from an answered question
                   </span>
-                </span>
-              </li>
+                )}
+              </ContextNote>
             ))}
           </ul>
         </Disclosure>

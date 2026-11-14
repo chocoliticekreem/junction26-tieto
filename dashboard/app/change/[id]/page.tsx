@@ -59,8 +59,9 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
   const markdown = receiptMarkdown(run, decision);
   const residual = splitNote(r.residual_risk);
   const routingTotal = Object.keys(r.routing).length;
-  const summary = plainSummary(run, { decision, pendingQuestions: pending.length });
-  const story = summary.filter((s) => s.key !== "decide");
+  // Purpose = the title above; impact = step 2 right below; hunches = the footnote under Findings; questions = the block in step 5.
+  const summary = plainSummary(run, { decision, hunchesElsewhere: true });
+  const story = summary.filter((s) => s.key === "proved" || s.key === "wrong" || s.key === "unchecked");
   const decide = summary.find((s) => s.key === "decide")!;
   const routingCounts = (["deep", "light", "regeneration"] as const).map((d) => `${Object.values(r.routing).filter((v) => v === d).length} ${d}`).join(" · ");
   const hasReadings = (r.interpretations?.length ?? 0) > 0;

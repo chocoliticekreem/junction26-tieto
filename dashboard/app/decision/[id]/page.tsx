@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ChevronRight, CircleCheck, Info, Users } from "lucide-react";
 import { loadRun, readDecision } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
-import { abMismatchMessage, firstSentence, humanizeTitle, humanizeVerdict, quotedRequirement, readerVote } from "@/lib/humanize";
+import { abMismatchMessage, firstSentence, humanizeTitle, quotedRequirement, readerVote } from "@/lib/humanize";
 import { Disclosure } from "@/components/disclosure";
 import { EvidenceCard } from "@/components/evidence-card";
 import { Slip } from "@/components/mascot";
@@ -61,7 +61,7 @@ function Side({ interp, run, chosen }: { interp: Interpretation; run: RunBundle 
           <VerdictSummary verdict={run.receipt.verdict} reason={run.receipt.verdict_reason} ctx={{ findings: run.receipt.findings, evidence: run.evidence }} compact hideRaw />
           {counts && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              receipts <ReceiptBar pass={counts.pass} partial={counts.partial} fail={counts.fail} />
+              <ReceiptBar pass={counts.pass} partial={counts.partial} fail={counts.fail} />
               <span className="font-mono">{run.receipt.head_sha.slice(0, 8)}</span>
             </div>
           )}
@@ -170,12 +170,6 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
       .map(([label, side]) => [label, side!.receipt.verdict_reason]),
   );
   const bothBlocked = "A" in blocked && "B" in blocked;
-  const blockedHuman = Object.fromEntries(
-    Object.entries(blocked).map(([label, reason]) => {
-      const side = label === "A" ? runA : runB;
-      return [label, humanizeVerdict("blocked", reason, side ? { findings: side.receipt.findings, evidence: side.evidence } : undefined).headline];
-    }),
-  );
   const vote = readerVote(r.refused);
   const refusal = r.refused[0];
   const quote = quotedRequirement(r.refused);
@@ -195,7 +189,7 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
       </nav>
       <PageTitle eyebrow={r.requirement_id} title={r.requirement_title}>
         <VerdictSummary verdict={r.verdict} reason={r.verdict_reason} ctx={{ findings: r.findings, evidence: run.evidence }} className="mt-3" hideRaw />
-        {r.verdict !== "decision-A-B" && (
+        {r.verdict !== "decision-A-B" && r.verdict !== "blocked" && (
           <p className="mt-3 flex max-w-2xl items-start gap-2 rounded-lg border border-info-foreground/25 bg-info px-3 py-2 text-sm text-info-foreground" data-testid="ab-mismatch">
             <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
             <span title={`Verdict is ${r.verdict}, not decision-A-B; A/B shown anyway.`}>{abMismatchMessage(r.verdict, bothBlocked)}</span>
@@ -207,7 +201,6 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
 
       <div className="space-y-10">
         <StoryStep id="readings" n={1} title="Two readings of the ticket">
-          <p className="text-sm text-muted-foreground">The requirement can be read two ways. The reviewer built both, ran the receipts on each, and refuses to guess which one you meant.</p>
           <div className="grid gap-4 lg:grid-cols-2">
             {interps.map((i) => (
               <Side key={i.label} interp={i} run={i.label === "A" ? runA : runB} chosen={decision?.choice === i.label} />
@@ -241,7 +234,7 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
                 {decision ? `Decided: ${decision.who} picked reading ${decision.choice}.` : bothBlocked ? "Neither reading can be merged yet: both share a proven defect." : "Pick the reading that matches what you meant. The merge is recorded under your name."}
               </p>
             </div>
-            <MergeButtons changeId={changeId} human={human} decision={decision} interpretations={interps} blocked={blocked} blockedHuman={blockedHuman} />
+            <MergeButtons changeId={changeId} human={human} decision={decision} interpretations={interps} blocked={blocked} />
           </Panel>
         </StoryStep>
 

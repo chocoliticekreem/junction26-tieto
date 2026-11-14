@@ -78,7 +78,6 @@ export function HunchList({ hunches }: { hunches: Finding[] }) {
             <li key={h.id} className="text-sm text-muted-foreground" data-testid="hunch">
               <p className="italic [overflow-wrap:anywhere]">{h.claim}</p>
               <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs [overflow-wrap:anywhere]">
-                <span className="rounded-full border border-dashed px-1.5 py-px text-[10px] tracking-wide">unverified hunch — no receipt</span>
                 <span className="font-mono text-[11px]">{h.location}</span>
                 <span>
                   {lensLabel[h.lens] ?? h.lens} · would need {planLabel[h.receipt_plan.kind] ?? h.receipt_plan.kind}: {h.receipt_plan.detail}

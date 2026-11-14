@@ -18,7 +18,7 @@ export interface QueueCardData {
   secondary?: { label: string; href: string };
   pending: number;
   receipts: { pass: number; partial: number; fail: number };
-  decided?: string;
+  decided?: boolean;
 }
 
 export function QueueCard({ c }: { c: QueueCardData }) {
@@ -58,10 +58,7 @@ export function QueueCard({ c }: { c: QueueCardData }) {
             {c.secondary.label}
           </Link>
         )}
-        <span className="ml-auto inline-flex items-center gap-2 text-xs text-muted-foreground">
-          {c.decided ? <span className="text-ok-foreground">{c.decided}</span> : "receipts"}
-          <ReceiptBar pass={c.receipts.pass} partial={c.receipts.partial} fail={c.receipts.fail} />
-        </span>
+        <ReceiptBar pass={c.receipts.pass} partial={c.receipts.partial} fail={c.receipts.fail} className="ml-auto" />
       </div>
     </StaggerItem>
   );
