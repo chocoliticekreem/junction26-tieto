@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(ROOT / ".env")
-load_dotenv(ROOT / ".env.local", override=True)
+load_dotenv(os.environ.get("RECEIPTS_ENV_FILE", ROOT / ".env.local"), override=True)
 
 PIPELINE = ROOT / "pipeline"
 MOCK_REPO = ROOT / "mock-repo"  # bare clone of the Tieto sample repo
@@ -24,6 +24,11 @@ TOOLS = ROOT / "tools"
 
 UPSTREAM_URL = "https://github.com/te-industry-tech-office/junction26-messagepack-csharp"
 BASE_SHA = "32258fdb"
+SAMPLE_CLONE = Path(
+    os.environ.get("RECEIPTS_SAMPLE_CLONE")
+    or "/private/tmp/claude-501/-Users-sonionring-orca-projects-junction/"
+    "aae424c1-cec2-4b34-862a-bf3153e7d7ee/scratchpad/tieto/repo"
+)
 SAMPLE_BRANCHES = {
     "ju26-issue-2283": "REQ-2283",
     "ju26-issue-2234": "REQ-2234",
