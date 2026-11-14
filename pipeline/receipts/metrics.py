@@ -696,6 +696,14 @@ def headline(by_mode: dict[str, list[CaseResult]], samples: list[Run], t3: dict)
             "router_cost_usd": round(sum((r.run.routing or {}).get("cost_usd", 0.0)
                                          for r in rs), 6),
         }
+    # Cold vs warm on the SAME cases: the warm run may cover a subset, and comparing all cold cases
+    # with a warm subset would credit the ledger with differences between case sets.
+    if "cold" in by_mode and "warm" in by_mode:
+        warm_ids = {r.run.change_id for r in by_mode["warm"]}
+        paired = [r for r in by_mode["cold"] if r.run.change_id in warm_ids]
+        q = sum(len(r.run.questions) for r in paired)
+        out["cold_on_warm_cases"] = {"cases": len(paired), "questions": q,
+                                     "questions_per_change": _ratio(q, len(paired))}
     s2297 = next((s for s in samples if s.change_id == "ju26-issue-2297"), None)
     if s2297 is not None:
         depth = s2297.receipt.get("routing", {})

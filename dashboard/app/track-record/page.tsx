@@ -59,9 +59,12 @@ function headlineTiles(s: MetricsSummary | undefined) {
   if (c.questions_per_change !== undefined) {
     tiles.push({
       label: "Questions per change",
-      value: w?.questions_per_change !== undefined ? `${c.questions_per_change.toFixed(2)} → ${w.questions_per_change.toFixed(2)}` : c.questions_per_change.toFixed(2),
+      // Compare like for like: cold restricted to the cases the warm run covered, when available.
+      value: w?.questions_per_change !== undefined
+        ? `${(s.cold_on_warm_cases?.questions_per_change ?? c.questions_per_change).toFixed(2)} → ${w.questions_per_change.toFixed(2)}`
+        : c.questions_per_change.toFixed(2),
       unit: w ? "cold → warm" : "cold",
-      definition: `Questions to the human per change. Warm = same cases with the ledger filled${w?.cases ? ` (${w.cases} cases complete)` : ""}.`,
+      definition: `Questions to the human per change, on the same ${s.cold_on_warm_cases?.cases ?? w?.cases ?? ""} cases before and after the ledger was filled.`,
     });
   }
   const r = s["ju26-issue-2297_routed_away_from_humans"];
