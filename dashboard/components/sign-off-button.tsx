@@ -30,11 +30,11 @@ export function SignOffButton({
 
   if (refusal) {
     return (
-      <div className="flex max-w-sm flex-col items-end gap-1">
+      <div className="flex min-w-0 flex-col items-start gap-1 sm:items-end">
         <Button disabled size="sm" data-testid="sign-off">
           Sign-off not available
         </Button>
-        <span className="text-right text-xs text-muted-foreground" data-testid="sign-off-refused">
+        <span className="max-w-xs text-xs text-muted-foreground [overflow-wrap:anywhere] sm:text-right" data-testid="sign-off-refused">
           {refusal}
         </span>
       </div>

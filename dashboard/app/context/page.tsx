@@ -3,7 +3,7 @@ import remarkGfm from "remark-gfm";
 import { readContextMarkdown, readContextStatus, readLedger } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
 import { ConfirmContextButton } from "@/components/confirm-context-button";
-import { Mono } from "@/components/pills";
+import { Disclosure } from "@/components/disclosure";
 import { EmptyState, PageTitle, Section } from "@/components/section";
 import { cn } from "@/lib/utils";
 
@@ -18,11 +18,7 @@ export default async function ContextPage() {
 
   return (
     <div className="space-y-8">
-      <PageTitle
-        title="Reviewer context"
-        eyebrow="context/REVIEW_CONTEXT.md"
-        right={<ConfirmContextButton human={human} status={status} />}
-      >
+      <PageTitle title="Reviewer context" eyebrow="context/REVIEW_CONTEXT.md" right={<ConfirmContextButton human={human} status={status} />}>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
           <span
             className={cn(
@@ -33,38 +29,24 @@ export default async function ContextPage() {
           >
             {confirmed ? "confirmed" : "draft"}
           </span>
-          {confirmed ? (
+          {confirmed && (
             <span className="text-xs text-muted-foreground">
-              by {status.confirmed_by} at <span className="font-mono">{status.ts}</span>
+              by {status.confirmed_by} <span className="font-mono">{status.ts}</span>
             </span>
-          ) : (
-            <span className="text-xs text-muted-foreground">Bootstrapped from the repo; a named human has not confirmed it yet. Lenses cite it, but with “draft” provenance.</span>
           )}
         </div>
       </PageTitle>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
-        <Section title="Context file">
-          {md ? (
-            <div className="prose-ctx rounded-md border p-4" data-testid="context-markdown">
-              <Markdown remarkPlugins={[remarkGfm]}>{md}</Markdown>
-            </div>
-          ) : (
-            <EmptyState>
-              No context/REVIEW_CONTEXT.md yet. Run <code className="font-mono">uv run receipts bootstrap-context</code>.
-            </EmptyState>
-          )}
-        </Section>
-
-        <Section title="Ledger" count={ledger.length} hint="answers given by named humans">
-          {ledger.length === 0 ? (
-            <EmptyState>No ledger entries.</EmptyState>
-          ) : (
+      <Section title="Ledger" count={ledger.length}>
+        {ledger.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No answers yet.</p>
+        ) : (
+          <Disclosure label={`${ledger.length} answers by named humans`} testId="ledger-toggle">
             <ul className="divide-y rounded-md border" data-testid="context-ledger">
               {ledger.map((e, i) => (
                 <li key={i} className="space-y-1 p-3 text-sm">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 font-mono text-[11px] text-muted-foreground">
-                    <Mono>{e.area}</Mono>
+                    <span>{e.area}</span>
                     <span>{e.change_id}</span>
                     <span className="ml-auto">
                       {e.answered_by} · {e.ts.slice(0, 10)}
@@ -75,9 +57,21 @@ export default async function ContextPage() {
                 </li>
               ))}
             </ul>
-          )}
-        </Section>
-      </div>
+          </Disclosure>
+        )}
+      </Section>
+
+      <Section title="Entries">
+        {md ? (
+          <div className="prose-ctx max-w-3xl" data-testid="context-markdown">
+            <Markdown remarkPlugins={[remarkGfm]}>{md}</Markdown>
+          </div>
+        ) : (
+          <EmptyState>
+            No context/REVIEW_CONTEXT.md yet. Run <code className="font-mono">uv run receipts bootstrap-context</code>.
+          </EmptyState>
+        )}
+      </Section>
     </div>
   );
 }

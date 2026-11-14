@@ -34,8 +34,8 @@ const resultStyle: Record<ResultKind, string> = {
   skipped: "border-border bg-muted text-muted-foreground",
 };
 
-export function ResultPill({ result, className }: { result: ResultKind; className?: string }) {
-  return <span className={cn(pill, resultStyle[result] ?? resultStyle.skipped, className)}>{result}</span>;
+export function ResultPill({ result, className, children }: { result: ResultKind; className?: string; children?: React.ReactNode }) {
+  return <span className={cn(pill, resultStyle[result] ?? resultStyle.skipped, className)}>{children ?? result}</span>;
 }
 
 const severityStyle: Record<Severity, string> = {

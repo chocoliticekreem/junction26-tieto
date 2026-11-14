@@ -40,6 +40,8 @@ test("change page shows receipts, collapsed hunches, not-checked list and log ex
   await expect(page.getByTestId("verdict-reason")).toContainText("surviving mutant");
 
   await expect(page.getByTestId("finding")).toHaveCount(1);
+  await expect(page.getByTestId("finding").getByTestId("evidence-card")).toHaveCount(0);
+  await page.getByTestId("finding-toggle").click();
   await expect(page.getByTestId("finding").getByTestId("evidence-card")).toHaveCount(1);
   await expect(page.getByTestId("finding").getByTestId("mutant-table")).toContainText("survived");
   const suiteOnly = page.getByTestId("finding").getByTestId("mutant-table").getByText("caught by existing suite");
@@ -57,10 +59,14 @@ test("change page shows receipts, collapsed hunches, not-checked list and log ex
   await expect(page.getByTestId("not-checked-list")).toContainText("ExecutionTests");
   await expect(page.getByTestId("residual-risk")).toContainText("surviving mutant");
 
-  // Routing map and fail-before/pass-after table.
+  // Routing map (collapsed) and fail-before/pass-after table (inside the receipts disclosure).
+  await expect(page.getByTestId("routing-tree")).toHaveCount(0);
+  await page.getByTestId("routing-toggle").click();
   await expect(page.getByTestId("routing-tree")).toContainText("5 files");
+  await page.getByTestId("receipts-toggle").click();
   const reqCard = page.locator("#evidence-E-req");
   await expect(reqCard).toContainText("Requirement tests fail on base, pass on head");
+  await reqCard.getByTestId("evidence-toggle").click();
   await expect(reqCard.getByRole("cell", { name: "failed" })).toHaveCount(2);
   await expect(reqCard.getByRole("cell", { name: "passed" })).toHaveCount(2);
 
@@ -76,9 +82,12 @@ test("SQL adapter change page shows the schema diff and row counts behind the bl
   await expect(page.getByTestId("verdict-reason")).toContainText("F-sql-reversible");
   const finding = page.getByTestId("finding");
   await expect(finding).toHaveCount(1);
+  await finding.getByTestId("finding-toggle").click();
   const reversible = finding.locator("#evidence-sql-reversible");
   await expect(reversible).toContainText("Migration not reversible");
   await expect(reversible).toContainText("+column orders.discount_cents");
+  await page.getByTestId("receipts-toggle").click();
+  await page.locator("#evidence-sql-rows").getByTestId("evidence-toggle").click();
   const rows = page.locator("#evidence-sql-rows").getByTestId("evidence-row_counts");
   await expect(rows.getByRole("columnheader")).toHaveText(["table", "base", "after up", "after down"]);
   await expect(rows.getByRole("cell", { name: "5" })).toHaveCount(3);
@@ -88,6 +97,7 @@ test("SQL adapter change page shows the schema diff and row counts behind the bl
 
 test("2297 routing map collapses 222 generated files into one block", async ({ page }) => {
   await page.goto("/change/ju26-issue-2297");
+  await page.getByTestId("routing-toggle").click();
   const tree = page.getByTestId("routing-tree");
   await expect(tree).toContainText("237 files");
   await expect(tree).toContainText("222");
@@ -245,6 +255,8 @@ test("track record renders tables, charts and trust levels", async ({ page }) =>
   await page.goto("/track-record");
   await expect(page.getByTestId("table-T1")).toContainText("requirement-tests");
   await expect(page.getByTestId("table-T1")).toContainText("88%");
+  await expect(page.getByTestId("table-T3")).toBeHidden();
+  await page.getByTestId("t3-toggle").click();
   await expect(page.getByTestId("table-T3")).toContainText("full review");
   await page.getByTestId("t5-toggle").click();
   await expect(page.getByTestId("table-T5")).toContainText("warm");
@@ -266,6 +278,7 @@ test("track record leads with headline tiles from summary.json and the new table
   await expect(tiles.filter({ hasText: "Model cost per change" }).getByTestId("stat-value")).toHaveText("$0.68");
   await expect(page.getByTestId("provenance")).toContainText("PR #11");
   await expect(page.getByTestId("provenance")).toContainText("simulated human");
+  await expect(page.getByTestId("stat-tile").first()).toHaveAttribute("title", /Cold run, empty ledger/);
 
   await expect(page.getByTestId("t5-summary")).toContainText("bait false alarms");
   await expect(page.getByTestId("trust-history")).toContainText("source-generator/tests");
@@ -280,8 +293,10 @@ test("track record leads with headline tiles from summary.json and the new table
   await page.getByTestId("t4-bench-toggle").click();
   await expect(page.getByTestId("table-T4")).toContainText("mock/2283/logic");
 
+  await page.getByTestId("t2-toggle").click();
   await expect(page.getByTestId("table-T2")).toContainText("correctness");
   await expect(page.getByTestId("t6-headline")).toContainText("233 of 233 findings shown have an executed receipt");
+  await page.getByTestId("t7-toggle").click();
   await expect(page.getByTestId("table-T7")).toContainText("PR #2305");
 });
 

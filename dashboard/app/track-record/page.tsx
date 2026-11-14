@@ -1,7 +1,8 @@
 import { readMetricsSummary, readMetricsTable, readTrustHistory, readTrustLevels } from "@/lib/data";
 import type { MetricsSummary, MetricsTable, TrustHistoryEvent } from "@/lib/types";
 import { BarChart, LineChart, TrustStepChart, type BarDatum, type Series, type StepPoint } from "@/components/charts";
-import { Disclosure, MetricsTableView, NoteLine, StatTile, fmtCell } from "@/components/metrics-table";
+import { Disclosure } from "@/components/disclosure";
+import { MetricsTableView, StatTile, fmtCell } from "@/components/metrics-table";
 import { TrustLevel } from "@/components/pills";
 import { EmptyState, PageTitle, Section } from "@/components/section";
 
@@ -194,12 +195,8 @@ export default function TrackRecordPage() {
   const t6All = t6 ? t6.rows.find((r) => r[col(t6, "lens")] === "all") : undefined;
 
   return (
-    <div className="space-y-10">
-      <PageTitle title="Track record" eyebrow="metrics/ from the bench, cold and warm">
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Trust is earned per lens and per area from planted defects with known answers. Numbers here are what the pipeline measured, not what it claims.
-        </p>
-      </PageTitle>
+    <div className="space-y-8">
+      <PageTitle title="Track record" eyebrow="metrics/ from the bench, cold and warm" />
 
       {nothing && (
         <EmptyState>
@@ -209,33 +206,40 @@ export default function TrackRecordPage() {
       )}
 
       {tiles.length > 0 && (
-        <section className="space-y-3" data-testid="headline">
+        <section className="space-y-2" data-testid="headline">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             {tiles.map((t) => (
               <StatTile key={t.label} {...t} />
             ))}
           </div>
-          <p className="max-w-4xl text-xs leading-5 text-muted-foreground" data-testid="provenance">
-            Bench of {summary?.cold?.cases ?? "—"} cases on the pipeline as of PR #11, recorded 14 Nov 2026. The warm run is incomplete: the API usage limit hit, so {excluded || 11} cases ran
-            without lenses and are excluded, not counted as misses. Cold→warm answers come from <span className="font-mono">bench-oracle (simulated human)</span>, a script over the bench ground
-            truth, not a person. Planted defects are a proxy for reverts and incidents. Full limits: <span className="font-mono">metrics/README.md</span>.
-          </p>
+          <div className="text-xs text-muted-foreground" data-testid="provenance">
+            <p>
+              Bench of {summary?.cold?.cases ?? "—"} cases, pipeline as of PR #11, 14 Nov 2026. Warm answers from <span className="font-mono">bench-oracle</span> (simulated human), not a
+              person.
+            </p>
+            <Disclosure label="Limits" testId="provenance-toggle">
+              <p className="max-w-3xl leading-5">
+                The warm run is incomplete: the API usage limit hit, so {excluded || 11} cases ran without lenses and are excluded, not counted as misses. Planted defects are a proxy for
+                reverts and incidents. Tile definitions are in each tile’s tooltip. Full limits: <span className="font-mono">metrics/README.md</span>.
+              </p>
+            </Disclosure>
+          </div>
         </section>
       )}
 
       <div className="grid gap-8 lg:grid-cols-2">
-        <Section title="Recall by lens" hint="caught / planted in scope, cold run">
+        <Section title="Recall by lens">
           {recall.length ? <BarChart data={recall} /> : <EmptyState>Needs T1 with “lens” and “recall” columns.</EmptyState>}
-          {recall.some((d) => d.value === null) && <p className="text-xs text-muted-foreground">— = no planted defect in that lens’s scope.</p>}
+          {recall.some((d) => d.value === null) && <p className="text-xs text-muted-foreground">— = nothing planted in scope.</p>}
         </Section>
-        <Section title="Questions per change over the sequence" hint="cold run vs warm run (ledger filled)">
+        <Section title="Questions per change">
           {qSeries.length ? <LineChart series={qSeries} yLabel="questions" /> : <EmptyState>Needs T5 with “seq”, “questions” and “mode” columns.</EmptyState>}
           {q && (
             <div className="overflow-x-auto rounded-md border" data-testid="t5-summary">
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
-                    <th className="px-3 py-1.5 font-medium">total over the run</th>
+                    <th className="px-3 py-1.5 font-medium">total</th>
                     {q.modes.map((m) => (
                       <th key={m} className="px-3 py-1.5 text-right font-medium">
                         {m}
@@ -261,11 +265,11 @@ export default function TrackRecordPage() {
         </Section>
       </div>
 
-      <Section title="Area trust over the bench" hint="level 0–3 per area after each case; hollow marker = incorrect verdict, streak reset">
+      <Section title="Area trust">
         {trustHist.moved.length === 0 && trustHist.still.length === 0 ? (
           <EmptyState>No metrics/trust-history.json yet.</EmptyState>
         ) : (
-          <div className="space-y-3" data-testid="trust-history">
+          <div className="space-y-2" data-testid="trust-history">
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {trustHist.moved.map((m) => (
                 <TrustStepChart key={m.area} title={m.area} points={m.points} xMax={trustHist.xMax} />
@@ -279,23 +283,22 @@ export default function TrackRecordPage() {
           </div>
         )}
         {trust && Object.keys(trust).length > 0 && (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3" data-testid="trust-levels">
+          <div className="flex flex-wrap gap-x-4 gap-y-1" data-testid="trust-levels">
             {Object.entries(trust)
               .sort(([a], [b]) => a.localeCompare(b))
               .map(([area, level]) => (
-                <div key={area} className="flex items-center justify-between gap-3 rounded-md border px-3 py-2">
-                  <span className="truncate font-mono text-xs">{area}</span>
-                  <TrustLevel level={level} />
-                </div>
+                <span key={area} className="inline-flex items-center gap-1.5 font-mono text-xs">
+                  {area} <TrustLevel level={level} />
+                </span>
               ))}
           </div>
         )}
         {!trust && <EmptyState>No metrics/trust.json. Every area starts at level 1 until the bench runs.</EmptyState>}
       </Section>
 
-      <Section title="T4 · Human load" hint="files a human must read vs the whole change; generated files verified by regeneration">
+      <Section title="Human load">
         {t4 ? (
-          <div className="space-y-3">
+          <div className="space-y-2">
             {t4Sample.length > 0 && (
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-testid="t4-sample">
                 {t4Sample.map((r) => {
@@ -303,7 +306,7 @@ export default function TrackRecordPage() {
                   const toHuman = num(g("files_to_human"));
                   const total = num(g("files_total"));
                   return (
-                    <div key={String(r[t4ChangeCol])} className="rounded-md border bg-card px-3 py-2.5">
+                    <div key={String(r[t4ChangeCol])} className="rounded-md border px-3 py-2.5">
                       <div className="font-mono text-xs text-muted-foreground">{String(r[t4ChangeCol])}</div>
                       <div className="mt-0.5 text-xl font-semibold tabular-nums">
                         {toHuman ?? "—"}
@@ -329,61 +332,46 @@ export default function TrackRecordPage() {
               </div>
             )}
             {t4Bench.length > 0 ? (
-              <Disclosure label={`${t4Bench.length} bench rows`} testId="t4-bench-toggle">
+              <Disclosure label={`T4 · ${t4Bench.length} bench rows`} testId="t4-bench-toggle">
                 <MetricsTableView t={t4} rows={t4Bench} testId="table-T4" />
               </Disclosure>
             ) : (
               <MetricsTableView t={t4} testId="table-T4" />
             )}
-            {t4Bench.length > 0 && <NoteLine note={t4.note} />}
           </div>
         ) : (
           <EmptyState>metrics/T4.json missing.</EmptyState>
         )}
       </Section>
 
-      <Section title="T1 · Per-lens detection" hint="cold run; a catch is credited to the lens and to the check that verified it">
-        {t1 ? <MetricsTableView t={t1} testId="table-T1" /> : <EmptyState>metrics/T1.json missing.</EmptyState>}
-      </Section>
+      <Section title="T1 · Per-lens detection">{t1 ? <MetricsTableView t={t1} testId="table-T1" /> : <EmptyState>metrics/T1.json missing.</EmptyState>}</Section>
 
-      <Section title="T2 · Per planted category" hint="which checks caught each kind of plant, cold and warm">
-        {t2 ? <MetricsTableView t={t2} testId="table-T2" /> : <EmptyState>metrics/T2.json missing.</EmptyState>}
-      </Section>
-
-      <Section title="T6 · Receipts" hint="every finding shown carries an executed receipt; hunches without one are withheld">
-        {t6 ? (
-          <div className="space-y-3">
-            {t6All && (
-              <p className="text-sm" data-testid="t6-headline">
-                <span className="font-semibold tabular-nums">{fmtCell(t6All[col(t6, "with_executed_receipt")], "")}</span> of{" "}
-                <span className="font-semibold tabular-nums">{fmtCell(t6All[col(t6, "findings_shown")], "")}</span> findings shown have an executed receipt;{" "}
-                <span className="font-semibold tabular-nums">{fmtCell(t6All[col(t6, "hunches_withheld")], "")}</span> hunches withheld
-                {col(t6, "ledger_citations") >= 0 && <>; {fmtCell(t6All[col(t6, "ledger_citations")], "")} findings withdrawn as deliberate per the ledger</>}.
-              </p>
-            )}
-            <MetricsTableView t={t6} testId="table-T6" />
-          </div>
-        ) : (
-          <EmptyState>metrics/T6.json missing.</EmptyState>
+      <Section title="Tables">
+        {t6 && t6All && (
+          <p className="text-sm" data-testid="t6-headline">
+            <span className="font-semibold tabular-nums">{fmtCell(t6All[col(t6, "with_executed_receipt")], "")}</span> of{" "}
+            <span className="font-semibold tabular-nums">{fmtCell(t6All[col(t6, "findings_shown")], "")}</span> findings shown have an executed receipt;{" "}
+            <span className="font-semibold tabular-nums">{fmtCell(t6All[col(t6, "hunches_withheld")], "")}</span> hunches withheld
+            {col(t6, "ledger_citations") >= 0 && <>; {fmtCell(t6All[col(t6, "ledger_citations")], "")} findings withdrawn as deliberate per the ledger</>}.
+          </p>
         )}
-      </Section>
-
-      <Section title="T3 · Routing" hint="cheap router vs full review at equal recall">
-        {t3 ? <MetricsTableView t={t3} testId="table-T3" /> : <EmptyState>metrics/T3.json missing.</EmptyState>}
-      </Section>
-
-      <Section title="T5 · Learning curve" hint="questions asked per change, cold vs warm">
-        {t5 ? (
-          <Disclosure label={`${t5.rows.length} rows, one per case and mode`} testId="t5-toggle">
-            <MetricsTableView t={t5} testId="table-T5" />
+        <div className="space-y-2">
+          <Disclosure label="T2 · Per planted category" testId="t2-toggle">
+            {t2 ? <MetricsTableView t={t2} testId="table-T2" /> : <EmptyState>metrics/T2.json missing.</EmptyState>}
           </Disclosure>
-        ) : (
-          <EmptyState>metrics/T5.json missing.</EmptyState>
-        )}
-      </Section>
-
-      <Section title="T7 · Upstream comparison" hint="agent change vs the maintainers’ own fix, read by hand from gh and the diffs">
-        {t7 ? <MetricsTableView t={t7} testId="table-T7" wrap /> : <EmptyState>metrics/T7.json missing.</EmptyState>}
+          <Disclosure label="T3 · Routing" testId="t3-toggle">
+            {t3 ? <MetricsTableView t={t3} testId="table-T3" /> : <EmptyState>metrics/T3.json missing.</EmptyState>}
+          </Disclosure>
+          <Disclosure label={`T5 · Learning curve${t5 ? ` (${t5.rows.length} rows)` : ""}`} testId="t5-toggle">
+            {t5 ? <MetricsTableView t={t5} testId="table-T5" /> : <EmptyState>metrics/T5.json missing.</EmptyState>}
+          </Disclosure>
+          <Disclosure label="T6 · Receipts per lens" testId="t6-toggle">
+            {t6 ? <MetricsTableView t={t6} testId="table-T6" /> : <EmptyState>metrics/T6.json missing.</EmptyState>}
+          </Disclosure>
+          <Disclosure label="T7 · Upstream comparison" testId="t7-toggle">
+            {t7 ? <MetricsTableView t={t7} testId="table-T7" wrap /> : <EmptyState>metrics/T7.json missing.</EmptyState>}
+          </Disclosure>
+        </div>
       </Section>
     </div>
   );
