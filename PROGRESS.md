@@ -38,6 +38,7 @@
 - A/B on 2297, deliverables, adversarial review.
 
 ## Decisions
+- CHALLENGE.md (added by Anson) outranks SPEC.md on scope and judging. Added from it: MIT LICENSE, top-level README, docs/submission.md (pending numbers), self-check answered in PROGRESS.md with evidence, time to merge and escapes in measurement. No tech side challenge is genuinely used (no CRACI CI, no Modal, no Codex, no Entire), so none will be ticked.
 - `.env.example` blocked by the guard hook; logged in BLOCKED.md for Anson.
 - ExecutionTests project does not compile on SDK 8.0.402 (needs Roslyn 4.12); declared under not_checked, no SDK install (spec makes it optional).
 - Rule router gets a risk floor of 5 for source-generator analysis code so mutation runs with the rule router alone.
