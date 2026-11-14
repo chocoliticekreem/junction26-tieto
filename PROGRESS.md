@@ -49,6 +49,7 @@
 - 22:33 Blast radius in the pipeline (PR #45): Roslyn member diff and call sites, floor 8/9, caller coverage, characterization lens. Four Tieto runs: 2283 3 outside callers / 0 untested, 2234 2 / 0, 2129 14 / 6 (11 `Equals` calls matched by name), 2297 12 / 1 (Unity `CompositeResolverGenerator.cs:44`); 19 pinning tests on 9 members, all preserved; verdicts unchanged; $1.40 in 4 live lens calls.
 - 23:28 Final-pipeline measurement (PR #46): Anthropic batched cold 21/24, 0 escapes, 4/8 false-alarm cases, questions 0.50 to 0.28 on the same 18 cases; Verda (Kimi K3.1 Pro) cold 18/24, 0 escapes, same verdict on all four Tieto changes; 2297 round 2 on Verda = decision-A-B, side A needs sign-off, side B not built; `metrics/provider-comparison.json`.
 - 23:40 Final accuracy pass on concept card, demo script, submission pack, logs, README, BLOCKED.md and this file against `metrics/` and the latest runs.
+- 00:36 Renamed the product from "Receipts" to "PullReceipts" across README, submission pack, Verda doc, concept card, demo script, logs, metrics README and notes (written documents only; CLI, package and dashboard unchanged).
 
 ## In progress
 Nothing. The pipeline and measurement are final; what remains is human-only (Next).

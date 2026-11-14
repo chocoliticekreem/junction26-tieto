@@ -6,7 +6,7 @@ Setup before recording: `cd dashboard && npm run dev`, open http://localhost:300
 
 | Time | Screen | Say (short, declarative) |
 |---|---|---|
-| 0:00-0:12 | Title card, then the queue | "Agent tokens overtook human tokens this year. 'The AI said it was fine' is not a review. Receipts makes AI review auditable." |
+| 0:00-0:12 | Title card, then the queue | "Agent tokens overtook human tokens this year. 'The AI said it was fine' is not a review. PullReceipts makes AI review auditable." |
 | 0:12-0:25 | Queue: four Tieto changes, verdict pills | "Four agent-written changes. Two need sign-off, two are blocked, and every verdict links to executed evidence. Behind them, 36 practice changes with planted defects tell us how far to trust it." |
 | 0:25-0:47 | `ju26-issue-2283`: requirement, the fail-on-base/pass-on-head receipt, the mutant table, Not checked | "The reviewer wrote tests from the issue text alone. They fail on the base commit and pass on the change: the fix is proven. But two mutants survive the whole test suite: swap an and for an or, and no test notices. Stryker.NET agrees. Below: what was not checked, and why." |
 | 0:47-0:58 | `ju26-issue-2297`: routing map with the generated block collapsed | "237 files. 222 are generated, so they are verified by regenerating them, not by reading them: 89 snapshot tests. 15 files were reviewed." |

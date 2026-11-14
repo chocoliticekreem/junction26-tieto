@@ -1,4 +1,4 @@
-# Receipts on Verda: open-weight, EU-hosted review models
+# PullReceipts on Verda: open-weight, EU-hosted review models
 
 Status Sat 14 Nov 2026, 23:15 EET: **measured.** Every review below ran on Verda Inference with
 `kimi-k3-1-pro` in every role (DeepSeek V4.1 Flash is closed to new projects, see "Models per
@@ -7,7 +7,7 @@ cap** (372 calls). Results, costs and failure modes are in "Results vs Anthropic
 
 ## Why Verda (Fit)
 
-Receipts reviews agent-written code before it merges. Principle 8 says the code under review
+PullReceipts reviews agent-written code before it merges. Principle 8 says the code under review
 never leaves the company. A US-hosted API weakens that promise. Verda fits it better:
 
 - **Verda Inference** serves open-weight models per token through an OpenAI-compatible API,
@@ -18,7 +18,7 @@ never leaves the company. A US-hosted API weakens that promise. Verda fits it be
 - **The same weights can be self-hosted.** Kimi K3.1 Pro and DeepSeek V4.1 Flash 1017 publish
   their weights on Hugging Face ([Kimi][kimi], [DeepSeek][deepseek]). A company that wants the
   code on its own hardware runs the same model on Verda GPU instances or serverless containers
-  (vLLM tutorials in the [docs index][llms]). Receipts only needs the base URL to change.
+  (vLLM tutorials in the [docs index][llms]). PullReceipts only needs the base URL to change.
 
 We picked the Inference API over GPU instances for the hackathon: pay per token, no capacity to
 manage, and a bench of 36 reviews needs bursts, not a GPU running all night.
@@ -261,7 +261,7 @@ including the 7 failed ones (the disconnects reported no usage, so they cost not
 
 An open-weight model reproduces the pipeline's decisions on the real changes: the same verdict on
 all four Tieto changes, and 0 escapes on 36 planted cases, at about half of Anthropic's live price
-(EUR 4.25 vs USD 8.06 for the four). It is weaker exactly where Receipts earns trust. Its tests
+(EUR 4.25 vs USD 8.06 for the four). It is weaker exactly where PullReceipts earns trust. Its tests
 run but rarely prove a claim (6 of 77 discriminating, against 34 of 93), so it catches 3 fewer
 planted defects and built the second reading of an ambiguous requirement once in three tries.
 

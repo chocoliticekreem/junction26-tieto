@@ -25,7 +25,7 @@ Authorization: Bearer $JEV_API_KEY
 Content-Type: application/json
 ```
 
-Body. Receipts sends one hunk per request, never the whole diff:
+Body. PullReceipts sends one hunk per request, never the whole diff:
 
 ```json
 {
@@ -91,7 +91,7 @@ Response headers include `x-typesafe-request-id` (recorded in the fixture as `re
 
 - 30 s timeout; up to two retries on 429, 529 and 5xx, honouring `Retry-After` (capped at 5 s), else
   250 ms x 2^attempt. 401/422/400 are not retried. Mirrors `src/jev/client.ts`.
-- 400 with `detail.error_type == "max_tokens_exceeded"` when the state is over the ceiling. Receipts
+- 400 with `detail.error_type == "max_tokens_exceeded"` when the state is over the ceiling. PullReceipts
   budgets the state at (32,768 - 4,000) x 4 chars and truncates the hunk text with an explicit
   `[... truncated by receipts: N chars omitted ...]` marker; the route's `reason` then says so. No
   real hunk needed truncation (largest: 4,259 input tokens).
