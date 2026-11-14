@@ -1,0 +1,19 @@
+# Lessons log
+
+Failure modes we actually saw while building and running Receipts, and what each one changed. Newest last.
+
+## Failure modes in the AI-written changes under review
+
+1. **The agent's change to #2283 is wider than the requirement.** Same root cause as the human-written upstream PR #2305 (`DeclaringSyntaxReferences[0]` on a metadata symbol), but it also adds a filter that drops every diagnostic located outside the compilation. Two consequences a reviewer must see: diagnostics for types declared in the project itself with no source location are dropped too (flagged independently by several lenses), and a null key on a positional record parameter is no longer reported. Lesson: compare an agent change with the requirement's scope, not only with "does it fix the bug".
+2. **The agent's tests for #2283 pass with the diagnostic reporting removed.** Mutation testing produced 4 surviving mutants out of 6 on `TypeCollector.cs` (deleting `report(diagnostic)`, negating `is null`). The tests prove "no crash", not "still reports". Lesson: a green test suite written by the same agent is weak evidence; mutants measure its teeth.
+3. **The agent's #2297 change fences the attribute off with `#if !NETSTANDARD2_0 && !NETFRAMEWORK`.** `ExcludeFromCodeCoverageAttribute` exists on both, so those users keep generated code in coverage reports despite "all generated code". That one is a code reading (both targets ship the attribute); it stays a hunch until a build on those targets proves it. A logic-edge test did produce an executed receipt: CS0579 (duplicate `ExcludeFromCodeCoverage`) on head when user code already carries the attribute.
+4. **#2297 is ambiguous and the agent picked silently.** The issue says "I do not feel like a setting is needed, but setting would be fine to have too". The reviewer refuses to pick and produces two branches instead.
+
+## Failure modes in our own reviewer
+
+5. **A context-free lens wants to "fix" a deliberate convention.** The generator deliberately skips types it only sees as metadata (`TypeCollector.cs` `IsInMetadata` early return). Without the ledger entry, that looks like a missing diagnostic. With it, the product-context lens cites the entry instead of flagging. This is the "generic error message" problem from the brief, found in this codebase.
+6. **LLM-written tests fail for the wrong reason.** First drafts failed because the project's snapshot verifier had no snapshot file, or because `AnalyzerOptions` was ambiguous (CS0104) with a type in the project's global usings. A test that fails on base is only evidence if it fails for the requirement's reason, so the check records the failure message and the lens prompt now carries these traps.
+7. **A logic-edge hunch was refuted by its own test.** On 2283 the logic-edge lens wrote an edge-case test it expected to fail on head; it passed. The receipt killed the hunch. This is the system working: suspicion goes in, only executed results come out as findings.
+8. **A sample set can be too narrow.** The byte-diff harness first missed a planted change in the `short` writer because no case covered `short -128`. Fixed by repeating boundaries for every integer type (124 cases). Lesson: "byte diff passed" is only as strong as the sample set, so the receipt lists the cases.
+9. **A silent import fallback hid a router.** The router registry skips modules that fail to import, and one entry pointed at the wrong module name, so the LLM router would have been silently skipped. Caught in integration by asserting the registry contents. Lesson: fallbacks must be visible in the receipt (the routing report now names the router that actually ran).
+10. **Wall-clock claims need a clock.** The orchestrating agent wrote progress times from estimate rather than `date`, and had to correct them from git commit times. Same rule as findings: no receipt, no claim.
