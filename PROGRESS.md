@@ -36,20 +36,27 @@
 - 11:05 Dashboard decluttered on Anson's request (PR #28): change pages from 2,300-6,900 visible words to 250-680; decision first, detail behind disclosures.
 - 11:08 Cost cuts (PR #29): Message Batches for the bench, spend guard, dry-run estimate (cold re-run $9.93 batched vs $19.86 live), per-lens effort. BLOCKED.md now asks for about $20, not $60 (PR #30).
 - 11:14 Positive proof above the fold on change pages (PR #31).
+- 11:31 Verda Inference API as a second model provider with a hard spend guard (PR #33); `.env.example` with key names only, then moved to the repo root (PRs #34, #35).
+- 14:32 Verda brief in CHALLENGE.md; Verda listed as the one tech challenge genuinely used (PR #36).
+- 14:52 Dashboard redesign: plain-language verdicts, receipt card with stamp, paper theme, dark mode (PR #37).
+- 15:37 Plain-words summary, product context section and glossary on the change page (PR #38).
+- 15:43 Each run records the product context it used; lowercased home paths scrubbed (PR #39).
+- 18:00 Journey-first dashboard: queue, guided change page, practice runs moved to the track record (PR #40).
+- 21:08 Tieto engineer's blast-radius feedback logged as decision 16 and lesson 15 (PR #41).
+- 21:27 "Impact on other features" step on the change page (PR #42).
+- 22:29 Slip, the Receipts mascot: header mark, favicon, queue, receipt stamp, decision, 404 (PR #43).
+- 22:32 Each fact once per screen; product context renders as a document (PR #44).
+- 22:33 Blast radius in the pipeline (PR #45): Roslyn member diff and call sites, floor 8/9, caller coverage, characterization lens. Four Tieto runs: 2283 3 outside callers / 0 untested, 2234 2 / 0, 2129 14 / 6 (11 `Equals` calls matched by name), 2297 12 / 1 (Unity `CompositeResolverGenerator.cs:44`); 19 pinning tests on 9 members, all preserved; verdicts unchanged; $1.40 in 4 live lens calls.
+- 23:28 Final-pipeline measurement (PR #46): Anthropic batched cold 21/24, 0 escapes, 4/8 false-alarm cases, questions 0.50 to 0.28 on the same 18 cases; Verda (Kimi K3.1 Pro) cold 18/24, 0 escapes, same verdict on all four Tieto changes; 2297 round 2 on Verda = decision-A-B, side A needs sign-off, side B not built; `metrics/provider-comparison.json`.
+- 23:40 Final accuracy pass on concept card, demo script, submission pack, logs, README, BLOCKED.md and this file against `metrics/` and the latest runs.
 
-## In progress (started ~05:38, parallel subagents in worktrees)
-| Track | Model | Scope |
-|---|---|---|
-| A core | opus | setup (bare mock repo), intake, RuleRouter, .NET sandbox, verdict, review orchestration, golden run on 2283 |
-| B dashboard | fable | Next.js: inbox, change, decision (real git merge), questions, context, track record; Playwright |
-| C routers + lenses | opus | LLMRouter, JevRouter (from jev-review source), six lenses, question budget |
-| D1 compat | opus | tools/compat-harness byte diff + public API listing |
-| E content | sonnet | requirements/REQ-*.md from upstream issues, context bootstrap + seeded bait, upstream comparison T7 |
-| F1 bench | opus | 36 deterministic plants, manifest, `bench generate` |
+## In progress
+Nothing. The pipeline and measurement are final; what remains is human-only (Next).
 
-## Next
-- Waiting on Anson: raise the API limit by about $20 and run the BLOCKED.md commands (final-pipeline bench, 2297 round 2); confirm the context; make the A/B merge by name; record the video.
-- Polish backlog: items 1 (Stryker), 3 (trust chart), 5 (PR comment export) and 6 (SQL adapter) are done. Item 2 is covered by the harness's reflection-based API diff. Item 4 (LLM narrative) needs the API.
+## Next (human steps only)
+- BLOCKED.md section 2: set your name in the dashboard, confirm the context, decide on 2297 round 2 side A (sign off as a plain change or send back), optionally sign off 2283 and 2234, commit `decisions/` and `context/status.json` through a PR.
+- Record the video (max 2:00) from `deliverables/demo-script.md`, upload it publicly.
+- Make the repo public, fill the submission form from `docs/submission.md` (tick Verda Compute Track), set it to FINAL before Sun 10:00; post the `docs/verda.md` link in Verda's Discord channel.
 
 ## Verda spend log (budget: €40 maximum)
 | When | What | Real spend | Running total |
@@ -81,31 +88,32 @@ This pass: **$15.12**; ledger total $16.51 of $20.
 
 ## Decisions
 - 11:16 Verda added to CHALLENGE.md by Anson: Verda Inference API (OpenAI-compatible, EU-hosted open-weight models) becomes a provider behind `llm.py`, selected by `LLM_PROVIDER=verda`; Anthropic stays the default. Verda runs use change ids suffixed `@verda` so both providers' runs sit side by side.
-- CHALLENGE.md (added by Anson) outranks SPEC.md on scope and judging. Added from it: MIT LICENSE, top-level README, docs/submission.md (pending numbers), self-check answered in PROGRESS.md with evidence, time to merge and escapes in measurement. No tech side challenge is genuinely used (no CRACI CI, no Modal, no Codex, no Entire), so none will be ticked.
-- `.env.example` blocked by the guard hook; logged in BLOCKED.md for Anson.
+- CHALLENGE.md (added by Anson) outranks SPEC.md on scope and judging. Added from it: MIT LICENSE, top-level README, docs/submission.md (pending numbers), self-check answered in PROGRESS.md with evidence, time to merge and escapes in measurement. No tech side challenge is genuinely used (no CRACI CI, no Modal, no Codex, no Entire), so none will be ticked. Superseded 14:32 (PR #36): Verda Compute Track is genuinely used and is the one ticked.
+- `.env.example` blocked by the guard hook; logged in BLOCKED.md for Anson. Resolved by PRs #34 and #35 (key names only, repo root).
 - ExecutionTests project does not compile on SDK 8.0.402 (needs Roslyn 4.12); declared under not_checked, no SDK install (spec makes it optional).
 - Rule router gets a risk floor of 5 for source-generator analysis code so mutation runs with the rule router alone.
 - Subagents do not commit (global rule); main session commits, rebases and opens PRs.
-- 2297 is `blocked` (two executed tests show the attribute is dropped on netstandard2.0/.NET Framework) as well as ambiguous; truth over choreography. The demo's A/B merge moves to 2234, a genuine decision-A-B. The real merge and context confirmation are left to Anson (BLOCKED.md section 2): the AI never merges.
+- 2297 is `blocked` (two executed tests show the attribute is dropped on netstandard2.0/.NET Framework) as well as ambiguous; truth over choreography. The demo's A/B merge moved to 2234, then a genuine decision-A-B; since the reader vote (PR #15) 2234 is needs-sign-off (0 of 3 readers), so no Tieto change has a mergeable A/B. The real merge and context confirmation are left to Anson (BLOCKED.md section 2): the AI never merges.
 - Bench cases skip building A/B branches (--no-ab); interpretations still recorded.
-- Docker daemon is not running; Docker is only needed for the SQL adapter (polish item 6), so no impact on the definition of done.
+- Docker daemon is not running; Docker is only needed for the SQL adapter (polish item 6), so no impact on the definition of done. (The SQL adapter later ran in Docker: `runs/sql-*`, PR #27.)
 
-## CHALLENGE.md self-check (evidence, 09:20)
+## CHALLENGE.md self-check (evidence, 23:40)
 | Check | Status | Evidence |
 |---|---|---|
-| Concept first | met | `deliverables/concept-card.md`: recommendation, 8 principles, trade-offs, limits, judges' 3 questions |
-| All six expectations | met | concept and principles (card); sample change with REQ id: latest run under `runs/ju26-issue-2283/` (REQ-2283); found, refused, why: receipt fields `findings`, `hunches`, `refused`, `not_checked`; accept without a full read: dashboard `/change/ju26-issue-2283` (screenshot `dashboard/e2e/screenshots/real-change-2283-1440.png`); failure modes and decisions: `deliverables/lessons-log.md` (13 entries), `deliverables/decision-log.md` (15 entries) |
-| Evidence traces to a requirement | met | every receipt carries `requirement_id`; findings carry `evidence_ids` tied to the claim (PR #13: named failing test, byte diff traced to file); e.g. 2283 `gentest-1` fails on base, passes on head |
-| Refusals shown | met | latest 2297 receipt, field `refused` (3 of 3 readers, quoted requirement); `not_checked` has 3 to 6 entries per change |
-| Named human signs off, no AI-merge path | met in code; human step pending | merge and sign-off routes refuse without a name and refuse blocked changes (PR #13, e2e 21/21); `ab.py` only writes `review/*` branches; the real merge is left to Anson (BLOCKED.md section 2) |
-| Risk routes depth | met | 2297 routing: 222 regeneration, 14 deep, 1 light; T3 and T4 in `metrics/` |
-| Trust per area with data | met (bench) | `metrics/trust.json`, `metrics/trust-history.json` (tests and type-collector reached 3; reset on escape implemented; 0 escapes) |
-| Measurement | met, provenance stated | `metrics/summary.json`: 19/24 caught, 0 escapes, 94 % of 2297 routed away, questions 0.25 to 0.04 per change, time to receipt 3.5 to 11 min; `metrics/README.md` |
+| Concept first | met | `deliverables/concept-card.md`: recommendation, 9 principles (9 = blast radius), per-change table, measured section on the final pipeline, Verda vs Anthropic, trade-offs, limits, judges' 3 questions |
+| All six expectations | met | concept and principles (card); sample change with REQ id: `runs/ju26-issue-2283/20261114T193310Z` (REQ-2283); found, refused, why: receipt fields `findings`, `hunches`, `refused`, `not_checked`; accept without a full read: dashboard `/change/ju26-issue-2283`; failure modes and decisions: `deliverables/lessons-log.md` (19 entries), `deliverables/decision-log.md` (20 entries) |
+| Evidence traces to a requirement | met | every receipt carries `requirement_id`; findings carry `evidence_ids` tied to the claim; e.g. 2283 `gentest-1` fails on base (4/4), passes on head (4/4); `characterize-1`/`-2` pin old behaviour, pass on base and head; T6: 242 of 242 shown findings cite an executed receipt |
+| Refusals shown | met | `runs/ju26-issue-2297/20261114T202036Z` and `runs/ju26-issue-2129/20261114T194759Z`, field `refused` (3 of 3 readers, quoted requirement); `not_checked` has 4 to 8 entries per change (2283: 4, 2234: 5, 2297: 7, 2129: 8), including untested callers |
+| Named human signs off, no AI-merge path | met in code; human step pending | merge and sign-off routes refuse without a name and refuse blocked changes; `ab.py` only writes `review/*` branches; a local, uncommitted sign-off of 2234 by "anson" exists in the main checkout (`decisions/ju26-issue-2234.json`, 15:08); the rest is BLOCKED.md section 2 |
+| Risk routes depth | met | 2297 routing: 222 regeneration, 14 deep, 1 light (T4); blast-radius floor 8 on all four Tieto changes (`impact.json`), so none can be auto-ready; T3 router comparison |
+| Trust per area with data | met (bench) | `metrics/trust.json`: tests and type-collector at 3, seven other areas at 1; reset on escape implemented; 0 escapes |
+| Measurement | met, final pipeline | `metrics/summary.json`: 21/24 caught cold, 0 escapes, 4/8 control/bait cases with a false alarm, 94 % of 2297 routed away (222/237), questions 0.50 to 0.28 per change on the same 18 cases (`cold_on_warm_cases`); review time 0.8 to 11.1 min per bench case live on Verda (`provider-comparison.json`); Verda next to Anthropic in `metrics/verda/`; provenance in `metrics/README.md` |
 | Judges' three questions in writing | met | concept card sections "Limits", "How it scales", "Who owns the decision"; demo script |
-| Data synthetic or cleared, no 8x | met | only the public Tieto sample repo and bench variants derived from it |
-| MIT LICENSE, README that runs, no keys in git | met | `LICENSE`, `README.md`; key-pattern grep over fixtures and runs clean (adversarial review) |
-| Submission pack | met (video pending) | `docs/submission.md`: name 29 chars, punchline 197, description 4282 |
+| Data synthetic or cleared, no 8x | met | only the public Tieto sample repo, bench variants derived from it, and the synthetic SQL repo in `examples/` |
+| MIT LICENSE, README that runs, no keys in git | met | `LICENSE`; every `receipts` subcommand in `README.md` checked with `--help` (setup, review, review-sql, bench generate/run, estimate-verda, metrics); `MOCK_LLM=1 uv run pytest -q`: 312 passed, 38 skipped (agent worktree, 23:39) |
+| Submission pack | met (video pending) | `docs/submission.md`: name 29 chars, punchline 189, description 4944 (counted with a script) |
 | Peer review in 3 minutes | ready | demo script: 2-minute flow plus walkthrough |
+| Verda tech challenge | met (Discord post pending) | `docs/verda.md`: process, Fit, results vs Anthropic, cost, scale; EUR 25.00 of EUR 40 over 372 calls |
 
 ## Time elapsed
-- 11:15: 5 h 43 m. Definition of done: met except the items that need the API limit raised or a named human. See BLOCKED.md.
+- 23:40: 18 h 08 m since the 05:32 start. Pipeline, measurement and written deliverables final; remaining steps are human-only (Next, BLOCKED.md section 2).
