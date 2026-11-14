@@ -288,6 +288,30 @@ export interface MetricsSummary {
   excluded_incomplete_runs?: Record<string, string[]>;
 }
 
+/** context.json: what the reviewer was told about the product for this change, and which claims it changed. */
+export interface RunContextEntry {
+  text: string;
+  area: string;
+  source: string;
+  kind: "context" | "ledger";
+}
+
+export interface RunContextCitation {
+  lens: string;
+  claim: string;
+  entry: string;
+  effect: "withdrawn" | "suppressed-unconfirmed" | "cited";
+}
+
+export interface RunContext {
+  status: "draft" | "confirmed";
+  confirmed_by: string | null;
+  areas: string[];
+  entries: RunContextEntry[];
+  citations: RunContextCitation[];
+  readers_used_ledger: number;
+}
+
 /** One run folder, fully loaded. Optional files may be absent. */
 export interface RunBundle {
   changeId: string;
@@ -301,4 +325,6 @@ export interface RunBundle {
   findings: Finding[];
   mutants: Mutant[];
   questions: Question[];
+  /** Absent on runs that predate context recording. */
+  context?: RunContext;
 }

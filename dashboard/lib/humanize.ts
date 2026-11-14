@@ -218,6 +218,31 @@ export function humanizeTitle(title: string): HumanTitle {
   return { text: t };
 }
 
+const operatorWords: Record<string, string> = {
+  "logical-operator": "an and/or swapped",
+  "negate-condition": "a condition flipped",
+  "remove-guard": "a safety check removed",
+  "linq-first": "First swapped for FirstOrDefault",
+  "off-by-one": "an off-by-one change",
+  "swap-boolean": "true and false swapped",
+  "delete-statement": "a line deleted",
+};
+
+/** Machine-written finding claims (mutation survivors) in plain words; prose claims pass through untouched. */
+export function humanizeClaim(claim: string): string {
+  const t = claim.trim();
+  let m: RegExpMatchArray | null;
+  if ((m = t.match(/^no test in the suite detects ([\w-]+) at (.+?):(\d+)$/))) {
+    const file = m[2].split("/").pop() ?? m[2];
+    return `No test would notice if this line were broken (${operatorWords[m[1]] ?? m[1]} in ${file}, line ${m[3]}).`;
+  }
+  if ((m = t.match(/^the change's own tests do not catch mutants at (.+?):([\d, ]+); the existing suite does$/))) {
+    const file = m[1].split("/").pop() ?? m[1];
+    return `The change's own tests miss breaks in ${file} (lines ${m[2]}); only the older tests catch them.`;
+  }
+  return t;
+}
+
 export const lensLabel: Record<string, string> = {
   "requirement-tests": "Requirement tests",
   "logic-edge": "Logic and edge cases",

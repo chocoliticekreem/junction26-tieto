@@ -16,6 +16,7 @@ import type {
   Question,
   RoutingReport,
   RunBundle,
+  RunContext,
   TestRun,
   TrustHistoryEvent,
   TrustLevels,
@@ -95,6 +96,20 @@ export function loadRun(changeId: string, runTs?: string): RunBundle | undefined
     findings: readJsonList<Finding>(path.join(dir, "findings.json")),
     mutants: readJsonList<Mutant>(path.join(dir, "mutants.json")),
     questions: readJsonList<Question>(path.join(dir, "questions.json")),
+    context: readRunContext(path.join(dir, "context.json")),
+  };
+}
+
+function readRunContext(file: string): RunContext | undefined {
+  const c = readJson<Partial<RunContext>>(file);
+  if (!c || typeof c !== "object" || Array.isArray(c)) return undefined;
+  return {
+    status: c.status === "confirmed" ? "confirmed" : "draft",
+    confirmed_by: typeof c.confirmed_by === "string" ? c.confirmed_by : null,
+    areas: Array.isArray(c.areas) ? c.areas.filter((a): a is string => typeof a === "string") : [],
+    entries: Array.isArray(c.entries) ? c.entries : [],
+    citations: Array.isArray(c.citations) ? c.citations : [],
+    readers_used_ledger: typeof c.readers_used_ledger === "number" ? c.readers_used_ledger : 0,
   };
 }
 

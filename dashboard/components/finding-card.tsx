@@ -1,7 +1,8 @@
 import type { CommandReceipt, Evidence, Finding, Mutant, TestRun } from "@/lib/types";
-import { lensLabel } from "@/lib/humanize";
+import { humanizeClaim, lensLabel } from "@/lib/humanize";
 import { EvidenceCard } from "./evidence-card";
 import { ResultIcon, SeverityPill } from "./pills";
+import { Term } from "./term";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronRight, ShieldAlert } from "lucide-react";
 
@@ -30,7 +31,7 @@ export function FindingCard({ f, ctx }: { f: Finding; ctx: Ctx }) {
       <CollapsibleTrigger className="group flex w-full items-start gap-2.5 rounded-lg px-3 py-2.5 text-left transition-colors duration-150 hover:bg-muted/50" data-testid="finding-toggle">
         <ShieldAlert className="mt-0.5 size-4 shrink-0 text-bad-foreground" aria-hidden />
         <span className="min-w-0 flex-1 space-y-1">
-          <span className="block text-sm leading-5 [overflow-wrap:anywhere] group-aria-[expanded=false]:line-clamp-2">{f.claim}</span>
+          <span className="block text-sm leading-5 [overflow-wrap:anywhere] group-aria-[expanded=false]:line-clamp-2" title={f.claim}>{humanizeClaim(f.claim)}</span>
           <span className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">
             <SeverityPill severity={f.severity} />
             <span className="font-mono text-[11px]">{f.location}</span>
@@ -68,7 +69,7 @@ export function HunchList({ hunches }: { hunches: Finding[] }) {
       <CollapsibleTrigger className="group inline-flex items-center gap-1 rounded-sm text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground" data-testid="hunches-toggle">
         <ChevronRight className="size-3 transition-transform duration-150 group-aria-expanded:rotate-90" />
         <span>
-          <span className="font-mono tabular-nums">{hunches.length}</span> unverified {hunches.length === 1 ? "hunch" : "hunches"} withheld
+          <span className="font-mono tabular-nums">{hunches.length}</span> unverified <Term k="hunch">{hunches.length === 1 ? "hunch" : "hunches"}</Term> withheld
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent>

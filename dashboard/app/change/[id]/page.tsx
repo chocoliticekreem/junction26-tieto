@@ -4,11 +4,16 @@ import { ChevronRight, EyeOff, FlaskConical, Route, ScrollText, ShieldAlert, Spl
 import { loadRun, pendingQuestions, readDecision, signOffRefusal } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
 import { humanizeTitle } from "@/lib/humanize";
+import { plainSummary } from "@/lib/plain-summary";
 import { receiptMarkdown } from "@/lib/receipt-markdown";
 import { CopyReceiptButton } from "@/components/copy-receipt-button";
 import { Disclosure } from "@/components/disclosure";
 import { EvidenceCard } from "@/components/evidence-card";
 import { FindingCard, HunchList } from "@/components/finding-card";
+import { HowToRead } from "@/components/how-to-read";
+import { PlainSummary } from "@/components/plain-summary";
+import { ProductContext } from "@/components/product-context";
+import { Term } from "@/components/term";
 import { splitNote } from "@/components/metrics-table";
 import { MutantTable } from "@/components/mutant-table";
 import { ResultIcon, TrustLevel } from "@/components/pills";
@@ -39,10 +44,12 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
   const markdown = receiptMarkdown(run, decision);
   const residual = splitNote(r.residual_risk);
   const routingTotal = Object.keys(r.routing).length;
+  const summary = plainSummary(run, { decision, pendingQuestions: pending.length });
   const routingCounts = (["deep", "light", "regeneration"] as const).map((d) => `${Object.values(r.routing).filter((v) => v === d).length} ${d}`).join(" · ");
 
   return (
     <div className="space-y-6">
+      <HowToRead />
       <nav className="flex items-center gap-1 text-xs text-muted-foreground" aria-label="breadcrumb">
         <Link href="/" className="rounded-sm hover:text-foreground hover:underline">
           Inbox
@@ -69,6 +76,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
       >
         <VerdictSummary verdict={r.verdict} reason={r.verdict_reason} ctx={{ findings: r.findings, evidence: run.evidence }} className="mt-3" />
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <Term k="trust">Trust earned</Term>
           {r.areas.map((a) => (
             <span key={a} className="inline-flex items-center gap-1.5">
               <span className="font-mono">{a}</span> <TrustLevel level={r.area_trust?.[a]} />
@@ -90,6 +98,8 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
         </div>
       )}
 
+      <PlainSummary items={summary} className="max-w-4xl" />
+
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_21rem] lg:items-start">
         <div className="min-w-0 space-y-8">
           <Proven lines={provenLines(run.evidence)} />
@@ -110,9 +120,9 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
             </Section>
           )}
 
-          <Section title="Findings" count={r.findings.length} id="findings" icon={<ShieldAlert />}>
+          <Section title={<Term k="finding">Findings</Term>} count={r.findings.length} id="findings" icon={<ShieldAlert />}>
             {r.findings.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No verified findings. Not approval: see Not checked.</p>
+              <p className="text-sm text-muted-foreground">Nothing proven wrong. That is not approval: see what was not checked.</p>
             ) : (
               <div className="space-y-2">
                 {r.findings.map((f) => (
@@ -123,8 +133,10 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
             <HunchList hunches={r.hunches} />
           </Section>
 
+          <ProductContext context={run.context} areas={r.areas} />
+
           <div className="grid gap-6 md:grid-cols-2">
-            <Section title="Not checked" count={r.not_checked.length} id="not-checked" icon={<EyeOff />}>
+            <Section title={<Term k="notchecked">Not checked</Term>} count={r.not_checked.length} id="not-checked" icon={<EyeOff />}>
               {r.not_checked.length === 0 ? (
                 <p className="text-sm text-warn-foreground">The run declared no gaps. Treat with suspicion.</p>
               ) : (
@@ -147,7 +159,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
             </div>
           </Section>
 
-          <Section title="Receipts" count={run.evidence.length} id="receipts" icon={<ScrollText />}>
+          <Section title={<Term k="receipt">Receipts</Term>} count={run.evidence.length} id="receipts" icon={<ScrollText />}>
             <Disclosure label={`${r.checked.length} checks · ${otherEvidence.length} receipts not attached to a finding`} testId="receipts-toggle">
               <div className="space-y-3">
                 {r.checked.length > 0 && (
@@ -182,7 +194,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
               </div>
             </Disclosure>
             {run.mutants.length > 0 && (
-              <Disclosure label={<span className="inline-flex items-center gap-1"><FlaskConical className="size-3" /> {run.mutants.length} mutants on changed lines</span>} testId="mutants-toggle">
+              <Disclosure label={<span className="inline-flex items-center gap-1"><FlaskConical className="size-3" /> {run.mutants.length} <Term k="mutant">mutants</Term> on changed lines</span>} testId="mutants-toggle">
                 <MutantTable mutants={run.mutants} />
               </Disclosure>
             )}
@@ -200,7 +212,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
             </Disclosure>
           </Section>
 
-          <Section title="Requirement">
+          <Section title="Requirement" id="requirement">
             <Disclosure label={`${r.requirement_id} full text`} testId="requirement-toggle">
               <p className="max-w-3xl text-sm leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]" data-testid="requirement-text">
                 {r.requirement_text}

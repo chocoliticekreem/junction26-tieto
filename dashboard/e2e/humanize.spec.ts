@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { abMismatchMessage, humanizeRefusal, humanizeTitle, humanizeVerdict, stripHtmlComments } from "../lib/humanize";
+import { abMismatchMessage, humanizeClaim, humanizeRefusal, humanizeTitle, humanizeVerdict, stripHtmlComments } from "../lib/humanize";
 import type { Evidence, Finding } from "../lib/types";
 
 // Unit tests for the plain-language mapper. Shapes come from grep over runs/**/receipt.json and evidence.json.
@@ -139,4 +139,14 @@ test("HTML comments are stripped from markdown, across lines too", () => {
   expect(stripHtmlComments("a <!-- seeded convention for the bait bench case --> b")).toBe("a  b");
   expect(stripHtmlComments("x\n<!--\nmulti\n-->\ny")).toBe("x\n\ny");
   expect(stripHtmlComments("no comments")).toBe("no comments");
+});
+
+test("mutation-survivor claims become plain sentences; prose claims pass through", () => {
+  expect(humanizeClaim("no test in the suite detects linq-first at src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1434")).toBe(
+    "No test would notice if this line were broken (First swapped for FirstOrDefault in TypeCollector.cs, line 1434).",
+  );
+  expect(humanizeClaim("the change's own tests do not catch mutants at src/X/TypeCollector.cs:239, 985, 1448; the existing suite does")).toBe(
+    "The change's own tests miss breaks in TypeCollector.cs (lines 239, 985, 1448); only the older tests catch them.",
+  );
+  expect(humanizeClaim("Migration not reversible: schema after down differs from base (1 line(s))")).toBe("Migration not reversible: schema after down differs from base (1 line(s))");
 });

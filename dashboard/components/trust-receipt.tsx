@@ -3,6 +3,7 @@ import { humanizeTitle } from "@/lib/humanize";
 import type { Decision, RunBundle } from "@/lib/types";
 import { ResultIcon, resultTone, resultWord, verdictLabel } from "./pills";
 import { Stamp } from "./stamp";
+import { Term } from "./term";
 import { cn } from "@/lib/utils";
 
 function Line({ label, value, href, tone, note, testId }: { label: React.ReactNode; value: React.ReactNode; href?: string; tone?: string; note?: string; testId?: string }) {
@@ -38,10 +39,12 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
   const byResult = (k: string) => run.evidence.filter((e) => e.result === k).length;
   const stamp = stampText(run, decision);
   return (
-    <aside className={cn("receipt-paper min-w-0 rounded-sm px-5 py-5 font-mono text-xs leading-5 sm:px-6", className)} data-testid="trust-receipt" aria-label="trust receipt">
+    <aside id="trust-receipt" className={cn("receipt-paper min-w-0 scroll-mt-16 rounded-sm px-5 py-5 font-mono text-xs leading-5 sm:px-6", className)} data-testid="trust-receipt" aria-label="trust receipt">
       <div className="flex items-start justify-between gap-3 border-b border-dashed border-ink/30 pb-3">
         <div>
-          <div className="text-[11px] font-semibold tracking-[0.18em] uppercase">Trust receipt</div>
+          <div className="text-[11px] font-semibold tracking-[0.18em] uppercase">
+            Trust <Term k="receipt">receipt</Term>
+          </div>
           <div className="mt-0.5 text-[10px] text-muted-foreground">{r.requirement_id}</div>
         </div>
         <div className="text-right text-[10px] leading-4 text-muted-foreground">
@@ -80,7 +83,7 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
 
       <ul className="mt-3 space-y-1 border-t border-dashed border-ink/30 pt-3" data-testid="receipt-subtotals">
         <Line
-          label={`Receipts (${run.evidence.length})`}
+          label={<><Term k="receipt">Receipts</Term> ({run.evidence.length})</>}
           value={
             <span className="inline-flex items-center gap-2" title={`${byResult("pass")} pass · ${byResult("partial")} partial · ${byResult("fail") + byResult("error")} fail`}>
               <span className="inline-flex items-center gap-0.5 text-ok-foreground">
@@ -103,12 +106,12 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
           }
           href="#receipts"
         />
-        <Line label="Findings with proof" value={r.findings.length} tone={r.findings.length ? "text-bad-foreground font-semibold" : undefined} href="#findings" />
-        <Line label="Hunches withheld" value={r.hunches.length} href="#findings" />
-        <Line label="Not checked" value={r.not_checked.length} href="#not-checked" />
+        <Line label={<><Term k="finding">Findings</Term> with proof</>} value={r.findings.length} tone={r.findings.length ? "text-bad-foreground font-semibold" : undefined} href="#findings" />
+        <Line label={<><Term k="hunch">Hunches</Term> withheld</>} value={r.hunches.length} href="#findings" />
+        <Line label={<Term k="notchecked">Not checked</Term>} value={r.not_checked.length} href="#not-checked" />
         {r.refused.length > 0 && <Line label="Refused to decide" value={r.refused.length} href="#refused" />}
         {pending > 0 && <Line label="Questions pending" value={pending} tone="text-warn-foreground" href="/questions" />}
-        <Line label="Risk" value={`${r.risk}/10`} tone={r.risk >= 7 ? "text-bad-foreground" : r.risk >= 4 ? "text-warn-foreground" : undefined} />
+        <Line label={<Term k="risk">Risk</Term>} value={`${r.risk}/10`} tone={r.risk >= 7 ? "text-bad-foreground" : r.risk >= 4 ? "text-warn-foreground" : undefined} />
       </ul>
 
       <div className="mt-3 flex items-end justify-between gap-3 border-t-2 border-ink/70 pt-3">

@@ -3,6 +3,7 @@ import { AB_SUFFIX, isSampleChange, isSqlChange, loadLatestRuns, minTrust, pendi
 import type { Decision, RunBundle } from "@/lib/types";
 import { ReceiptBar, RiskMeter, TrustLevel, VerdictPill } from "@/components/pills";
 import { EmptyState, PageTitle, Panel } from "@/components/section";
+import { Term } from "@/components/term";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const dynamic = "force-dynamic";
@@ -106,6 +107,22 @@ function Group({ title, rows }: { title: string; rows: Row[] }) {
   );
 }
 
+function VerdictLegend() {
+  return (
+    <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5 rounded-lg border bg-card/60 px-3 py-2 text-xs text-muted-foreground" data-testid="verdict-legend">
+      <span className="inline-flex items-center gap-1.5">
+        <VerdictPill verdict="blocked" /> a defect is proven; fix it first
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <VerdictPill verdict="needs-sign-off" /> nothing proven wrong; a person <Term k="signoff">decides</Term>
+      </span>
+      <span className="inline-flex items-center gap-1.5">
+        <VerdictPill verdict="decision-A-B" /> <Term k="ab">two readings</Term>; a person picks one
+      </span>
+    </div>
+  );
+}
+
 export default function InboxPage() {
   const latest = loadLatestRuns();
   const pending = pendingQuestions(latest);
@@ -141,6 +158,7 @@ export default function InboxPage() {
           No runs found. Run <code className="font-mono">uv run receipts review --change ju26-issue-2283 --req REQ-2283</code> and reload.
         </EmptyState>
       )}
+      {rows.length > 0 && <VerdictLegend />}
       <Group title="Tieto sample changes" rows={sample} />
       <Group title="Bench" rows={bench} />
       <Group title="SQL migrations (second sandbox adapter)" rows={sql} />
