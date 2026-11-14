@@ -125,7 +125,9 @@ export type EvidenceKind =
   | "ledger-citation"
   | "code-citation"
   | "migration-up-down"
-  | "row-preservation";
+  | "row-preservation"
+  | "behaviour-preserved"
+  | "behaviour-changed";
 
 export interface Evidence {
   id: string;
@@ -312,6 +314,53 @@ export interface RunContext {
   readers_used_ledger: number;
 }
 
+/** impact.json: which existing members the change touches, who calls them, and whether pinned behaviour held. */
+export interface ImpactCaller {
+  file: string;
+  line: number;
+  member: string;
+  in_change: boolean;
+  /** null when coverage was unavailable for this call site. */
+  tested: boolean | null;
+}
+
+export interface ImpactMember {
+  name: string;
+  file: string;
+  kind: "modified" | "new" | "deleted";
+  signature_changed: boolean;
+  callers: ImpactCaller[];
+  callers_outside_change: number;
+  untested_callers: number;
+  ambiguous: boolean;
+}
+
+export interface Characterization {
+  member: string;
+  test_names: string[];
+  base: "pass" | "fail" | "compile-error";
+  head: "pass" | "fail" | "compile-error" | "not-run";
+  result: "preserved" | "changed" | "invalid";
+  evidence_id: string;
+}
+
+export interface ImpactSummary {
+  modified_existing: number;
+  new: number;
+  deleted: number;
+  callers_outside_change: number;
+  untested_callers: number;
+  behaviour_changes: number;
+}
+
+export interface ImpactReport {
+  method: string;
+  members: ImpactMember[];
+  characterization: Characterization[];
+  coverage_available: boolean;
+  summary: ImpactSummary;
+}
+
 /** One run folder, fully loaded. Optional files may be absent. */
 export interface RunBundle {
   changeId: string;
@@ -327,4 +376,6 @@ export interface RunBundle {
   questions: Question[];
   /** Absent on runs that predate context recording. */
   context?: RunContext;
+  /** Absent on runs that predate the impact check. */
+  impact?: ImpactReport;
 }

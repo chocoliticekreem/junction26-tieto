@@ -33,6 +33,7 @@ function num(v: unknown): number | undefined {
 
 const TEST_KINDS = new Set(["fail-before-pass-after", "new-api", "existing-tests"]);
 const MIGRATION_KINDS = new Set(["migration-up-down", "row-preservation"]);
+const PIN_KINDS = new Set(["behaviour-changed", "behaviour-preserved"]);
 
 /** "proven by failing tests" when every receipt behind the listed findings is a test run, etc. */
 function proofPhrase(findingIds: string[], ctx?: HumanizeCtx): string {
@@ -50,6 +51,7 @@ function proofPhrase(findingIds: string[], ctx?: HumanizeCtx): string {
   if (all(new Set(["mutation"]))) return "proven by surviving mutants";
   if (all(MIGRATION_KINDS)) return "proven by running the migration";
   if (all(new Set(["byte-diff"]))) return "proven by a byte diff";
+  if (all(PIN_KINDS)) return "proven by pinned tests";
   return "proven by receipts";
 }
 
@@ -246,6 +248,8 @@ export function humanizeTitle(title: string): HumanTitle {
     const text = step[m[1]] ?? (m[1].startsWith("base-up-") ? `Base migration applied: ${m[1].slice("base-up-".length)}` : `Sandbox step: ${m[1]}`);
     return { text, count: `${m[4]}s`, note: `${m[2]} · exit ${m[3]}` };
   }
+  if ((m = t.match(/^Characterization: (\S+) behaviour preserved \((\d+)\/(\d+) pinned tests? pass on base and head\)$/))) return { text: `Old behaviour of ${m[1]} still holds`, count: `${m[2]}/${m[3]} pinned tests` };
+  if ((m = t.match(/^Characterization: (\S+) behaviour changed \((\d+)\/(\d+) pinned tests? pass on base, (\d+) fails? on head\)$/))) return { text: `Old behaviour of ${m[1]} changed`, count: `${m[4]}/${m[3]} pinned tests fail` };
   if ((m = t.match(/^routed (\d+) hunks across (\d+) files$/))) return { text: "Every hunk routed to a review depth", count: `${m[1]} hunks, ${m[2]} files` };
   if ((m = t.match(/^(requirement-tests|logic-edge|compatibility|security|product-context|test-quality) lens$/))) return { text: `${lensLabel[m[1]]} lens ran` };
   return { text: t };
@@ -272,6 +276,10 @@ export function humanizeClaim(claim: string): string {
   if ((m = t.match(/^the change's own tests do not catch mutants at (.+?):([\d, ]+); the existing suite does$/))) {
     const file = m[1].split("/").pop() ?? m[1];
     return `The change's own tests miss breaks in ${file} (lines ${m[2]}); only the older tests catch them.`;
+  }
+  if ((m = t.match(/^behaviour of (\S+) changed for (\d+) callers? outside the change/))) {
+    const n = Number(m[2]);
+    return `Changes how ${m[1]} behaves for ${n} other ${n === 1 ? "place that relies" : "places that rely"} on it.`;
   }
   return t;
 }

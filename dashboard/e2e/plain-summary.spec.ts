@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { decideSentence, plainSummary, purposeSentence, uncheckedSentence } from "../lib/plain-summary";
-import type { Evidence, Finding, Question, RunBundle, TrustReceipt } from "../lib/types";
+import type { Evidence, Finding, ImpactReport, Question, RunBundle, TrustReceipt } from "../lib/types";
 
 // Unit tests for the plain-words summary, on the real committed runs (runs/<id>/<latest>/) and the e2e fixtures.
 
@@ -14,7 +14,8 @@ function load(root: string, changeId: string): RunBundle {
   const dir = path.join(root, changeId, ts);
   const json = <T>(f: string, fallback: T): T => (fs.existsSync(path.join(dir, f)) ? (JSON.parse(fs.readFileSync(path.join(dir, f), "utf8")) as T) : fallback);
   const receipt = json<TrustReceipt>("receipt.json", undefined as unknown as TrustReceipt);
-  return { changeId, runTs: ts, receipt, commands: [], tests: [], evidence: json<Evidence[]>("evidence.json", []), findings: json<Finding[]>("findings.json", []), mutants: [], questions: json<Question[]>("questions.json", []) };
+  const impact = json<ImpactReport | undefined>("impact.json", undefined);
+  return { changeId, runTs: ts, receipt, commands: [], tests: [], evidence: json<Evidence[]>("evidence.json", []), findings: json<Finding[]>("findings.json", []), mutants: [], questions: json<Question[]>("questions.json", []), impact };
 }
 
 const texts = (run: RunBundle, opts?: Parameters<typeof plainSummary>[1]) => Object.fromEntries(plainSummary(run, opts).map((s) => [s.key, s.text]));
@@ -72,10 +73,14 @@ test("sql-bad-down (blocked): the migration cannot be undone; lenses collapse in
 });
 
 test("fixture 2283 counts the written tests from details.tests and the survivor from the mutation receipt", () => {
-  const s = texts(load(FIXTURES, "ju26-issue-2283"));
+  const run = load(FIXTURES, "ju26-issue-2283");
+  const s = texts(run);
   expect(s.proved).toContain("We wrote 2 tests from the issue description alone.");
   expect(s.wrong).toContain("1 part of the new code is never tested: if someone broke it, no test would notice.");
+  expect(s.wrong).toContain("TypeCollector.IsOpenGenericType now behaves differently, and 4 other places rely on it.");
   expect(s.wrong).toContain("2 suspicions");
+  expect(s.impact).toBe("This change modifies 2 existing functions that 7 other places use. 5 of those places are tested; 2 are not. The old behaviour we pinned changed for one of them.");
+  expect(plainSummary(run).map((x) => x.href)).toEqual(["#requirement", "#impact", "#proven", "#findings", "#not-checked", "#trust-receipt"]);
 });
 
 test("fixture 2297 (decision A/B) links the decision page and names the choice", () => {

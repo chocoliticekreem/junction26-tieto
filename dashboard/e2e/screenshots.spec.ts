@@ -13,6 +13,8 @@ const pages = [
   ["decision-2297", "/decision/ju26-issue-2297"],
   ["context", "/context"],
   ["how-we-know-it-works", "/track-record"],
+  ["impact-2283", "/change/ju26-issue-2283"],
+  ["impact-2297", "/change/ju26-issue-2297"],
 ] as const;
 
 async function shoot(page: Page, name: string, url: string, width: number) {
@@ -31,6 +33,16 @@ async function shoot(page: Page, name: string, url: string, width: number) {
     await page.locator("#evidence-E-req").getByTestId("evidence-toggle").click();
     await page.getByTestId("log-toggle").filter({ hasText: "test-base-req.log" }).click();
     await page.getByTestId("log-excerpt").waitFor();
+  }
+  if (name.startsWith("impact-")) {
+    // The step alone, with the widest blast-radius row opened so the caller list shows; dots fill in once it is in view.
+    const step = page.getByTestId("story-impact");
+    await step.scrollIntoViewIfNeeded();
+    const toggle = step.getByTestId("impact-member-toggle").first();
+    if (await toggle.count()) await toggle.click();
+    await page.waitForTimeout(1200);
+    await step.screenshot({ path: path.join(OUT, `${name}-${width}.png`) });
+    return;
   }
   await page.waitForTimeout(1200);
   await page.screenshot({ path: path.join(OUT, `${name}-${width}.png`), fullPage: true });

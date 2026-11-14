@@ -7,6 +7,7 @@ import type {
   Decision,
   Evidence,
   Finding,
+  ImpactReport,
   IntakeReport,
   LedgerEntry,
   MetricsSummary,
@@ -97,6 +98,28 @@ export function loadRun(changeId: string, runTs?: string): RunBundle | undefined
     mutants: readJsonList<Mutant>(path.join(dir, "mutants.json")),
     questions: readJsonList<Question>(path.join(dir, "questions.json")),
     context: readRunContext(path.join(dir, "context.json")),
+    impact: readImpact(path.join(dir, "impact.json")),
+  };
+}
+
+function readImpact(file: string): ImpactReport | undefined {
+  const i = readJson<Partial<ImpactReport>>(file);
+  if (!i || typeof i !== "object" || Array.isArray(i)) return undefined;
+  const s: Partial<ImpactReport["summary"]> = i.summary ?? {};
+  const n = (v: unknown) => (typeof v === "number" ? v : 0);
+  return {
+    method: typeof i.method === "string" ? i.method : "",
+    members: Array.isArray(i.members) ? i.members.map((m) => ({ ...m, callers: Array.isArray(m.callers) ? m.callers : [] })) : [],
+    characterization: Array.isArray(i.characterization) ? i.characterization : [],
+    coverage_available: i.coverage_available === true,
+    summary: {
+      modified_existing: n(s.modified_existing),
+      new: n(s.new),
+      deleted: n(s.deleted),
+      callers_outside_change: n(s.callers_outside_change),
+      untested_callers: n(s.untested_callers),
+      behaviour_changes: n(s.behaviour_changes),
+    },
   };
 }
 

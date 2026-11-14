@@ -10,6 +10,7 @@ import { CopyReceiptButton } from "@/components/copy-receipt-button";
 import { Disclosure } from "@/components/disclosure";
 import { EvidenceCard } from "@/components/evidence-card";
 import { FindingCard, HunchList } from "@/components/finding-card";
+import { ImpactStep } from "@/components/impact-step";
 import { PlainSummary } from "@/components/plain-summary";
 import { ProductContext } from "@/components/product-context";
 import { Term } from "@/components/term";
@@ -34,6 +35,7 @@ export const dynamic = "force-dynamic";
 
 const STEPS = [
   { id: "what-changed", label: "What changed" },
+  { id: "impact", label: "Impact on other features" },
   { id: "proved", label: "What we proved" },
   { id: "not-checked", label: "What we didn't check" },
   { id: "decide", label: "Your decision" },
@@ -97,7 +99,11 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
           <ProductContext context={run.context} areas={r.areas} />
         </StoryStep>
 
-        <StoryStep id="proved" n={2} title="What we proved" className="lg:col-start-1">
+        <StoryStep id="impact" n={2} title="Impact on other features" className="lg:col-start-1">
+          <ImpactStep impact={run.impact} />
+        </StoryStep>
+
+        <StoryStep id="proved" n={3} title="What we proved" className="lg:col-start-1">
           <Proven lines={proven} />
           <div className="space-y-2" id="findings">
             <h3 className="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
@@ -125,11 +131,11 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
           </div>
         </StoryStep>
 
-        <div className="min-w-0 self-start lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:row-span-5">
+        <div className="min-w-0 self-start lg:sticky lg:top-24 lg:col-start-2 lg:row-start-1 lg:row-span-6">
           <TrustReceipt run={run} decision={decision} pending={pending.length} />
         </div>
 
-        <StoryStep id="not-checked" n={3} title="What we didn't check" className="lg:col-start-1">
+        <StoryStep id="not-checked" n={4} title="What we didn't check" className="lg:col-start-1">
           {r.not_checked.length === 0 ? (
             <p className="text-sm text-warn-foreground">The run declared no gaps. Treat with suspicion.</p>
           ) : (
@@ -150,7 +156,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
           )}
         </StoryStep>
 
-        <StoryStep id="decide" n={4} title="Your decision" className="lg:col-start-1">
+        <StoryStep id="decide" n={5} title="Your decision" className="lg:col-start-1">
           <Panel className="space-y-5 p-5 sm:p-6" data-testid="decision-panel">
             {pending.length > 0 && !decision && (
               <div className="space-y-3" id="questions" data-testid="pending-questions">

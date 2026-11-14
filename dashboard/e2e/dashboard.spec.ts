@@ -31,13 +31,15 @@ test("queue shows only the Tieto sample changes as cards grouped by what the use
   await expect(card2283.getByTestId("verdict-pill")).toHaveText("Needs sign-off");
   await expect(card2283.getByTestId("queue-action")).toHaveText(/Review and sign off/);
   await expect(card2283.getByTestId("queue-action")).toHaveAttribute("href", "/change/ju26-issue-2283");
-  await expect(card2283.getByTestId("receipt-counts")).toContainText("5 green");
-  await expect(card2283.getByTestId("receipt-counts")).toContainText("0 red");
+  await expect(card2283.getByTestId("receipt-counts")).toContainText("6 green");
+  await expect(card2283.getByTestId("receipt-counts")).toContainText("1 red");
+  await expect(card2283.getByTestId("queue-status")).toContainText("Changes code 7 other places use; old behaviour changed for 1 function, 2 of them are untested.");
   const card2297 = cards.filter({ hasText: "ju26-issue-2297" });
   await expect(card2297.getByTestId("verdict-pill")).toHaveText("Decision A/B");
   await expect(card2297.getByTestId("queue-action")).toHaveText(/Choose A or B/);
   await expect(card2297.getByTestId("queue-action")).toHaveAttribute("href", "/decision/ju26-issue-2297");
   await expect(card2297.getByTestId("queue-question")).toHaveText("1 question for you");
+  await expect(card2297.getByTestId("queue-status")).not.toContainText("other place");
   // Three nav items, in journey order, plain words.
   const nav = page.getByRole("navigation", { name: "Main" }).getByRole("link");
   await expect(nav).toHaveText(["Your queue", "Product context", "How we know it works"]);
@@ -62,17 +64,23 @@ test("change page shows receipts, collapsed hunches, not-checked list and log ex
   await expect(page.getByRole("heading", { name: /Fix IndexOutOfRangeException/ })).toBeVisible();
   await expect(page.getByTestId("verdict-reason")).toContainText("surviving mutant");
 
-  // The guided story: four steps, technical drawer closed.
-  await expect(page.getByTestId("step-indicator").getByRole("button")).toHaveText(["1What changed", "2What we proved", "3What we didn't check", "4Your decision"]);
+  // The guided story: five steps, technical drawer closed.
+  await expect(page.getByTestId("step-indicator").getByRole("button")).toHaveText(["1What changed", "2Impact on other features", "3What we proved", "4What we didn't check", "5Your decision"]);
   await expect(page.getByTestId("tech-toggle")).toHaveAttribute("aria-expanded", "false");
   await expect(page.getByTestId("mutants-toggle")).toHaveCount(0);
 
-  await expect(page.getByTestId("finding")).toHaveCount(1);
+  await expect(page.getByTestId("finding")).toHaveCount(2);
   await expect(page.getByTestId("finding").getByTestId("evidence-card")).toHaveCount(0);
-  await page.getByTestId("finding-toggle").click();
+  const mutantFinding = page.getByTestId("finding").filter({ hasText: "mutant M-2283-3" });
+  await mutantFinding.getByTestId("finding-toggle").click();
   await expect(page.getByTestId("finding").getByTestId("evidence-card")).toHaveCount(1);
-  await expect(page.getByTestId("finding").getByTestId("mutant-table")).toContainText("survived");
-  const suiteOnly = page.getByTestId("finding").getByTestId("mutant-table").getByText("caught by existing suite");
+  await expect(mutantFinding.getByTestId("mutant-table")).toContainText("survived");
+  // The behaviour-changed finding reads as a plain claim, not the pipeline's machine string.
+  const pinFinding = page.getByTestId("finding").filter({ hasText: "TypeCollector.IsOpenGenericType behaves" });
+  await expect(pinFinding).toHaveCount(1);
+  await expect(pinFinding).toContainText("Changes how TypeCollector.IsOpenGenericType behaves for 4 other places that rely on it.");
+  await expect(pinFinding).not.toContainText("callers outside the change");
+  const suiteOnly = mutantFinding.getByTestId("mutant-table").getByText("caught by existing suite");
   await expect(suiteOnly).toHaveCount(1);
   await expect(suiteOnly).toHaveAttribute("title", "caught by the existing suite, not by the change's tests");
 
@@ -109,7 +117,11 @@ test("change page shows receipts, collapsed hunches, not-checked list and log ex
 test("Proven block lists passing positive receipts and opens the evidence card on click", async ({ page }) => {
   await page.goto("/change/ju26-issue-2283");
   const lines = page.getByTestId("proven").getByTestId("proven-line");
-  await expect(lines).toHaveText(["Requirement tests fail on base, pass on head · 2/2", "Serialized bytes identical on base and head · 12/12 cases"]);
+  await expect(lines).toHaveText([
+    "Requirement tests fail on base, pass on head · 2/2",
+    "Serialized bytes identical on base and head · 12/12 cases",
+    "Old behaviour of TypeCollector.CollectGeneric still holds · 3/3 pinned tests pass",
+  ]);
   const reqCard = page.locator("#evidence-E-req");
   await expect(reqCard).not.toBeVisible();
   await lines.first().click();
@@ -127,6 +139,62 @@ test("Proven block lists passing positive receipts and opens the evidence card o
   await page.goto(`/change/${encodeURIComponent("mock/2283/logic")}`);
   await expect(page.getByTestId("verdict-pill").first()).toBeVisible();
   await expect(page.getByTestId("proven")).toHaveCount(0);
+});
+
+test("Impact step: blast radius for a modified member, only-new wording, and the predates fallback", async ({ page }) => {
+  await page.goto("/change/ju26-issue-2283");
+  const step = page.getByTestId("story-impact");
+  await expect(step.getByRole("heading", { name: "Impact on other features" })).toBeVisible();
+  await expect(step.getByTestId("impact-headline")).toHaveText(
+    "This change modifies 2 existing functions that 7 other places use. 5 of those places are tested; 2 are not. The old behaviour we pinned changed for one of them.",
+  );
+  const members = step.getByTestId("impact-member");
+  await expect(members).toHaveCount(2);
+  await expect(step.getByTestId("impact-new")).toContainText("New: TypeCollector.ResolveReferencedAssemblyGeneric, ReferenceSymbols.IsFromReferencedAssembly (only this change uses them)");
+  // Widest blast radius first; the dots count callers outside the change, hollow ones are untested.
+  const first = members.first();
+  await expect(first).toContainText("TypeCollector.IsOpenGenericType");
+  await expect(first.getByTestId("impact-places")).toHaveText("used in 4 other places");
+  await expect(first.getByTestId("impact-dot")).toHaveCount(4);
+  await expect(first.locator('[data-testid="impact-dot"][data-tested="false"]')).toHaveCount(1);
+  await expect(first.getByTestId("impact-pin")).toHaveText(/old behaviour changed/);
+  await expect(first).toContainText("signature changed");
+  await expect(members.nth(1).getByTestId("impact-pin")).toHaveText(/old behaviour kept/);
+  await expect(members.nth(1).getByTestId("impact-dot")).toHaveCount(3);
+  // Expanding a row lists every caller with file:line, enclosing member, and tested or not.
+  await expect(first.getByTestId("impact-caller")).toHaveCount(0);
+  await first.getByTestId("impact-member-toggle").click();
+  const callers = first.getByTestId("impact-caller");
+  await expect(callers).toHaveCount(4);
+  await expect(callers.filter({ hasText: "ResolverRegisterInfo.Create" })).toContainText("ResolverRegisterInfo.cs:77");
+  await expect(callers.filter({ hasText: "ResolverRegisterInfo.Create" })).toContainText("untested");
+  await expect(callers.filter({ hasText: "TypeCollector.cs:290" })).toContainText("TypeCollector.Collect");
+  await expect(callers.filter({ hasText: "TypeCollector.cs:290" })).toContainText("tested");
+  await expect(step.getByTestId("impact-footnote")).toHaveText("Call sites found by name, not by full type analysis; test coverage from the source-generator test project only.");
+  // Glossary terms on the step.
+  await page.getByTestId("term-blast").hover();
+  await expect(page.getByRole("tooltip").filter({ hasText: "calls a function it modified or deleted" })).toBeVisible();
+  // The plain-words box and the receipt carry the same answer.
+  await expect(page.getByTestId("plain-impact")).toContainText("This change modifies 2 existing functions that 7 other places use.");
+  await expect(page.getByTestId("plain-impact").locator("a")).toHaveAttribute("href", "#impact");
+  await expect(page.getByTestId("plain-wrong")).toContainText("TypeCollector.IsOpenGenericType now behaves differently, and 4 other places rely on it.");
+  const receiptLine = page.getByTestId("receipt-impact");
+  await expect(receiptLine).toContainText("Impact on other features");
+  await expect(receiptLine).toContainText("fail");
+  await expect(receiptLine).toContainText("7 places, 2 untested");
+
+  await page.goto("/change/ju26-issue-2297");
+  await expect(page.getByTestId("impact-headline")).toHaveText("This change only adds new code; nothing else in the product calls it, so it can't break other features.");
+  await expect(page.getByTestId("blast-radius")).toHaveCount(0);
+  await expect(page.getByTestId("impact-new")).toContainText("FormatterTemplate.EmitCoverageAttribute, ResolverTemplate.EmitCoverageAttribute");
+  await expect(page.getByTestId("receipt-impact")).toContainText("pass");
+  await expect(page.getByTestId("receipt-impact")).toContainText("only new code");
+
+  await page.goto("/change/sql-bad-down");
+  await expect(page.getByTestId("impact-predates")).toContainText("This run predates the impact check");
+  await expect(page.getByTestId("impact-headline")).toHaveCount(0);
+  await expect(page.getByTestId("plain-impact")).toHaveCount(0);
+  await expect(page.getByTestId("receipt-impact")).toContainText("predates the impact check");
 });
 
 test("SQL adapter change page shows the schema diff and row counts behind the block", async ({ page }) => {
