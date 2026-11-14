@@ -20,7 +20,7 @@ something the requirement did not ask to change.
 SPEC = LensSpec(
     name="compatibility",
     model=config.MODEL_LENS,
-    effort="medium",
+    effort=config.LENS_EFFORT["compatibility"],
     system=SYSTEM,
     select=compatibility_scope,
 )

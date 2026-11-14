@@ -25,7 +25,7 @@ and check every API you use exists.
 SPEC = LensSpec(
     name="logic-edge",
     model=config.MODEL_DEEP,
-    effort="high",
+    effort=config.LENS_EFFORT["logic-edge"],
     system=SYSTEM,
     select=risky_code_scope,
     extra_properties=GENERATED_TESTS_PROPERTY,

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, ValidationError
 
-from .. import llm
+from .. import config, llm
 from ..models import Finding, Hunk, Interpretation, Question, ReceiptPlan, RouteResult
 
 SEVERITIES = ["low", "medium", "high", "critical"]
@@ -54,6 +54,7 @@ class LensRun:
     lens: str
     model: str
     status: str  # "ok" | "skipped" | "unavailable" | "invalid"
+    effort: str = ""
     detail: str = ""
     hunk_ids: list[str] = field(default_factory=list)
     input_tokens: int = 0
@@ -283,7 +284,8 @@ def run_lens(spec: LensSpec, req_id: str, req_text: str, hunks: list[Hunk], rout
              areas_by_file: dict[str, str], ledger_entries: list, examples: list, change_id: str,
              generated_files: int = 0) -> tuple[LensRun, ParsedLens | None]:
     selected = spec.select(hunks, routes, areas_by_file)
-    run = LensRun(lens=spec.name, model=spec.model, status="ok", hunk_ids=[h.id for h in selected])
+    run = LensRun(lens=spec.name, model=spec.model, status="ok", effort=spec.effort,
+                  hunk_ids=[h.id for h in selected])
     if not selected:
         run.status, run.detail = "skipped", "no hunks in this lens's scope"
         return run, None
@@ -294,7 +296,8 @@ def run_lens(spec: LensSpec, req_id: str, req_text: str, hunks: list[Hunk], rout
     )
     try:
         res = llm.call_json(f"lens-{spec.name}", spec.model, spec.system, user, lens_schema(spec, areas),
-                            effort=spec.effort, max_tokens=spec.max_tokens)
+                            effort=spec.effort, max_tokens=spec.max_tokens,
+                            default_effort=config.LENS_EFFORT_DEFAULT.get(spec.name))
     except llm.LLMUnavailable as e:
         run.status, run.detail = "unavailable", str(e)
         return run, None

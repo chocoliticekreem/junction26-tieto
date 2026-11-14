@@ -34,6 +34,12 @@ def main(argv: list[str] | None = None) -> int:
     br.add_argument("--warm", action="store_true", help="keep ledger answers from the cold run")
     br.add_argument("--only", default=None, help="substring filter on manifest ids")
     br.add_argument("--jobs", type=int, default=3, help="cases reviewed in parallel (processes)")
+    br.add_argument("--batch", action="store_true",
+                    help="answer LLM calls through the Message Batches API (50%% price), then replay")
+    br.add_argument("--max-usd", type=float, default=None,
+                    help="with --batch: refuse to submit a batch estimated above this many USD")
+    br.add_argument("--dry-run", action="store_true",
+                    help="collect round 1 and print the cost estimate; submit nothing")
 
     sub.add_parser("metrics", help="aggregate runs/ into metrics/ T1-T7")
     sub.add_parser("bootstrap-context", help="build context/REVIEW_CONTEXT.md draft from the repo")
@@ -61,7 +67,10 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.bench_cmd == "generate":
             return bench.generate()
-        return bench.run(warm=args.warm, only=args.only, jobs=args.jobs)
+        if args.max_usd is not None and not args.batch:
+            p.error("--max-usd needs --batch (the live path cannot be estimated before it calls)")
+        return bench.run(warm=args.warm, only=args.only, jobs=args.jobs, batch=args.batch,
+                         max_usd=args.max_usd, dry_run=args.dry_run)
     if args.cmd == "metrics":
         from .metrics import run_metrics
 

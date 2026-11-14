@@ -22,7 +22,7 @@ recorded in the ledger and implied by the requirement?
 SPEC = LensSpec(
     name="product-context",
     model=config.MODEL_LENS,
-    effort="medium",
+    effort=config.LENS_EFFORT["product-context"],
     system=SYSTEM,
     select=product_scope,
     extra_properties=AMBIGUITY_PROPERTIES,

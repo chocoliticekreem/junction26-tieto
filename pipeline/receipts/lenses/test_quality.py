@@ -24,7 +24,7 @@ Do not report generic coverage wishes; each finding names the specific line or t
 SPEC = LensSpec(
     name="test-quality",
     model=config.MODEL_LENS,
-    effort="medium",
+    effort=config.LENS_EFFORT["test-quality"],
     system=SYSTEM,
     select=test_quality_scope,
 )

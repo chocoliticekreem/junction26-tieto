@@ -271,6 +271,7 @@ def run_panel(req_id: str, req_text: str, ledger_entries: list, hunks: list[Hunk
               areas: dict[str, str], parallel: bool = True) -> PanelResult:
     answers = answered_entries(ledger_entries)
     user = build_reader_prompt(req_id, req_text, answers)
+    queued_before = llm.pending_count()
     if parallel:
         with ThreadPoolExecutor(max_workers=len(READERS)) as pool:
             runs = list(pool.map(lambda rf: _read_one(rf[0], rf[1], user), READERS))
@@ -288,6 +289,10 @@ def run_panel(req_id: str, req_text: str, ledger_entries: list, hunks: list[Hunk
                 + f". Ambiguity still needs {VOTES_NEEDED} flagging readers, so a missing reader "
                   "can only hide an ambiguity, never invent one."))
     if not ambiguity or best is None:
+        return res
+    if llm.pending_count() > queued_before:
+        # collect mode: the vote and the chosen pair depend on readers still queued, so an
+        # orientation prompt built now would be the wrong one; it is collected next round.
         return res
 
     chosen = runs[best]

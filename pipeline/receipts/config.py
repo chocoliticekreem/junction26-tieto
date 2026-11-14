@@ -55,3 +55,37 @@ QUESTION_BUDGET = 3
 MUTATION_RISK_THRESHOLD = 5
 MUTANTS_PER_HUNK = 5
 ROUTER_DEEP_THRESHOLD = 5  # risk >= this gets the expensive lenses
+
+EFFORTS = ("low", "medium", "high", "xhigh", "max")
+# The effort every lens ran at when the committed fixtures were recorded. llm.call_json leaves effort
+# out of the fixture key at these values, so those fixtures keep replaying.
+LENS_EFFORT_DEFAULT = {
+    "requirement-tests": "high",
+    "logic-edge": "high",
+    "compatibility": "medium",
+    "security": "medium",
+    "product-context": "medium",
+    "test-quality": "medium",
+}
+
+
+def parse_lens_effort(spec: str) -> dict[str, str]:
+    """`"requirement-tests=medium,logic-edge=medium"` -> {lens: effort}. Unknown lens or effort raises."""
+    out: dict[str, str] = {}
+    for part in filter(None, (p.strip() for p in spec.split(","))):
+        lens, sep, effort = (x.strip() for x in part.partition("="))
+        if not sep or lens not in LENS_EFFORT_DEFAULT or effort not in EFFORTS:
+            raise ValueError(f"RECEIPTS_LENS_EFFORT: bad entry {part!r}; expected <lens>=<effort>, "
+                             f"lens in {sorted(LENS_EFFORT_DEFAULT)}, effort in {list(EFFORTS)}")
+        out[lens] = effort
+    return out
+
+
+LENS_EFFORT = {**LENS_EFFORT_DEFAULT, **parse_lens_effort(os.environ.get("RECEIPTS_LENS_EFFORT", ""))}
+
+# "" calls the API on a fixture miss. "collect" queues the request (see llm.PendingLLM) and never
+# calls; "replay" answers from fixtures only, for Anthropic calls (Jev is untouched by both).
+LLM_MODE = os.environ.get("RECEIPTS_LLM_MODE", "")
+if LLM_MODE not in ("", "collect", "replay"):
+    raise ValueError(f"RECEIPTS_LLM_MODE={LLM_MODE!r}: expected unset, 'collect' or 'replay'")
+BATCH_DIR = Path(os.environ.get("RECEIPTS_BATCH_DIR") or WORK / "batch")
