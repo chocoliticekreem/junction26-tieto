@@ -1,8 +1,8 @@
 "use client";
 
+import { CircleCheck } from "lucide-react";
 import { useState } from "react";
 import type { ProvenLine } from "@/lib/proven";
-import { ResultPill } from "./pills";
 
 const MAX_LINES = 4;
 
@@ -47,29 +47,31 @@ export function Proven({ lines }: { lines: ProvenLine[] }) {
   const shown = showAll ? lines : lines.slice(0, MAX_LINES);
   const hidden = lines.length - shown.length;
   return (
-    <div className="mt-2 space-y-1 text-sm" data-testid="proven">
-      <div className="text-xs font-semibold">Proven</div>
-      {shown.map((l) => (
-        <div key={l.id} className="flex items-start gap-2">
-          <ResultPill result="pass" className="mt-0.5" />
-          <a
-            href={`#evidence-${l.id}`}
-            className="min-w-0 leading-5 underline-offset-4 hover:underline [overflow-wrap:anywhere]"
-            data-testid="proven-line"
-            onClick={(e) => {
-              e.preventDefault();
-              void revealEvidence(l.id);
-            }}
-          >
-            {l.label}
-          </a>
-        </div>
-      ))}
+    <section className="rounded-lg border border-ok-foreground/20 bg-ok/40 px-3.5 py-3 text-sm dark:bg-ok/30" data-testid="proven" aria-label="proven">
+      <div className="text-xs font-semibold text-ok-foreground">Proven</div>
+      <ul className="mt-1.5 space-y-1">
+        {shown.map((l) => (
+          <li key={l.id} className="flex items-start gap-2">
+            <CircleCheck className="mt-1 size-3.5 shrink-0 text-ok-foreground" aria-hidden />
+            <a
+              href={`#evidence-${l.id}`}
+              className="min-w-0 leading-5 underline-offset-4 hover:underline [overflow-wrap:anywhere]"
+              data-testid="proven-line"
+              onClick={(e) => {
+                e.preventDefault();
+                void revealEvidence(l.id);
+              }}
+            >
+              {l.label}
+            </a>
+          </li>
+        ))}
+      </ul>
       {hidden > 0 && (
-        <button type="button" className="text-xs text-muted-foreground hover:text-foreground" data-testid="proven-more" onClick={() => setShowAll(true)}>
+        <button type="button" className="mt-1 text-xs text-muted-foreground hover:text-foreground" data-testid="proven-more" onClick={() => setShowAll(true)}>
           +{hidden} more
         </button>
       )}
-    </div>
+    </section>
   );
 }

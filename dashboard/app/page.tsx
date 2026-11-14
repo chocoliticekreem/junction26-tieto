@@ -1,18 +1,18 @@
 import Link from "next/link";
 import { AB_SUFFIX, isSampleChange, isSqlChange, loadLatestRuns, minTrust, pendingQuestions, readDecision, receiptCounts } from "@/lib/data";
 import type { Decision, RunBundle } from "@/lib/types";
-import { RiskPill, TrustLevel, VerdictPill } from "@/components/pills";
-import { EmptyState, PageTitle } from "@/components/section";
+import { ReceiptBar, RiskMeter, TrustLevel, VerdictPill } from "@/components/pills";
+import { EmptyState, PageTitle, Panel } from "@/components/section";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
 interface Row {
   run: RunBundle;
   href: string;
-  green: number;
-  red: number;
+  pass: number;
+  partial: number;
+  fail: number;
   pending: number;
   decision?: Decision;
   trust?: number;
@@ -21,9 +21,9 @@ interface Row {
 function Title({ r }: { r: Row }) {
   const meta = `${r.run.receipt.head_sha.slice(0, 8)} · ${r.run.runTs}`;
   return (
-    <Link href={r.href} className="group flex min-w-0 flex-wrap items-baseline gap-x-2 md:flex-nowrap" title={meta}>
-      <span className="shrink-0 font-mono text-xs text-muted-foreground">{r.run.changeId}</span>
-      <span className="min-w-0 text-sm group-hover:underline md:flex-1 md:truncate">{r.run.receipt.requirement_title}</span>
+    <Link href={r.href} className="group flex min-w-0 flex-col gap-0.5 rounded-sm md:flex-row md:items-baseline md:gap-x-2" title={meta}>
+      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">{r.run.changeId}</span>
+      <span className="min-w-0 text-sm group-hover:text-primary md:flex-1 md:truncate">{r.run.receipt.requirement_title}</span>
       {r.decision && (
         <span className="shrink-0 text-xs text-ok-foreground">
           {r.decision.choice === "sign-off" ? "signed off" : `merged ${r.decision.choice}`} by {r.decision.who}
@@ -33,19 +33,9 @@ function Title({ r }: { r: Row }) {
   );
 }
 
-function Receipts({ r }: { r: Row }) {
-  return (
-    <span className="font-mono text-xs tabular-nums" data-testid="receipt-counts">
-      <span className={cn(r.green ? "text-ok-foreground" : "text-muted-foreground")}>{r.green} green</span>
-      <span className="text-muted-foreground"> · </span>
-      <span className={cn(r.red ? "text-bad-foreground" : "text-muted-foreground")}>{r.red} red</span>
-    </span>
-  );
-}
-
 function Pending({ r }: { r: Row }) {
   return r.pending > 0 ? (
-    <Link href="/questions" className="font-mono text-xs text-warn-foreground tabular-nums underline-offset-4 hover:underline">
+    <Link href="/questions" className="font-mono text-xs font-medium text-warn-foreground tabular-nums underline-offset-4 hover:underline">
       {r.pending} pending
     </Link>
   ) : (
@@ -60,58 +50,58 @@ function Group({ title, rows }: { title: string; rows: Row[] }) {
       <h2 className="text-sm font-semibold tracking-tight">
         {title} <span className="ml-1 font-mono text-xs font-normal text-muted-foreground tabular-nums">{rows.length}</span>
       </h2>
-      <div className="hidden rounded-md border md:block">
+      <Panel className="hidden overflow-hidden md:block">
         <Table className="table-fixed">
           <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="h-8">Change</TableHead>
-              <TableHead className="h-8 w-28">Verdict</TableHead>
-              <TableHead className="h-8 w-14 text-right">Risk</TableHead>
-              <TableHead className="h-8 w-32 text-right">Receipts</TableHead>
-              <TableHead className="h-8 w-24 text-right">Questions</TableHead>
-              <TableHead className="h-8 w-16 text-right">Trust</TableHead>
+            <TableRow className="bg-muted/40 hover:bg-muted/40">
+              <TableHead className="h-8 text-xs text-muted-foreground">Change</TableHead>
+              <TableHead className="h-8 w-36 text-xs text-muted-foreground">Verdict</TableHead>
+              <TableHead className="h-8 w-28 text-xs text-muted-foreground">Risk</TableHead>
+              <TableHead className="h-8 w-32 text-xs text-muted-foreground">Receipts</TableHead>
+              <TableHead className="h-8 w-24 text-right text-xs text-muted-foreground">Questions</TableHead>
+              <TableHead className="h-8 w-16 text-right text-xs text-muted-foreground">Trust</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((r) => (
               <TableRow key={r.run.changeId} data-testid="inbox-row">
-                <TableCell className="py-1.5 whitespace-normal">
+                <TableCell className="py-2 whitespace-normal">
                   <Title r={r} />
                 </TableCell>
-                <TableCell className="py-1.5">
+                <TableCell className="py-2">
                   <VerdictPill verdict={r.run.receipt.verdict} />
                 </TableCell>
-                <TableCell className="py-1.5 text-right">
-                  <RiskPill risk={r.run.receipt.risk} />
+                <TableCell className="py-2">
+                  <RiskMeter risk={r.run.receipt.risk} />
                 </TableCell>
-                <TableCell className="py-1.5 text-right">
-                  <Receipts r={r} />
+                <TableCell className="py-2">
+                  <ReceiptBar pass={r.pass} partial={r.partial} fail={r.fail} />
                 </TableCell>
-                <TableCell className="py-1.5 text-right">
+                <TableCell className="py-2 text-right">
                   <Pending r={r} />
                 </TableCell>
-                <TableCell className="py-1.5 text-right">
+                <TableCell className="py-2 text-right">
                   <TrustLevel level={r.trust} />
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
-      </div>
-      <ul className="divide-y rounded-md border md:hidden">
+      </Panel>
+      <Panel className="divide-y md:hidden">
         {rows.map((r) => (
-          <li key={r.run.changeId} className="space-y-1.5 px-3 py-2" data-testid="inbox-card">
+          <div key={r.run.changeId} className="space-y-2 px-3 py-2.5" data-testid="inbox-card">
             <Title r={r} />
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
               <VerdictPill verdict={r.run.receipt.verdict} />
-              <RiskPill risk={r.run.receipt.risk} />
-              <Receipts r={r} />
+              <RiskMeter risk={r.run.receipt.risk} />
+              <ReceiptBar pass={r.pass} partial={r.partial} fail={r.fail} />
               <Pending r={r} />
               <TrustLevel level={r.trust} />
             </div>
-          </li>
+          </div>
         ))}
-      </ul>
+      </Panel>
     </section>
   );
 }
@@ -129,8 +119,9 @@ export default function InboxPage() {
       return {
         run,
         href: `/change/${encodeURIComponent(run.changeId)}`,
-        green: rc.green,
-        red: rc.red,
+        pass: rc.green,
+        fail: rc.red,
+        partial: rc.other,
         pending: pendingByChange.get(run.changeId) ?? 0,
         decision: readDecision(run.changeId),
         trust: minTrust(run.receipt.area_trust),
@@ -142,7 +133,9 @@ export default function InboxPage() {
 
   return (
     <div className="space-y-8">
-      <PageTitle title="Inbox" eyebrow="latest run per change" />
+      <PageTitle title="Inbox">
+        <p className="mt-1 text-sm text-muted-foreground">Latest run per change. Every finding has a receipt; a named human decides.</p>
+      </PageTitle>
       {rows.length === 0 && (
         <EmptyState>
           No runs found. Run <code className="font-mono">uv run receipts review --change ju26-issue-2283 --req REQ-2283</code> and reload.

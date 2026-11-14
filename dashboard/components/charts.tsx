@@ -1,4 +1,5 @@
-// Inline SVG charts: no client JS, no library. Quiet by design.
+// Inline SVG / CSS charts: no client JS, no library. One accent, ink for the second series, status red
+// only for resets. Hover detail comes from native <title> tooltips on every mark.
 
 export interface BarDatum {
   label: string;
@@ -12,19 +13,27 @@ export interface BarDatum {
 
 export function BarChart({ data, max = 1, format = (v: number) => `${Math.round(v * 100)}%` }: { data: BarDatum[]; max?: number; format?: (v: number) => string }) {
   return (
-    <div className="grid max-w-2xl grid-cols-[minmax(7rem,max-content)_1fr_max-content] items-center gap-x-3 gap-y-1.5" role="img" aria-label="bar chart">
+    <div className="grid max-w-2xl grid-cols-[minmax(7rem,max-content)_1fr_max-content] items-center gap-x-3 gap-y-2" role="img" aria-label="bar chart">
       {data.map((d) => {
         const w = d.value === null ? 0 : Math.max(0, Math.min(1, d.value / max)) * 100;
+        const tip = d.value === null ? `${d.label}: nothing planted in scope` : `${d.label}: ${d.detail ? `${d.detail} caught, ` : ""}${format(d.value)} recall`;
         return (
-          <div key={d.label} className="contents">
-            <div className="text-right leading-tight">
+          <div key={d.label} className="group contents">
+            <div className="text-right leading-tight" title={tip}>
               <div className="font-mono text-[11px] [overflow-wrap:anywhere]">{d.label}</div>
               {d.sublabel && <div className="text-[9px] text-muted-foreground">{d.sublabel}</div>}
             </div>
-            <div className="h-3.5 overflow-hidden rounded-sm bg-muted">
-              {d.value !== null && <div className="h-full rounded-sm bg-primary" style={{ width: `${w}%` }} />}
+            <div className="h-3 overflow-hidden rounded-[3px] bg-muted" title={tip}>
+              {d.value !== null && <div className="h-full rounded-[3px] bg-primary transition-opacity duration-150 group-hover:opacity-80" style={{ width: `${w}%` }} />}
             </div>
-            <div className="font-mono text-[11px] tabular-nums">{d.value === null ? "—" : `${d.detail ? d.detail + " · " : ""}${format(d.value)}`}</div>
+            <div className="font-mono text-[11px] tabular-nums" title={tip}>
+              {d.value === null ? "—" : (
+                <>
+                  {d.detail && <span className="text-muted-foreground">{d.detail} · </span>}
+                  {format(d.value)}
+                </>
+              )}
+            </div>
           </div>
         );
       })}
@@ -38,10 +47,10 @@ export interface Series {
   dashed?: boolean;
 }
 
-export function LineChart({ series, yLabel }: { series: Series[]; yLabel?: string }) {
+export function LineChart({ series, yLabel, xLabel = "bench case" }: { series: Series[]; yLabel?: string; xLabel?: string }) {
   const width = 480;
-  const height = 180;
-  const pad = { l: 36, r: 12, t: 18, b: 26 };
+  const height = 190;
+  const pad = { l: 34, r: 12, t: 16, b: 30 };
   const xs = series.flatMap((s) => s.points.map((p) => p.x));
   const ys = series.flatMap((s) => s.points.map((p) => p.y));
   if (!xs.length) return null;
@@ -53,6 +62,8 @@ export function LineChart({ series, yLabel }: { series: Series[]; yLabel?: strin
   const yTicks = Array.from({ length: yMax + 1 }, (_, i) => i).filter((v) => yMax <= 6 || v % Math.ceil(yMax / 5) === 0);
   const xTicks = Array.from(new Set(xs)).sort((a, b) => a - b);
   const xTickStep = Math.max(1, Math.ceil(xTicks.length / 12));
+  const stroke = (i: number) => (i === 0 ? "stroke-primary" : "stroke-foreground/60");
+  const fill = (i: number) => (i === 0 ? "fill-primary" : "fill-foreground/60");
 
   return (
     <div className="space-y-1.5">
@@ -68,24 +79,30 @@ export function LineChart({ series, yLabel }: { series: Series[]; yLabel?: strin
         {xTicks
           .filter((_, i) => i % xTickStep === 0)
           .map((v) => (
-            <text key={v} x={sx(v)} y={height - 8} textAnchor="middle" className="fill-muted-foreground font-mono text-[10px] tabular-nums">
+            <text key={v} x={sx(v)} y={height - 14} textAnchor="middle" className="fill-muted-foreground font-mono text-[10px] tabular-nums">
               {v}
             </text>
           ))}
+        <text x={width - pad.r} y={height - 3} textAnchor="end" className="fill-muted-foreground text-[9px]">
+          {xLabel}
+        </text>
         {yLabel && (
-          <text x={width - pad.r} y={pad.t - 6} textAnchor="end" className="fill-muted-foreground text-[10px]">
+          <text x={pad.l} y={pad.t - 6} textAnchor="start" className="fill-muted-foreground text-[9px]">
             {yLabel}
           </text>
         )}
         {series.map((s, si) => {
           const pts = s.points.slice().sort((a, b) => a.x - b.x);
           const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ");
-          const cls = si === 0 ? "stroke-primary" : "stroke-muted-foreground";
           return (
             <g key={s.name}>
-              <path d={d} fill="none" className={cls} strokeWidth={1.5} strokeDasharray={s.dashed ? "4 3" : undefined} />
+              <path d={d} fill="none" className={stroke(si)} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" strokeDasharray={s.dashed ? "5 4" : undefined} />
               {pts.map((p) => (
-                <circle key={p.x} cx={sx(p.x)} cy={sy(p.y)} r={2.5} className={si === 0 ? "fill-primary" : "fill-muted-foreground"} />
+                <g key={p.x} className="group">
+                  <circle cx={sx(p.x)} cy={sy(p.y)} r={9} className="fill-transparent" />
+                  <circle cx={sx(p.x)} cy={sy(p.y)} r={p.y > 0 ? 3.5 : 2} className={`${fill(si)} stroke-background transition-[r] duration-150 group-hover:r-5`} strokeWidth={1.5} />
+                  <title>{`${s.name} · case ${p.x}: ${p.y} ${p.y === 1 ? "question" : "questions"}`}</title>
+                </g>
               ))}
             </g>
           );
@@ -94,8 +111,8 @@ export function LineChart({ series, yLabel }: { series: Series[]; yLabel?: strin
       <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
         {series.map((s, si) => (
           <span key={s.name} className="inline-flex items-center gap-1.5">
-            <svg width="18" height="6">
-              <line x1="0" x2="18" y1="3" y2="3" className={si === 0 ? "stroke-primary" : "stroke-muted-foreground"} strokeWidth={1.5} strokeDasharray={s.dashed ? "4 3" : undefined} />
+            <svg width="18" height="6" aria-hidden>
+              <line x1="0" x2="18" y1="3" y2="3" className={stroke(si)} strokeWidth={2} strokeDasharray={s.dashed ? "5 4" : undefined} />
             </svg>
             {s.name}
           </span>
@@ -115,7 +132,7 @@ export interface StepPoint {
 /** One small step chart of a trust level (0-3) over the bench sequence. */
 export function TrustStepChart({ title, points, xMax }: { title: string; points: StepPoint[]; xMax: number }) {
   const width = 300;
-  const height = 92;
+  const height = 96;
   const pad = { l: 22, r: 8, t: 8, b: 18 };
   const pts = points.slice().sort((a, b) => a.x - b.x);
   if (!pts.length) return null;
@@ -128,7 +145,7 @@ export function TrustStepChart({ title, points, xMax }: { title: string; points:
   const resets = pts.filter((p) => p.reset);
   const xTicks = [1, Math.round(xMax / 2), xMax];
   return (
-    <figure className="min-w-0 space-y-1">
+    <figure className="min-w-0 space-y-1 rounded-lg border bg-card p-3">
       <figcaption className="flex items-baseline justify-between gap-2 text-xs">
         <span className="truncate font-mono">{title}</span>
         <span className="shrink-0 text-muted-foreground">
@@ -151,6 +168,12 @@ export function TrustStepChart({ title, points, xMax }: { title: string; points:
           </text>
         ))}
         <path d={d} fill="none" className="stroke-primary" strokeWidth={2} strokeLinejoin="round" />
+        {pts.map((p) => (
+          <g key={p.x}>
+            <circle cx={sx(p.x)} cy={sy(p.level)} r={7} className="fill-transparent" />
+            <title>{`case ${p.x}: L${p.level}${p.reset ? " (reset)" : ""}`}</title>
+          </g>
+        ))}
         {resets.map((p) => (
           <circle key={p.x} cx={sx(p.x)} cy={sy(p.level)} r={3.5} className="fill-background stroke-bad-foreground" strokeWidth={1.5} />
         ))}

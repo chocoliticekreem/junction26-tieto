@@ -21,10 +21,13 @@ export function Disclosure({
   return (
     <Collapsible defaultOpen={defaultOpen} className={className}>
       <CollapsibleTrigger
-        className={cn("group inline-flex max-w-full items-center gap-1 text-left text-xs text-muted-foreground hover:text-foreground", triggerClassName)}
+        className={cn(
+          "group inline-flex max-w-full items-center gap-1 rounded-sm text-left text-xs text-muted-foreground transition-colors duration-150 hover:text-foreground",
+          triggerClassName,
+        )}
         data-testid={testId}
       >
-        <ChevronRight className="size-3 shrink-0 transition-transform group-aria-expanded:rotate-90" />
+        <ChevronRight className="size-3 shrink-0 transition-transform duration-150 group-aria-expanded:rotate-90" />
         <span className="min-w-0">{label}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>

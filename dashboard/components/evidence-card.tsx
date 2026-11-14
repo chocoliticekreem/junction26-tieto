@@ -1,4 +1,5 @@
 import type { CommandReceipt, Evidence, Mutant, TestRun } from "@/lib/types";
+import { humanizeTitle } from "@/lib/humanize";
 import { LogViewer } from "./log-viewer";
 import { Mono, MonoBlock, ResultPill } from "./pills";
 import { MutantTable } from "./mutant-table";
@@ -147,17 +148,24 @@ function Details({ ev, ctx }: { ev: Evidence; ctx: Ctx }) {
 
 export function EvidenceCard({ ev, ctx, defaultOpen = false }: { ev: Evidence; ctx: Ctx; defaultOpen?: boolean }) {
   const cmds = (ev.command_ids ?? []).map((id) => ctx.commands.find((c) => c.id === id)).filter((c): c is CommandReceipt => !!c);
+  const h = humanizeTitle(ev.title);
   return (
-    <Collapsible defaultOpen={defaultOpen} className="rounded-md border" data-testid="evidence-card" id={`evidence-${ev.id}`}>
-      <CollapsibleTrigger className="group flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left hover:bg-muted/50" data-testid="evidence-toggle">
-        <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform group-aria-expanded:rotate-90" />
-        <ResultPill result={ev.result} />
-        <span className="min-w-0 flex-1 text-sm [overflow-wrap:anywhere]">{ev.title}</span>
-        <span className="font-mono text-[11px] text-muted-foreground">{ev.id}</span>
+    <Collapsible defaultOpen={defaultOpen} className="scroll-mt-16 rounded-lg border bg-card" data-testid="evidence-card" id={`evidence-${ev.id}`}>
+      <CollapsibleTrigger className="group flex w-full items-start gap-2 rounded-lg px-3 py-2 text-left transition-colors duration-150 hover:bg-muted/50" data-testid="evidence-toggle">
+        <ChevronRight className="mt-1 size-3 shrink-0 text-muted-foreground transition-transform duration-150 group-aria-expanded:rotate-90" />
+        <ResultPill result={ev.result} className="mt-0.5" />
+        <span className="min-w-0 flex-1 text-sm [overflow-wrap:anywhere]" title={ev.title}>
+          {h.text}
+          {h.count && <span className="text-muted-foreground"> · {h.count}</span>}
+          {h.note && <span className="block font-mono text-[11px] leading-4 text-muted-foreground">{h.note}</span>}
+        </span>
+        <span className="mt-0.5 font-mono text-[11px] text-muted-foreground">{ev.id}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
         <div className="space-y-2 border-t px-3 py-2">
-          <div className="font-mono text-[11px] text-muted-foreground">{ev.kind}</div>
+          <div className="font-mono text-[11px] text-muted-foreground" title={ev.kind}>
+            {ev.kind} · {ev.title}
+          </div>
           {ev.excerpt && <MonoBlock>{ev.excerpt}</MonoBlock>}
           <Details ev={ev} ctx={ctx} />
           {cmds.length > 0 && (

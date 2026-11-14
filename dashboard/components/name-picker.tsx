@@ -32,7 +32,7 @@ export function NamePicker({ initial }: { initial: string | null }) {
   if (!editing && initial) {
     return (
       <div className="flex items-center gap-2 text-sm" data-testid="human-display">
-        <span className="text-muted-foreground">Signed in as</span>
+        <span className="hidden text-muted-foreground sm:inline">Signing as</span>
         <span className="font-medium">{initial}</span>
         <Button variant="ghost" size="xs" onClick={() => setEditing(true)}>
           Change

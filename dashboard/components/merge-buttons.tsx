@@ -1,8 +1,10 @@
 "use client";
 
+import { GitMerge, Lock } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { humanizeVerdict } from "@/lib/humanize";
 import type { Decision, Interpretation } from "@/lib/types";
 
 export function MergeButtons({
@@ -11,6 +13,7 @@ export function MergeButtons({
   decision,
   interpretations,
   blocked = {},
+  blockedHuman = {},
 }: {
   changeId: string;
   human: string | null;
@@ -18,6 +21,8 @@ export function MergeButtons({
   interpretations: Interpretation[];
   /** label -> verdict reason, for branches whose own run is blocked; those cannot be merged. */
   blocked?: Record<string, string>;
+  /** label -> plain-language headline for the lock, computed with the side run's evidence. */
+  blockedHuman?: Record<string, string>;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<"A" | "B" | null>(null);
@@ -27,7 +32,7 @@ export function MergeButtons({
   const done = decision ?? result;
   if (done) {
     return (
-      <div className="rounded-md border border-ok-foreground/30 bg-ok px-3 py-2 text-sm text-ok-foreground" data-testid="merge-result">
+      <div className="rounded-lg border border-ok-foreground/25 bg-ok px-3 py-2 text-sm text-ok-foreground" data-testid="merge-result">
         <span className="font-medium">
           {done.choice === "sign-off" ? "Signed off" : `Merged ${done.choice} into main`} by {done.who}
         </span>{" "}
@@ -64,27 +69,43 @@ export function MergeButtons({
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="merge-panel">
-      <div className="flex flex-wrap gap-2">
-        {interpretations.map((i) => (
-          <Button
-            key={i.label}
-            onClick={() => void merge(i.label)}
-            disabled={!human || busy !== null || i.label in blocked}
-            size="sm"
-            data-testid={`merge-${i.label}`}
-            title="git merge --no-ff into main, authored by you; writes the decision record"
-          >
-            {busy === i.label ? `Merging ${i.label}` : `Merge ${i.label}`}
-          </Button>
-        ))}
+    <div className="space-y-2" data-testid="merge-panel">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <div className="flex flex-wrap gap-2">
+          {interpretations.map((i) => {
+            const locked = i.label in blocked;
+            const apiReason = locked ? `${i.label} cannot be merged: its own review is blocked (${blocked[i.label]}).` : "git merge --no-ff into main, authored by you; writes the decision record";
+            return (
+              <Button
+                key={i.label}
+                onClick={() => void merge(i.label)}
+                disabled={!human || busy !== null || locked}
+                size="sm"
+                variant={locked ? "outline" : "default"}
+                className={locked ? "cursor-not-allowed border-dashed text-muted-foreground opacity-100" : undefined}
+                data-testid={`merge-${i.label}`}
+                data-locked={locked ? "true" : undefined}
+                title={apiReason}
+              >
+                {locked ? <Lock data-icon="inline-start" /> : <GitMerge data-icon="inline-start" />}
+                {busy === i.label ? `Merging ${i.label}` : `Merge ${i.label}`}
+              </Button>
+            );
+          })}
+        </div>
+        <span className="text-xs text-muted-foreground">{human ? `as ${human}` : "Pick your name in the header to decide"}</span>
       </div>
-      <span className="text-xs text-muted-foreground">{human ? `as ${human}` : "Pick your name in the header to decide"}</span>
-      {Object.entries(blocked).map(([label, reason]) => (
-        <p key={label} className="text-xs text-bad-foreground [overflow-wrap:anywhere]" data-testid={`merge-blocked-${label}`}>
-          {label} cannot be merged: its own review is blocked ({reason}).
-        </p>
-      ))}
+      {Object.entries(blocked).map(([label, reason]) => {
+        const headline = blockedHuman[label] ?? humanizeVerdict("blocked", reason).headline;
+        return (
+          <p key={label} className="flex items-center gap-1.5 text-xs text-muted-foreground [overflow-wrap:anywhere]" data-testid={`merge-blocked-${label}`} title={`${label} cannot be merged: its own review is blocked (${reason}).`}>
+            <Lock className="size-3 shrink-0" aria-hidden />
+            <span>
+              <span className="font-medium text-foreground">{label}</span> locked — {headline.charAt(0).toLowerCase() + headline.slice(1)}
+            </span>
+          </p>
+        );
+      })}
       {error && (
         <p className="text-xs text-bad-foreground" data-testid="merge-error">
           {error}
