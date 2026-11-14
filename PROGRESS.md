@@ -23,6 +23,10 @@
 - 08:08 Track H merged (PR #13): all pipeline/dashboard defects fixed with regression tests; four reviews re-recorded ($6.88); pytest 234 both modes; e2e 21/21.
 - 08:51 PR #14: MIT LICENSE, README, CHALLENGE.md (outranks SPEC on scope), lessons 11-13, decisions 13-15.
 - 09:03 Track I merged (PR #15): ambiguity = vote of 3 independent requirement readers (see only the requirement). 2297 3/3 and 2129 3/3 ambiguous, 2283 1/3, 2234 0/3. MOCK replay identical on all 8 runs.
+- 09:10 Anthropic key hit its usage limit (BLOCKED.md item 1).
+- 09:12 J: implementer round 2 for 2297 pushed to mock-repo (`ju26-issue-2297-r2`, 171/171 tests); re-review blocked by the API limit (PR #17).
+- 09:18 Bench results merged (PR #19): cold 19/24, 0 escapes, questions 9 to 1, 2297 94 % routed away; provenance in metrics/README.md.
+- 09:20 Concept card and demo script filled with real numbers; docs/submission.md written.
 
 ## In progress (started ~05:38, parallel subagents in worktrees)
 | Track | Model | Scope |
@@ -35,11 +39,8 @@
 | F1 bench | opus | 36 deterministic plants, manifest, `bench generate` |
 
 ## Next
-- J running since 09:04: an agent playing the implementer pushes round-2 fix for 2297 (verified findings only); reviewer re-reviews; expect a mergeable A/B for the human.
-- F2 still on its first full bench run (pre-fix pipeline); after it ends: metrics fixes (blocked-verdict inflation, build/tests credit text, bait leakage), then re-run bench cold + warm on the final pipeline.
-- Then: numbers into concept card, docs/submission.md, self-check with evidence, final Playwright pass.
-- F2 (after D2): bench run cold + warm, metrics T1-T7, trust levels.
-- A/B on 2297, deliverables, adversarial review.
+- Polish backlog while the API is blocked: strip explanatory comments from bait plants; per-area trust chart; PR-comment export of a receipt; Playwright pass on real data.
+- When Anson raises the limit: bench re-run on the final pipeline, 2297 round-2 review (BLOCKED.md item 1).
 
 ## Decisions
 - CHALLENGE.md (added by Anson) outranks SPEC.md on scope and judging. Added from it: MIT LICENSE, top-level README, docs/submission.md (pending numbers), self-check answered in PROGRESS.md with evidence, time to merge and escapes in measurement. No tech side challenge is genuinely used (no CRACI CI, no Modal, no Codex, no Entire), so none will be ticked.
@@ -51,5 +52,22 @@
 - Bench cases skip building A/B branches (--no-ab); interpretations still recorded.
 - Docker daemon is not running; Docker is only needed for the SQL adapter (polish item 6), so no impact on the definition of done.
 
+## CHALLENGE.md self-check (evidence, 09:20)
+| Check | Status | Evidence |
+|---|---|---|
+| Concept first | met | `deliverables/concept-card.md`: recommendation, 8 principles, trade-offs, limits, judges' 3 questions |
+| All six expectations | met | concept and principles (card); sample change with REQ id: latest run under `runs/ju26-issue-2283/` (REQ-2283); found, refused, why: receipt fields `findings`, `hunches`, `refused`, `not_checked`; accept without a full read: dashboard `/change/ju26-issue-2283` (screenshot `dashboard/e2e/screenshots/real-change-2283-1440.png`); failure modes and decisions: `deliverables/lessons-log.md` (13 entries), `deliverables/decision-log.md` (15 entries) |
+| Evidence traces to a requirement | met | every receipt carries `requirement_id`; findings carry `evidence_ids` tied to the claim (PR #13: named failing test, byte diff traced to file); e.g. 2283 `gentest-1` fails on base, passes on head |
+| Refusals shown | met | latest 2297 receipt, field `refused` (3 of 3 readers, quoted requirement); `not_checked` has 3 to 6 entries per change |
+| Named human signs off, no AI-merge path | met in code; human step pending | merge and sign-off routes refuse without a name and refuse blocked changes (PR #13, e2e 21/21); `ab.py` only writes `review/*` branches; the real merge is left to Anson (BLOCKED.md section 2) |
+| Risk routes depth | met | 2297 routing: 222 regeneration, 14 deep, 1 light; T3 and T4 in `metrics/` |
+| Trust per area with data | met (bench) | `metrics/trust.json`, `metrics/trust-history.json` (tests and type-collector reached 3; reset on escape implemented; 0 escapes) |
+| Measurement | met, provenance stated | `metrics/summary.json`: 19/24 caught, 0 escapes, 94 % of 2297 routed away, questions 0.25 to 0.04 per change, time to receipt 3.5 to 11 min; `metrics/README.md` |
+| Judges' three questions in writing | met | concept card sections "Limits", "How it scales", "Who owns the decision"; demo script |
+| Data synthetic or cleared, no 8x | met | only the public Tieto sample repo and bench variants derived from it |
+| MIT LICENSE, README that runs, no keys in git | met | `LICENSE`, `README.md`; key-pattern grep over fixtures and runs clean (adversarial review) |
+| Submission pack | met (video pending) | `docs/submission.md`: name 29 chars, punchline 197, description 4282 |
+| Peer review in 3 minutes | ready | demo script: 2-minute flow plus walkthrough |
+
 ## Time elapsed
-- 09:05 — 3 h 33 m. Minimum 3 h reached at 08:32; definition of done not yet met (bench cold/warm + metrics, A/B merge by Anson, question cold/warm), so work continues.
+- 09:20: 3 h 48 m. Definition of done: met except items that need the API limit raised or a named human (the A/B merge; bench re-run on the final pipeline). See BLOCKED.md.
