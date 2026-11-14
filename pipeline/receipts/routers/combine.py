@@ -14,6 +14,7 @@ import time
 
 from .. import config, llm
 from ..models import Depth, FileChange, Hunk, RouteResult, RoutingReport
+from ..impact import MODIFIED_FLOOR as BLAST_MIN_FLOOR
 from .rule import RuleRouter, floor_for
 
 # name -> (module relative to this package, class name). Missing modules are skipped silently.
@@ -58,7 +59,8 @@ def _merge(rule_res: RouteResult, other: RouteResult, other_name: str) -> RouteR
         cost_tokens=other.cost_tokens,
         ms=other.ms,
         floor_applied=floor_won,
-        reason=(f"{other_name} scored {other.risk}; rule floor {floor} applied" if floor_won
+        reason=(f"{other_name} scored {other.risk}; rule floor {floor} applied"
+                + (f": {rule_res.reason}" if floor >= BLAST_MIN_FLOOR else "") if floor_won
                 else other.reason or f"{other_name} score"),
     )
 

@@ -11,7 +11,8 @@ from pydantic import BaseModel, Field
 FileKind = Literal["source", "test", "docs", "generated", "template"]
 Category = Literal["correctness", "security", "compatibility", "tests", "docs", "generated"]
 LensName = Literal[
-    "requirement-tests", "logic-edge", "compatibility", "security", "product-context", "test-quality"
+    "requirement-tests", "logic-edge", "compatibility", "security", "product-context", "test-quality",
+    "regression",  # characterization tests of modified existing members (blast radius)
 ]
 Severity = Literal["low", "medium", "high", "critical"]
 VerdictKind = Literal["auto-ready", "needs-sign-off", "decision-A-B", "blocked"]
@@ -146,6 +147,8 @@ class Evidence(BaseModel):
         "fail-before-pass-after", "new-api", "mutation", "regeneration", "byte-diff",
         "existing-tests", "build", "ledger-citation", "code-citation", "migration-up-down",
         "row-preservation",
+        # blast radius: a characterization test that passes on base, then passes / fails on head
+        "behaviour-preserved", "behaviour-changed",
     ]
     title: str
     result: Literal["pass", "fail", "partial", "error", "skipped"]

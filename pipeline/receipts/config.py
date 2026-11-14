@@ -44,6 +44,11 @@ DOTNET_ENV = {"DOTNET_CLI_TELEMETRY_OPTOUT": "1", "DOTNET_NOLOGO": "1"}
 TEST_PROJECT = "tests/MessagePack.SourceGenerator.Tests/MessagePack.SourceGenerator.Tests.csproj"
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+# Hard cap on real Anthropic spend (live calls and Message Batches), summed in
+# ANTHROPIC_SPEND_FILE across every process and run (receipts/anthropic_spend.py).
+ANTHROPIC_MAX_USD = float(os.environ.get("ANTHROPIC_MAX_USD") or 20)
+ANTHROPIC_SPEND_FILE = Path(os.environ.get("ANTHROPIC_SPEND_FILE")
+                            or WORK / "anthropic-spend.json")
 JEV_API_KEY = os.environ.get("JEV_API_KEY", "")
 MOCK_LLM = os.environ.get("MOCK_LLM", "0") == "1"
 

@@ -4,6 +4,7 @@ Order inside review.run_review:
     intake -> routing -> worktrees -> build base/head -> existing tests head/base
     -> run_lenses(ctx)          [4]  returns StageResult; its findings land in ctx.findings
     -> run_receipt_checks(ctx)  [5]  may set verified=True + evidence_ids on ctx.findings
+    -> run_characterization(ctx) [5b] blast radius: pins old behaviour of modified members
     -> verdict.compose(...)
 
 Contract for a stage function `fn(ctx: ReviewContext) -> StageResult`:
@@ -59,6 +60,8 @@ class ReviewContext:
     # {lens, path (relative to the test project dir), content, test_names,
     #  expects: "fail-on-base-pass-on-head" | "new-api" | "fail-on-head"}. See checks.py.
     generated_tests: list[dict] = field(default_factory=list)
+    impact: dict | None = None  # raw tools/impact output with callers marked tested (impact.py)
+    characterization: list[dict] = field(default_factory=list)  # impact.json entries
 
 
 @dataclass
@@ -239,6 +242,15 @@ def run_receipt_checks(ctx: ReviewContext) -> StageResult:
     from .checks import run_receipt_checks as run
 
     return run(ctx)
+
+
+def run_characterization(ctx: ReviewContext) -> StageResult:
+    """[5b] Blast radius: characterization tests of modified existing members (characterize.py).
+    The impact.json characterization list is left in ctx.characterization."""
+    from .characterize import run
+
+    res, ctx.characterization = run(ctx, ctx.impact)
+    return res
 
 
 def safe_run(name: str, fn, ctx: ReviewContext) -> StageResult:

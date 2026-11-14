@@ -3,7 +3,7 @@
 import shutil
 from pathlib import Path
 
-from . import config, llm, runstore, sandbox, stages
+from . import config, impact, llm, runstore, sandbox, stages
 from .intake import run_intake
 from .models import Evidence, Interpretation, NotChecked, TestRun
 from .routers.combine import route_all
@@ -78,8 +78,23 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
     runstore.write(run_dir, "intake.json", intake)
     print(f"[1] intake: {intake.summary} ({len(intake.hunks)} hunks)")
 
+    commands = []
+    base_wt = sandbox.worktree("base", intake.base)
+    head_wt = sandbox.worktree("head", intake.head_sha)
+    # Blast radius before routing: its call-site floors are rule floors no router may lower.
+    try:
+        raw_impact, impact_why = impact.analyze([f.path for f in intake.files], base_wt, head_wt,
+                                                run_dir, commands)
+    except Exception as e:  # noqa: BLE001 - a failing analysis is a declared gap, never a crash
+        raw_impact, impact_why = None, f"the impact analysis crashed ({type(e).__name__}: {e})"
+    if raw_impact is not None:
+        n_out = sum(len(impact.outside_callers(m)) for m in raw_impact["members"])
+        print(f"[1b] impact: {len(raw_impact['members'])} changed members, {n_out} call site(s) "
+              f"of modified/deleted members outside the change ({raw_impact['elapsed_ms']} ms)")
+
     routing = route_all(intake.hunks, req_text,
-                        {"files": intake.files, "change_id": change, "requirement_id": req},
+                        {"files": intake.files, "change_id": change, "requirement_id": req,
+                         "impact": raw_impact},
                         router, files=intake.files)
     runstore.write(run_dir, "routing.json", routing)
     depth_counts = {d: sum(v == d for v in routing.depth_by_file.values())
@@ -89,11 +104,8 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
     if config.LLM_MODE == "collect":
         return _collect(run_dir, change, req, title, req_text, req_missing, intake, routing)
 
-    commands = []
     tests: list[TestRun] = []
     evidence: list[Evidence] = []
-    base_wt = sandbox.worktree("base", intake.base)
-    head_wt = sandbox.worktree("head", intake.head_sha)
     # Held from build to test: another review's generated tests rebuild a shared worktree, and
     # --no-build would then run their test assembly as if it were the existing suite.
     with sandbox.lock(base_wt), sandbox.lock(head_wt):
@@ -120,6 +132,15 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
             evidence.append(_test_evidence(run, side))
             print(f"[3] tests {side}: {run.passed}/{run.total} passed, {run.failed} failed "
                   f"(compiled={run.compiled})")
+    coverage_why = ""
+    if raw_impact is not None and any(impact.outside_callers(m) for m in raw_impact["members"]):
+        try:
+            hits, coverage_why = impact.collect_coverage(intake.head_sha, run_dir, commands,
+                                                         impact.caller_files(raw_impact))
+        except Exception as e:  # noqa: BLE001
+            hits, coverage_why = None, f"crashed ({type(e).__name__}: {e})"
+        impact.mark_tested(raw_impact, hits)
+        print(f"[3b] caller coverage: {'collected' if hits is not None else coverage_why}")
     runstore.write(run_dir, "commands.json", commands)
     runstore.write(run_dir, "tests.json", tests)
 
@@ -130,7 +151,7 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
         base_sha=intake.base, head_sha=intake.head_sha, base_wt=base_wt, head_wt=head_wt,
         base_build_ok=b_base.exit_code == 0, head_build_ok=b_head.exit_code == 0,
         base_tests=runs["base"], head_tests=runs["head"], skip_mutation=skip_mutation,
-        commands=commands, tests=tests,
+        commands=commands, tests=tests, impact=raw_impact,
     )
     lens_res = stages.safe_run("lenses", stages.run_lenses, ctx)
     ctx.findings = list(lens_res.findings)
@@ -140,9 +161,22 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
         ctx.generated_tests += fixture_tests(req)
     check_res = stages.safe_run("receipt-checks", stages.run_receipt_checks, ctx)
     findings = ctx.findings + [f for f in check_res.findings if f not in ctx.findings]
+    char_res = stages.safe_run("characterization", stages.run_characterization, ctx)
+    findings += char_res.findings
+    check_res.evidence += char_res.evidence
+    check_res.ran += char_res.ran
     print(f"[4] lenses ran: {lens_res.ran or 'none'}; [5] checks ran: {check_res.ran or 'none'}")
+    impact_report = (impact.report(raw_impact, ctx.characterization,
+                                   coverage_available=bool(raw_impact) and not coverage_why
+                                   and any(impact.outside_callers(m)
+                                           for m in raw_impact["members"]))
+                     if raw_impact is not None else None)
+    if impact_report is not None:
+        runstore.write(run_dir, "impact.json", impact_report)
+        print(f"[5b] blast radius: {impact_report['summary']}")
 
-    not_checked = [*lens_res.not_checked, *check_res.not_checked]
+    not_checked = [*lens_res.not_checked, *check_res.not_checked, *char_res.not_checked,
+                   *impact.not_checked(raw_impact, impact_why, coverage_why)]
     if req_missing:
         not_checked.insert(0, NotChecked(
             what="requirement text missing",
@@ -170,7 +204,7 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
             run_ts=run_dir.name, commands=commands, tests=tests, evidence=evidence,
             findings=findings, questions=questions, interpretations=interpretations,
             refused=refused, not_checked=not_checked, ran=[*lens_res.ran, *check_res.ran],
-            skip_mutation=skip_mutation, lens_unavailable_reason=lens_why)
+            skip_mutation=skip_mutation, lens_unavailable_reason=lens_why, impact=impact_report)
 
     if ab_reading is not None:
         # The parent run owns the A/B decision and its questions; this run only reviews one branch.
