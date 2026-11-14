@@ -47,7 +47,7 @@ export interface Series {
   dashed?: boolean;
 }
 
-export function LineChart({ series, yLabel, xLabel = "bench case" }: { series: Series[]; yLabel?: string; xLabel?: string }) {
+export function LineChart({ series, yLabel, xLabel = "practice run" }: { series: Series[]; yLabel?: string; xLabel?: string }) {
   const width = 480;
   const height = 190;
   const pad = { l: 34, r: 12, t: 16, b: 30 };
@@ -129,7 +129,7 @@ export interface StepPoint {
   reset?: boolean;
 }
 
-/** One small step chart of a trust level (0-3) over the bench sequence. */
+/** One small step chart of a trust level (0-3) over the practice-run sequence. */
 export function TrustStepChart({ title, points, xMax }: { title: string; points: StepPoint[]; xMax: number }) {
   const width = 300;
   const height = 96;
@@ -153,7 +153,7 @@ export function TrustStepChart({ title, points, xMax }: { title: string; points:
           {resets.length > 0 && ` · ${resets.length} reset${resets.length === 1 ? "" : "s"}`}
         </span>
       </figcaption>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={`trust level over the bench for ${title}`}>
+      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={`trust level over the practice runs for ${title}`}>
         {[0, 1, 2, 3].map((v) => (
           <g key={v}>
             <line x1={pad.l} x2={width - pad.r} y1={sy(v)} y2={sy(v)} className="stroke-border" strokeWidth={1} />

@@ -80,9 +80,9 @@ export function MergeButtons({
                 key={i.label}
                 onClick={() => void merge(i.label)}
                 disabled={!human || busy !== null || locked}
-                size="sm"
+                size="lg"
                 variant={locked ? "outline" : "default"}
-                className={locked ? "cursor-not-allowed border-dashed text-muted-foreground opacity-100" : undefined}
+                className={locked ? "cursor-not-allowed border-dashed px-4 text-[15px] text-muted-foreground opacity-100" : "px-4 text-[15px]"}
                 data-testid={`merge-${i.label}`}
                 data-locked={locked ? "true" : undefined}
                 title={apiReason}
@@ -93,12 +93,12 @@ export function MergeButtons({
             );
           })}
         </div>
-        <span className="text-xs text-muted-foreground">{human ? `as ${human}` : "Pick your name in the header to decide"}</span>
+        <span className="text-sm text-muted-foreground">{human ? `as ${human}` : "Pick your name in the header to decide"}</span>
       </div>
       {Object.entries(blocked).map(([label, reason]) => {
         const headline = blockedHuman[label] ?? humanizeVerdict("blocked", reason).headline;
         return (
-          <p key={label} className="flex items-center gap-1.5 text-xs text-muted-foreground [overflow-wrap:anywhere]" data-testid={`merge-blocked-${label}`} title={`${label} cannot be merged: its own review is blocked (${reason}).`}>
+          <p key={label} className="flex items-center gap-1.5 text-sm text-muted-foreground [overflow-wrap:anywhere]" data-testid={`merge-blocked-${label}`} title={`${label} cannot be merged: its own review is blocked (${reason}).`}>
             <Lock className="size-3 shrink-0" aria-hidden />
             <span>
               <span className="font-medium text-foreground">{label}</span> locked — {headline.charAt(0).toLowerCase() + headline.slice(1)}

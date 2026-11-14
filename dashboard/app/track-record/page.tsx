@@ -1,10 +1,14 @@
-import { readMetricsSummary, readMetricsTable, readTrustHistory, readTrustLevels } from "@/lib/data";
-import type { MetricsSummary, MetricsTable, TrustHistoryEvent } from "@/lib/types";
+import Link from "next/link";
+import { Database, FlaskConical } from "lucide-react";
+import { AB_SUFFIX, isSampleChange, isSqlChange, loadLatestRuns, readMetricsSummary, readMetricsTable, readTrustHistory, readTrustLevels, receiptCounts } from "@/lib/data";
+import { humanizeVerdict } from "@/lib/humanize";
+import type { MetricsSummary, MetricsTable, RunBundle, TrustHistoryEvent } from "@/lib/types";
 import { BarChart, LineChart, TrustStepChart, type BarDatum, type Series, type StepPoint } from "@/components/charts";
 import { Disclosure } from "@/components/disclosure";
 import { MetricsTableView, StatTile, fmtCell } from "@/components/metrics-table";
-import { TrustLevel } from "@/components/pills";
-import { EmptyState, PageTitle, Section } from "@/components/section";
+import { ReceiptBar, TrustLevel, VerdictPill } from "@/components/pills";
+import { EmptyState, Panel, Section } from "@/components/section";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export const dynamic = "force-dynamic";
 
@@ -166,9 +170,52 @@ function trustSeries(history: TrustHistoryEvent[]): { moved: { area: string; poi
   return { moved, still, xMax };
 }
 
+// Run lists ---------------------------------------------------------------------
+
+function RunRows({ runs, testId }: { runs: RunBundle[]; testId: string }) {
+  return (
+    <Panel className="overflow-hidden">
+      <Table className="table-fixed">
+        <TableHeader>
+          <TableRow className="bg-muted/40 hover:bg-muted/40">
+            <TableHead className="h-8 text-xs text-muted-foreground">Run</TableHead>
+            <TableHead className="h-8 w-32 text-xs text-muted-foreground">Verdict</TableHead>
+            <TableHead className="hidden h-8 w-28 text-xs text-muted-foreground sm:table-cell">Receipts</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {runs.map((run) => {
+            const rc = receiptCounts(run.evidence);
+            const h = humanizeVerdict(run.receipt.verdict, run.receipt.verdict_reason, { findings: run.receipt.findings, evidence: run.evidence });
+            return (
+              <TableRow key={run.changeId} data-testid={testId}>
+                <TableCell className="py-2 whitespace-normal">
+                  <Link href={`/change/${encodeURIComponent(run.changeId)}`} className="group block min-w-0 rounded-sm">
+                    <span className="font-mono text-[11px] text-muted-foreground">{run.changeId}</span>
+                    <span className="block text-sm group-hover:text-primary">{h.headline}</span>
+                  </Link>
+                </TableCell>
+                <TableCell className="py-2">
+                  <VerdictPill verdict={run.receipt.verdict} />
+                </TableCell>
+                <TableCell className="hidden py-2 sm:table-cell">
+                  <ReceiptBar pass={rc.green} partial={rc.other} fail={rc.red} />
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </Panel>
+  );
+}
+
 // Page -------------------------------------------------------------------------
 
 export default function TrackRecordPage() {
+  const all = loadLatestRuns().filter((r) => !AB_SUFFIX.test(r.changeId));
+  const practice = all.filter((r) => !isSampleChange(r.changeId) && !isSqlChange(r.changeId));
+  const sqlRuns = all.filter((r) => isSqlChange(r.changeId));
   const summary = readMetricsSummary();
   const t1 = readMetricsTable("T1");
   const t2 = readMetricsTable("T2");
@@ -195,10 +242,13 @@ export default function TrackRecordPage() {
   const t6All = t6 ? t6.rows.find((r) => r[col(t6, "lens")] === "all") : undefined;
 
   return (
-    <div className="space-y-8">
-      <PageTitle title="Track record">
-        <p className="mt-1 text-sm text-muted-foreground">How the reviewer scores on a bench with known answers, cold (empty ledger) and warm.</p>
-      </PageTitle>
+    <div className="space-y-10">
+      <div>
+        <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">How we know it works</h1>
+        <p className="mt-1 max-w-3xl text-[15px] text-muted-foreground">
+          We tested the reviewer on changes where we already knew the answer. These numbers say how far to trust it, and where not to.
+        </p>
+      </div>
 
       {nothing && (
         <EmptyState>
@@ -216,8 +266,8 @@ export default function TrackRecordPage() {
           </div>
           <div className="text-xs text-muted-foreground" data-testid="provenance">
             <p>
-              Bench of {summary?.cold?.cases ?? "—"} cases, pipeline as of PR #11, 14 Nov 2026. Warm answers from <span className="font-mono">bench-oracle</span> (simulated human), not a
-              person.
+              Measured on {summary?.cold?.cases ?? "—"} practice runs, pipeline as of PR #11, 14 Nov 2026. &ldquo;Warm&rdquo; answers came from a simulated human (a script that knows the
+              planted answers), not a person.
             </p>
             <Disclosure label="Limits" testId="provenance-toggle">
               <p className="max-w-3xl leading-5">
@@ -229,8 +279,20 @@ export default function TrackRecordPage() {
         </section>
       )}
 
+      <section className="space-y-6" data-testid="practice-runs">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+            <FlaskConical className="size-4 text-muted-foreground" aria-hidden />
+            Practice runs: {practice.length || summary?.cold?.cases || 36} changes with planted bugs we know the answers to
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            Each of the four real changes was copied nine times with a known bug planted in it (or none, as a control), and the labels were hidden from the reviewer. Catching the bug proves the
+            reviewer works; missing one shows exactly where not to trust it.
+          </p>
+        </div>
+
       <div className="grid gap-8 lg:grid-cols-2">
-        <Section title="Recall by lens">
+        <Section title="Bugs caught, by check">
           {recall.length ? <BarChart data={recall} /> : <EmptyState>Needs T1 with “lens” and “recall” columns.</EmptyState>}
           {recall.some((d) => d.value === null) && <p className="text-xs text-muted-foreground">— = nothing planted in scope.</p>}
         </Section>
@@ -267,7 +329,7 @@ export default function TrackRecordPage() {
         </Section>
       </div>
 
-      <Section title="Area trust">
+      <Section title="Trust earned per code area">
         {trustHist.moved.length === 0 && trustHist.still.length === 0 ? (
           <EmptyState>No metrics/trust-history.json yet.</EmptyState>
         ) : (
@@ -279,7 +341,7 @@ export default function TrackRecordPage() {
             </div>
             {trustHist.still.length > 0 && (
               <p className="text-xs text-muted-foreground">
-                Stayed at L{trustHist.still[0].level} for the whole bench: {trustHist.still.map((s) => s.area).join(", ")}.
+                Stayed at L{trustHist.still[0].level} for all practice runs: {trustHist.still.map((s) => s.area).join(", ")}.
               </p>
             )}
           </div>
@@ -295,10 +357,10 @@ export default function TrackRecordPage() {
               ))}
           </div>
         )}
-        {!trust && <EmptyState>No metrics/trust.json. Every area starts at level 1 until the bench runs.</EmptyState>}
+        {!trust && <EmptyState>No metrics/trust.json. Every area starts at level 1 until the practice runs exist.</EmptyState>}
       </Section>
 
-      <Section title="Human load">
+      <Section title="How much a person still had to read">
         {t4 ? (
           <div className="space-y-2">
             {t4Sample.length > 0 && (
@@ -334,7 +396,7 @@ export default function TrackRecordPage() {
               </div>
             )}
             {t4Bench.length > 0 ? (
-              <Disclosure label={`T4 · ${t4Bench.length} bench rows`} testId="t4-bench-toggle">
+              <Disclosure label={`${t4Bench.length} practice runs, file by file`} testId="t4-bench-toggle">
                 <MetricsTableView t={t4} rows={t4Bench} testId="table-T4" />
               </Disclosure>
             ) : (
@@ -346,9 +408,27 @@ export default function TrackRecordPage() {
         )}
       </Section>
 
-      <Section title="T1 · Per-lens detection">{t1 ? <MetricsTableView t={t1} testId="table-T1" /> : <EmptyState>metrics/T1.json missing.</EmptyState>}</Section>
+        {practice.length > 0 && (
+          <Disclosure label={`All ${practice.length} practice runs, with their receipts`} testId="practice-list-toggle">
+            <RunRows runs={practice} testId="practice-row" />
+          </Disclosure>
+        )}
+      </section>
 
-      <Section title="Tables">
+      <section className="space-y-3" data-testid="sql-runs">
+        <div>
+          <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
+            <Database className="size-4 text-muted-foreground" aria-hidden />
+            Another kind of check: database migrations
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            The same receipt shape on a different kind of change. Each migration runs up and down on a throwaway database; the receipt says whether rows survived and whether it can be undone.
+          </p>
+        </div>
+        {sqlRuns.length > 0 ? <RunRows runs={sqlRuns} testId="sql-row" /> : <EmptyState>No migration runs yet. See examples/make_sql_repo.sh.</EmptyState>}
+      </section>
+
+      <Section title="Full tables">
         {t6 && t6All && (
           <p className="text-sm" data-testid="t6-headline">
             <span className="font-semibold tabular-nums">{fmtCell(t6All[col(t6, "with_executed_receipt")], "")}</span> of{" "}
@@ -358,6 +438,9 @@ export default function TrackRecordPage() {
           </p>
         )}
         <div className="space-y-2">
+          <Disclosure label="T1 · Per-lens detection" testId="t1-toggle">
+            {t1 ? <MetricsTableView t={t1} testId="table-T1" /> : <EmptyState>metrics/T1.json missing.</EmptyState>}
+          </Disclosure>
           <Disclosure label="T2 · Per planted category" testId="t2-toggle">
             {t2 ? <MetricsTableView t={t2} testId="table-T2" /> : <EmptyState>metrics/T2.json missing.</EmptyState>}
           </Disclosure>

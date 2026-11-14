@@ -6,19 +6,18 @@ import { E2E_TMP } from "../playwright.config";
 // Runs last (alphabetical after dashboard.spec.ts) so the pages show decisions and answers.
 const OUT = path.resolve(__dirname, "screenshots");
 const pages = [
-  ["inbox", "/"],
+  ["queue", "/"],
   ["change-2283", "/change/ju26-issue-2283"],
   ["change-2297", "/change/ju26-issue-2297"],
-  ["change-bench-logic", "/change/mock%2F2283%2Flogic"],
+  ["change-practice-logic", "/change/mock%2F2283%2Flogic"],
   ["decision-2297", "/decision/ju26-issue-2297"],
-  ["questions", "/questions"],
   ["context", "/context"],
-  ["track-record", "/track-record"],
+  ["how-we-know-it-works", "/track-record"],
 ] as const;
 
 async function shoot(page: Page, name: string, url: string, width: number) {
-  if (name === "questions") {
-    // Restore the fixture ledger so the shot shows a pending question, not the answered state left by dashboard.spec.ts.
+  if (name === "change-2297") {
+    // Restore the fixture ledger so the shot shows the inline pending question, not the answered state left by dashboard.spec.ts.
     fs.copyFileSync(path.resolve(__dirname, "fixtures/context/ledger.jsonl"), path.join(E2E_TMP, "context/ledger.jsonl"));
   }
   await page.setViewportSize({ width, height: 900 });
@@ -26,12 +25,14 @@ async function shoot(page: Page, name: string, url: string, width: number) {
   await page.waitForLoadState("networkidle");
   if (name === "change-2283") {
     await page.getByTestId("finding-toggle").first().click();
+    await page.getByTestId("tech-toggle").click();
     await page.getByTestId("hunches-toggle").click();
     await page.getByTestId("receipts-toggle").click();
     await page.locator("#evidence-E-req").getByTestId("evidence-toggle").click();
     await page.getByTestId("log-toggle").filter({ hasText: "test-base-req.log" }).click();
     await page.getByTestId("log-excerpt").waitFor();
   }
+  await page.waitForTimeout(1200);
   await page.screenshot({ path: path.join(OUT, `${name}-${width}.png`), fullPage: true });
 }
 

@@ -27,7 +27,7 @@ export function SignOffButton({
 
   if (decision) {
     return (
-      <span className="text-sm text-muted-foreground" data-testid="signed-off">
+      <span className="text-sm font-medium text-ok-foreground" data-testid="signed-off">
         {decision.choice === "sign-off" ? "Signed off" : `Merged ${decision.choice}`} by {decision.who}
       </span>
     );
@@ -35,11 +35,11 @@ export function SignOffButton({
 
   if (refusal) {
     return (
-      <div className="flex min-w-0 flex-col items-start gap-1 sm:items-end" title={refusal}>
-        <Button disabled size="sm" variant="outline" className="cursor-not-allowed border-dashed text-muted-foreground opacity-100 hover:bg-transparent" data-testid="sign-off" aria-describedby="sign-off-refused">
+      <div className="flex min-w-0 flex-col items-start gap-1.5" title={refusal}>
+        <Button disabled size="lg" variant="outline" className="cursor-not-allowed border-dashed text-muted-foreground opacity-100 hover:bg-transparent" data-testid="sign-off" aria-describedby="sign-off-refused">
           <Lock data-icon="inline-start" /> Sign-off locked
         </Button>
-        <span id="sign-off-refused" className="max-w-xs text-xs text-muted-foreground [overflow-wrap:anywhere] sm:text-right" data-testid="sign-off-refused" title={refusal}>
+        <span id="sign-off-refused" className="max-w-md text-sm text-muted-foreground [overflow-wrap:anywhere]" data-testid="sign-off-refused" title={refusal}>
           {humanizeRefusal(verdict) ?? refusal}
         </span>
       </div>
@@ -63,8 +63,8 @@ export function SignOffButton({
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <Button onClick={() => void signOff()} disabled={busy || !human} size="sm" data-testid="sign-off">
+    <div className="flex flex-col items-start gap-1.5">
+      <Button onClick={() => void signOff()} disabled={busy || !human} size="lg" className="px-4 text-[15px]" data-testid="sign-off">
         <PenLine data-icon="inline-start" />
         {human ? `Sign off as ${human}` : "Pick your name to sign off"}
       </Button>

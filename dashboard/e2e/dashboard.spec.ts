@@ -15,29 +15,57 @@ async function signIn(page: Page) {
 
 test.describe.configure({ mode: "serial" });
 
-test("inbox lists sample and bench changes with verdict pills", async ({ page }) => {
+test("queue shows only the Tieto sample changes as cards grouped by what the user must do", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Inbox" })).toBeVisible();
-  const rows = page.getByTestId("inbox-row");
-  await expect(rows).toHaveCount(6);
-  await expect(page.getByRole("heading", { name: /Tieto sample changes/ })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /^Bench/ })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /^SQL migrations/ })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your queue" })).toBeVisible();
+  await expect(page.getByText("AI-written changes, reviewed with proof. You make the call.")).toBeVisible();
+  await expect(page.getByTestId("need-you")).toHaveText("2 need you");
+  const cards = page.getByTestId("queue-card");
+  await expect(cards).toHaveCount(2);
   await expect(page.getByText("ju26-issue-2297__A")).toHaveCount(0);
-  const row2283 = rows.filter({ hasText: "ju26-issue-2283" });
-  await expect(row2283.getByTestId("verdict-pill")).toHaveText("Needs sign-off");
-  await expect(row2283.getByTestId("receipt-counts")).toContainText("5 green");
-  await expect(row2283.getByTestId("receipt-counts")).toContainText("0 red");
-  const row2297 = rows.filter({ hasText: "ju26-issue-2297" });
-  await expect(row2297.getByTestId("verdict-pill")).toHaveText("Decision A/B");
-  await expect(row2297).toContainText("1 pending");
-  await expect(rows.filter({ hasText: "mock/2283/logic" }).getByTestId("verdict-pill")).toHaveText("Blocked");
+  await expect(page.getByText("mock/2283/logic")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText(/\bBench\b/);
+  await expect(page.getByTestId("group-needs")).toContainText("Needs your decision");
+  await expect(page.getByTestId("group-blocked")).toHaveCount(0);
+  const card2283 = cards.filter({ hasText: "ju26-issue-2283" });
+  await expect(card2283.getByTestId("verdict-pill")).toHaveText("Needs sign-off");
+  await expect(card2283.getByTestId("queue-action")).toHaveText(/Review and sign off/);
+  await expect(card2283.getByTestId("queue-action")).toHaveAttribute("href", "/change/ju26-issue-2283");
+  await expect(card2283.getByTestId("receipt-counts")).toContainText("5 green");
+  await expect(card2283.getByTestId("receipt-counts")).toContainText("0 red");
+  const card2297 = cards.filter({ hasText: "ju26-issue-2297" });
+  await expect(card2297.getByTestId("verdict-pill")).toHaveText("Decision A/B");
+  await expect(card2297.getByTestId("queue-action")).toHaveText(/Choose A or B/);
+  await expect(card2297.getByTestId("queue-action")).toHaveAttribute("href", "/decision/ju26-issue-2297");
+  await expect(card2297.getByTestId("queue-question")).toHaveText("1 question for you");
+  // Three nav items, in journey order, plain words.
+  const nav = page.getByRole("navigation", { name: "Main" }).getByRole("link");
+  await expect(nav).toHaveText(["Your queue", "Product context", "How we know it works"]);
+});
+
+test("the bench and SQL runs live under How we know it works, named in plain words", async ({ page }) => {
+  await page.goto("/track-record");
+  await expect(page.getByRole("heading", { name: "How we know it works" })).toBeVisible();
+  await expect(page.getByTestId("practice-runs")).toContainText("Practice runs: 3 changes with planted bugs we know the answers to");
+  await expect(page.getByTestId("practice-row")).toHaveCount(0);
+  await page.getByTestId("practice-list-toggle").click();
+  await expect(page.getByTestId("practice-row")).toHaveCount(3);
+  await expect(page.getByTestId("practice-row").filter({ hasText: "mock/2283/logic" }).getByTestId("verdict-pill")).toHaveText("Blocked");
+  await expect(page.getByTestId("sql-runs")).toContainText("Another kind of check: database migrations");
+  await expect(page.getByTestId("sql-row")).toHaveCount(1);
+  await expect(page.getByTestId("sql-row")).toContainText("sql-bad-down");
+  await expect(page.locator("body")).not.toContainText(/\bbench\b/i);
 });
 
 test("change page shows receipts, collapsed hunches, not-checked list and log excerpt", async ({ page }) => {
   await page.goto("/change/ju26-issue-2283");
   await expect(page.getByRole("heading", { name: /Fix IndexOutOfRangeException/ })).toBeVisible();
   await expect(page.getByTestId("verdict-reason")).toContainText("surviving mutant");
+
+  // The guided story: four steps, technical drawer closed.
+  await expect(page.getByTestId("step-indicator").getByRole("button")).toHaveText(["1What changed", "2What we proved", "3What we didn't check", "4Your decision"]);
+  await expect(page.getByTestId("tech-toggle")).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByTestId("mutants-toggle")).toHaveCount(0);
 
   await expect(page.getByTestId("finding")).toHaveCount(1);
   await expect(page.getByTestId("finding").getByTestId("evidence-card")).toHaveCount(0);
@@ -48,7 +76,9 @@ test("change page shows receipts, collapsed hunches, not-checked list and log ex
   await expect(suiteOnly).toHaveCount(1);
   await expect(suiteOnly).toHaveAttribute("title", "caught by the existing suite, not by the change's tests");
 
-  // Hunches collapsed by default, visually labelled when opened.
+  // Hunches live in the technical drawer, collapsed by default, visually labelled when opened.
+  await expect(page.getByTestId("hunches-toggle")).toHaveCount(0);
+  await page.getByTestId("tech-toggle").click();
   await expect(page.getByTestId("hunches-toggle")).toContainText("2 unverified hunches withheld");
   await expect(page.getByTestId("hunch")).toHaveCount(0);
   await page.getByTestId("hunches-toggle").click();
@@ -104,6 +134,7 @@ test("SQL adapter change page shows the schema diff and row counts behind the bl
   await expect(page.getByTestId("verdict-pill").first()).toHaveText("Blocked");
   await expect(page.getByTestId("verdict-headline")).toHaveText("Blocked: 1 defect proven by running the migration");
   await expect(page.getByTestId("verdict-reason")).toHaveCount(0);
+  await page.getByTestId("tech-toggle").click();
   await page.getByTestId("verdict-raw-toggle").click();
   await expect(page.getByTestId("verdict-reason")).toContainText("F-sql-reversible");
   const finding = page.getByTestId("finding");
@@ -123,6 +154,7 @@ test("SQL adapter change page shows the schema diff and row counts behind the bl
 
 test("2297 routing map collapses 222 generated files into one block", async ({ page }) => {
   await page.goto("/change/ju26-issue-2297");
+  await page.getByTestId("tech-toggle").click();
   await page.getByTestId("routing-toggle").click();
   const tree = page.getByTestId("routing-tree");
   await expect(tree).toContainText("237 files");
@@ -132,7 +164,8 @@ test("2297 routing map collapses 222 generated files into one block", async ({ p
   await expect(tree.getByText("Generation001.verified.cs")).toHaveCount(0);
   await expect(page.getByText("222 generated files routed to regeneration check; 15 reviewed")).toBeVisible();
   await expect(page.getByTestId("refused-list")).toContainText("Pick the scope");
-  await expect(page.getByTestId("go-decision")).toBeVisible();
+  await expect(page.getByTestId("go-decision")).toHaveText(/Choose A or B/);
+  await expect(page.getByTestId("go-decision")).toHaveAttribute("href", "/decision/ju26-issue-2297");
 });
 
 test("writes are refused without a named human", async ({ request }) => {
@@ -144,16 +177,23 @@ test("writes are refused without a named human", async ({ request }) => {
   expect(m.status()).toBe(400);
 });
 
-test("answering a question appends to ledger.jsonl and removes it from pending", async ({ page }) => {
+test("answering a question inline on the change page appends to ledger.jsonl and removes it from the queue", async ({ page }) => {
   await signIn(page);
+  // The old /questions route still works for links, but is not in the nav.
   await page.goto("/questions");
+  await expect(page.getByTestId("pending-question")).toHaveCount(1);
+  await expect(page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Questions" })).toHaveCount(0);
+
+  await page.goto("/change/ju26-issue-2297");
   const pending = page.getByTestId("pending-question");
   await expect(pending).toHaveCount(1);
   await expect(pending).toContainText("Q-2297-1");
+  await expect(page.getByTestId("pending-questions")).toContainText("Before you decide: 1 question for you");
   await pending.getByTestId("answer-option").filter({ hasText: "All generated types" }).click();
   await expect(page.getByTestId("pending-question")).toHaveCount(0);
-  await expect(page.getByTestId("ledger-table")).toContainText("All generated types");
-  await expect(page.getByTestId("ledger-table")).toContainText(HUMAN);
+  await page.goto("/context");
+  await expect(page.getByTestId("context-ledger")).toContainText("All generated types");
+  await expect(page.getByTestId("context-ledger")).toContainText(HUMAN);
 
   const lines = fs
     .readFileSync(path.join(E2E_TMP, "context", "ledger.jsonl"), "utf8")
@@ -166,9 +206,10 @@ test("answering a question appends to ledger.jsonl and removes it from pending",
   expect(typeof last.ts).toBe("string");
   expect(typeof last.question).toBe("string");
 
-  // Inbox no longer shows it pending.
+  // The queue no longer shows a question for it.
   await page.goto("/");
-  await expect(page.getByTestId("inbox-row").filter({ hasText: "ju26-issue-2297" })).not.toContainText("pending");
+  await expect(page.getByTestId("queue-card").filter({ hasText: "ju26-issue-2297" }).getByTestId("queue-question")).toHaveCount(0);
+  await expect(page.getByTestId("need-you")).toHaveText("2 need you");
 });
 
 test("sign-off is refused on a blocked change, in the UI and the API", async ({ page }) => {
@@ -221,8 +262,13 @@ test("merge is refused when the branch moved after its review", async ({ page })
 test("Merge A creates a --no-ff commit in the bare repo authored by the human and writes the decision", async ({ page }) => {
   await signIn(page);
   await page.goto("/decision/ju26-issue-2297");
+  await expect(page.getByTestId("step-indicator").getByRole("button")).toHaveText(["1Two readings", "2The vote", "3Your choice"]);
   await expect(page.getByTestId("side-A")).toContainText("review/ju26-issue-2297/A");
-  await expect(page.getByTestId("side-B")).toContainText("169/169");
+  await expect(page.getByTestId("side-A")).toContainText("Unconditional: every generated type (formatters, resolvers, enum and union formatters) gets [ExcludeFromCodeCoverage].");
+  await expect(page.getByTestId("reader-vote")).toContainText("two readings");
+  await page.getByTestId("tech-toggle").click();
+  await page.getByTestId("receipts-toggle-B").click();
+  await expect(page.getByTestId("details-B")).toContainText("169/169");
   await page.getByTestId("merge-A").click();
   await expect(page.getByTestId("merge-result")).toContainText("Merged A into main");
   const sha = (await page.getByTestId("merge-sha").textContent())!.trim();
@@ -264,8 +310,12 @@ test("sign-off writes a decision record", async ({ page }) => {
   expect(again.status()).toBe(409);
   const md = await (await page.request.get("/api/receipt-markdown?change=ju26-issue-2283")).text();
   expect(md).toContain(`**Signed off by: ${HUMAN}** at ${decision.ts}`);
+  await expect(page.getByTestId("verdict-stamp")).toHaveText(`Signed off · ${HUMAN}`);
   await page.goto("/");
-  await expect(page.getByTestId("inbox-row").filter({ hasText: "ju26-issue-2283" })).toContainText(`signed off by ${HUMAN}`);
+  const done = page.getByTestId("group-done");
+  await expect(done).toContainText("Done");
+  await expect(done.getByTestId("queue-card").filter({ hasText: "ju26-issue-2283" })).toContainText(`signed off by ${HUMAN}`);
+  await expect(page.getByTestId("need-you")).toHaveText("Nothing needs you");
 });
 
 test("machine strings never reach the default view: verdict reasons, lock reasons, HTML comments", async ({ page }) => {
@@ -297,6 +347,8 @@ test("context page renders markdown and confirms as the human", async ({ page })
 
 test("track record renders tables, charts and trust levels", async ({ page }) => {
   await page.goto("/track-record");
+  await expect(page.getByTestId("table-T1")).toBeHidden();
+  await page.getByTestId("t1-toggle").click();
   await expect(page.getByTestId("table-T1")).toContainText("requirement-tests");
   await expect(page.getByTestId("table-T1")).toContainText("88%");
   await expect(page.getByTestId("table-T3")).toBeHidden();
@@ -326,8 +378,8 @@ test("track record leads with headline tiles from summary.json and the new table
 
   await expect(page.getByTestId("t5-summary")).toContainText("bait false alarms");
   await expect(page.getByTestId("trust-history")).toContainText("source-generator/tests");
-  await expect(page.getByTestId("trust-history")).toContainText("Stayed at L1 for the whole bench: security, source-generator/analyzer");
-  await expect(page.getByRole("img", { name: /trust level over the bench/ })).toHaveCount(1);
+  await expect(page.getByTestId("trust-history")).toContainText("Stayed at L1 for all practice runs: security, source-generator/analyzer");
+  await expect(page.getByRole("img", { name: /trust level over the practice runs/ })).toHaveCount(1);
 
   const sample = page.getByTestId("t4-sample");
   await expect(sample).toContainText("ju26-issue-2297");
@@ -347,6 +399,8 @@ test("track record leads with headline tiles from summary.json and the new table
 test("Copy as PR comment puts the receipt markdown on the clipboard", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   await page.goto("/change/ju26-issue-2283");
+  await expect(page.getByTestId("copy-pr-comment")).toHaveCount(0);
+  await page.getByTestId("tech-toggle").click();
   await page.getByTestId("copy-pr-comment").click();
   await expect(page.getByTestId("copy-pr-comment")).toHaveText("Copied");
   const text = await page.evaluate(() => navigator.clipboard.readText());
@@ -392,25 +446,25 @@ test("plain-words summary and product context on the change page; predates fallb
   await expect(summary.getByTestId("plain-proved")).toContainText("We wrote 2 tests from the issue description alone. They failed before the change and pass after it");
   await expect(summary.getByTestId("plain-wrong")).toContainText("1 part of the new code is never tested");
   await expect(summary.getByTestId("plain-unchecked")).toContainText("We did not check 3 things");
-  // "sign-off writes a decision record" ran earlier in this serial file, so the last line reports the decision.
-  await expect(summary.getByTestId("plain-decide")).toContainText(`Decided: ${HUMAN} signed this off on`);
+  // "sign-off writes a decision record" ran earlier in this serial file, so step 4 reports the decision.
+  await expect(summary.getByTestId("plain-decide")).toHaveCount(0);
+  await expect(page.getByTestId("story-decide").getByTestId("plain-decide")).toContainText(`Decided: ${HUMAN} signed this off on`);
   await expect(summary.getByTestId("plain-proved").locator("a")).toHaveAttribute("href", "#proven");
   await expect(summary.getByTestId("plain-wrong").locator("a")).toHaveAttribute("href", "#findings");
 
-  // The one-time strip and its dismissal.
-  await expect(page.getByTestId("how-to-read")).toContainText("How to read this page");
-  await page.getByTestId("how-to-read-dismiss").click();
+  // No "how to read" banner: the step structure replaces it.
   await expect(page.getByTestId("how-to-read")).toHaveCount(0);
-  await page.reload();
-  await expect(page.getByTestId("plain-summary")).toBeVisible();
-  await expect(page.getByTestId("how-to-read")).toHaveCount(0);
+  await expect(page.locator("body")).not.toContainText("How to read this page");
 
   // Glossary terms: hover shows the definition, headings keep their words.
   await expect(page.getByRole("heading", { name: "Findings" })).toBeVisible();
   await page.getByTestId("term-finding").first().hover();
   await expect(page.getByRole("tooltip").filter({ hasText: "A problem with a receipt behind it" })).toBeVisible();
 
-  // Product context from context.json: draft pill, nudge, entries, the ledger badge and a citation.
+  // Product context from context.json, folded to one line; open it for the draft pill, nudge, entries, ledger badge and citation.
+  await expect(page.getByTestId("product-context-toggle")).toContainText("Used 2 notes about your product · 1 held back");
+  await expect(page.getByTestId("run-context-status")).toHaveCount(0);
+  await page.getByTestId("product-context-toggle").click();
   await expect(page.getByTestId("run-context-status")).toHaveText("draft");
   await expect(page.getByTestId("run-context-nudge")).toHaveAttribute("href", "/context");
   const citation = page.getByTestId("context-citation");
@@ -434,11 +488,25 @@ test("plain-words summary and product context on the change page; predates fallb
   await expect(page.getByTestId("plain-decide").locator("a")).toHaveAttribute("href", "#trust-receipt");
 });
 
-test("inbox legend explains the three verdicts in plain words", async ({ page }) => {
-  await page.goto("/");
-  const legend = page.getByTestId("verdict-legend");
-  await expect(legend).toContainText("a defect is proven; fix it first");
-  await expect(legend).toContainText("nothing proven wrong; a person decides");
-  await expect(legend).toContainText("two readings; a person picks one");
-  await expect(legend.getByTestId("verdict-pill")).toHaveCount(3);
+test("no horizontal scroll at 390px and the receipt follows step 2 on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const url of ["/", "/change/ju26-issue-2283", "/decision/ju26-issue-2297", "/context", "/track-record"]) {
+    await page.goto(url);
+    await page.waitForLoadState("networkidle");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth), url).toBeLessThanOrEqual(390);
+  }
+  await page.goto("/change/ju26-issue-2283");
+  const order = await page.evaluate(() => {
+    const ids = ["story-proved", "trust-receipt", "story-not-checked"].map((t) => document.querySelector(`[data-testid="${t}"]`) as HTMLElement);
+    return ids.map((el) => el.getBoundingClientRect().top + window.scrollY);
+  });
+  expect(order[0]).toBeLessThan(order[1]);
+  expect(order[1]).toBeLessThan(order[2]);
+});
+
+test("step indicator scrolls to a step and marks it active", async ({ page }) => {
+  await page.goto("/change/ju26-issue-2283");
+  await page.getByTestId("step-decide").click();
+  await expect(page.getByTestId("step-decide")).toHaveAttribute("aria-current", "step");
+  await expect(page.getByTestId("decision-panel")).toBeInViewport();
 });

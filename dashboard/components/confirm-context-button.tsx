@@ -26,7 +26,7 @@ export function ConfirmContextButton({ human, status }: { human: string | null; 
 
   return (
     <div className="flex flex-col items-end gap-1">
-      <Button onClick={() => void confirm()} disabled={busy || !human} size="sm" data-testid="confirm-context">
+      <Button onClick={() => void confirm()} disabled={busy || !human} size="lg" className="px-4 text-[15px]" data-testid="confirm-context">
         {human ? `Confirm as ${human}` : "Pick your name to confirm"}
       </Button>
       {error && <span className="text-xs text-bad-foreground">{error}</span>}

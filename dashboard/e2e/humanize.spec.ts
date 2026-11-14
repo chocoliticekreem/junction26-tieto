@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { abMismatchMessage, humanizeClaim, humanizeRefusal, humanizeTitle, humanizeVerdict, stripHtmlComments } from "../lib/humanize";
+import { abMismatchMessage, firstSentence, humanizeClaim, humanizeRefusal, humanizeTitle, humanizeVerdict, quotedRequirement, readerVote, stripHtmlComments } from "../lib/humanize";
 import type { Evidence, Finding } from "../lib/types";
 
 // Unit tests for the plain-language mapper. Shapes come from grep over runs/**/receipt.json and evidence.json.
@@ -149,4 +149,17 @@ test("mutation-survivor claims become plain sentences; prose claims pass through
     "The change's own tests miss breaks in TypeCollector.cs (lines 239, 985, 1448); only the older tests catch them.",
   );
   expect(humanizeClaim("Migration not reversible: schema after down differs from base (1 line(s))")).toBe("Migration not reversible: schema after down differs from base (1 line(s))");
+});
+
+test("firstSentence does not break on e.g.; readerVote and quotedRequirement parse a refusal", () => {
+  expect(firstSentence("Add the attribute by default, plus an opt-out setting (e.g. MSBuild property) to disable it. Code: adds an option.")).toEqual({
+    lead: "Add the attribute by default, plus an opt-out setting (e.g. MSBuild property) to disable it.",
+    rest: "Code: adds an option.",
+  });
+  expect(firstSentence("Short.")).toEqual({ lead: "Short.", rest: "" });
+  const refused = [{ what: "Choosing A or B", why: "The AI will not pick: 3 of 3 independent readers found two readings: A: x; B: y; the requirement says: 'I do not feel like a setting is needed'. Read more." }];
+  expect(readerVote(refused)).toEqual({ saw: 3, of: 3 });
+  expect(quotedRequirement(refused)).toBe("I do not feel like a setting is needed");
+  expect(readerVote([{ what: "Pick the scope", why: "The requirement supports both readings." }])).toBeUndefined();
+  expect(quotedRequirement([])).toBeUndefined();
 });
