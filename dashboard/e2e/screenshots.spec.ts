@@ -25,7 +25,10 @@ async function shoot(page: Page, name: string, url: string, width: number) {
   await page.goto(url);
   await page.waitForLoadState("networkidle");
   if (name === "change-2283") {
+    await page.getByTestId("finding-toggle").first().click();
     await page.getByTestId("hunches-toggle").click();
+    await page.getByTestId("receipts-toggle").click();
+    await page.locator("#evidence-E-req").getByTestId("evidence-toggle").click();
     await page.getByTestId("log-toggle").filter({ hasText: "test-base-req.log" }).click();
     await page.getByTestId("log-excerpt").waitFor();
   }

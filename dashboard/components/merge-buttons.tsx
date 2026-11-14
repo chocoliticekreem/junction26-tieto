@@ -27,21 +27,20 @@ export function MergeButtons({
   const done = decision ?? result;
   if (done) {
     return (
-      <div className="rounded-md border border-ok-foreground/30 bg-ok p-4 text-sm text-ok-foreground" data-testid="merge-result">
-        <div className="font-medium">
+      <div className="rounded-md border border-ok-foreground/30 bg-ok px-3 py-2 text-sm text-ok-foreground" data-testid="merge-result">
+        <span className="font-medium">
           {done.choice === "sign-off" ? "Signed off" : `Merged ${done.choice} into main`} by {done.who}
-        </div>
-        <div className="mt-1 font-mono text-xs">
+        </span>{" "}
+        <span className="font-mono text-xs">
           {done.merge_sha ? (
             <>
-              commit <span data-testid="merge-sha">{done.merge_sha}</span>
+              · <span data-testid="merge-sha">{done.merge_sha}</span>
             </>
           ) : (
-            "no merge commit"
+            "· no merge commit"
           )}{" "}
           · {done.ts}
-        </div>
-        <div className="mt-1 text-xs">Decision record: decisions/{changeId}.json. A second merge is refused.</div>
+        </span>
       </div>
     );
   }
@@ -65,19 +64,22 @@ export function MergeButtons({
   }
 
   return (
-    <div className="space-y-2 rounded-md border p-4" data-testid="merge-panel">
-      <div className="text-sm font-medium">{human ? `Decide as ${human}` : "Pick your name in the header to decide"}</div>
-      <p className="text-xs text-muted-foreground">
-        Merges the chosen branch into <span className="font-mono">main</span> of the mock repo with <span className="font-mono">--no-ff</span>, authored by you, and writes the decision
-        record. The AI never merges.
-      </p>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2" data-testid="merge-panel">
       <div className="flex flex-wrap gap-2">
         {interpretations.map((i) => (
-          <Button key={i.label} onClick={() => void merge(i.label)} disabled={!human || busy !== null || i.label in blocked} size="sm" data-testid={`merge-${i.label}`}>
+          <Button
+            key={i.label}
+            onClick={() => void merge(i.label)}
+            disabled={!human || busy !== null || i.label in blocked}
+            size="sm"
+            data-testid={`merge-${i.label}`}
+            title="git merge --no-ff into main, authored by you; writes the decision record"
+          >
             {busy === i.label ? `Merging ${i.label}` : `Merge ${i.label}`}
           </Button>
         ))}
       </div>
+      <span className="text-xs text-muted-foreground">{human ? `as ${human}` : "Pick your name in the header to decide"}</span>
       {Object.entries(blocked).map(([label, reason]) => (
         <p key={label} className="text-xs text-bad-foreground [overflow-wrap:anywhere]" data-testid={`merge-blocked-${label}`}>
           {label} cannot be merged: its own review is blocked ({reason}).

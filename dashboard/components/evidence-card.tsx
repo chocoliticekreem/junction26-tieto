@@ -3,6 +3,8 @@ import { LogViewer } from "./log-viewer";
 import { Mono, MonoBlock, ResultPill } from "./pills";
 import { MutantTable } from "./mutant-table";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { ChevronRight } from "lucide-react";
 
 interface Ctx {
   changeId: string;
@@ -143,33 +145,36 @@ function Details({ ev, ctx }: { ev: Evidence; ctx: Ctx }) {
   return <>{blocks}</>;
 }
 
-export function EvidenceCard({ ev, ctx }: { ev: Evidence; ctx: Ctx }) {
+export function EvidenceCard({ ev, ctx, defaultOpen = false }: { ev: Evidence; ctx: Ctx; defaultOpen?: boolean }) {
   const cmds = (ev.command_ids ?? []).map((id) => ctx.commands.find((c) => c.id === id)).filter((c): c is CommandReceipt => !!c);
   return (
-    <div className="space-y-2 rounded-md border bg-card p-3" data-testid="evidence-card" id={`evidence-${ev.id}`}>
-      <div className="flex flex-wrap items-center gap-2">
+    <Collapsible defaultOpen={defaultOpen} className="rounded-md border" data-testid="evidence-card" id={`evidence-${ev.id}`}>
+      <CollapsibleTrigger className="group flex w-full flex-wrap items-center gap-2 px-3 py-2 text-left hover:bg-muted/50" data-testid="evidence-toggle">
+        <ChevronRight className="size-3 shrink-0 text-muted-foreground transition-transform group-aria-expanded:rotate-90" />
         <ResultPill result={ev.result} />
-        <span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{ev.title}</span>
-        <span className="ml-auto flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-          <span>{ev.kind}</span>
-          <span>{ev.id}</span>
-        </span>
-      </div>
-      {ev.excerpt && <MonoBlock>{ev.excerpt}</MonoBlock>}
-      <Details ev={ev} ctx={ctx} />
-      {cmds.length > 0 && (
-        <div className="space-y-1.5 border-t pt-2">
-          {cmds.map((c) => (
-            <div key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-              <Mono className="break-all">{c.cmd.join(" ")}</Mono>
-              <span className="font-mono text-muted-foreground tabular-nums">
-                exit {c.exit_code} · {c.duration_s.toFixed(1)}s
-              </span>
-              <LogViewer changeId={ctx.changeId} runTs={ctx.runTs} logPath={c.log_path} />
+        <span className="min-w-0 flex-1 text-sm [overflow-wrap:anywhere]">{ev.title}</span>
+        <span className="font-mono text-[11px] text-muted-foreground">{ev.id}</span>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="space-y-2 border-t px-3 py-2">
+          <div className="font-mono text-[11px] text-muted-foreground">{ev.kind}</div>
+          {ev.excerpt && <MonoBlock>{ev.excerpt}</MonoBlock>}
+          <Details ev={ev} ctx={ctx} />
+          {cmds.length > 0 && (
+            <div className="space-y-1.5 border-t pt-2">
+              {cmds.map((c) => (
+                <div key={c.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                  <Mono className="break-all">{c.cmd.join(" ")}</Mono>
+                  <span className="font-mono text-muted-foreground tabular-nums">
+                    exit {c.exit_code} · {c.duration_s.toFixed(1)}s
+                  </span>
+                  <LogViewer changeId={ctx.changeId} runTs={ctx.runTs} logPath={c.log_path} />
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
-      )}
-    </div>
+      </CollapsibleContent>
+    </Collapsible>
   );
 }

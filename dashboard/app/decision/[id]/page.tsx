@@ -1,15 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { loadRun, readDecision, receiptCounts } from "@/lib/data";
+import { loadRun, readDecision } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
+import { Disclosure } from "@/components/disclosure";
 import { EvidenceCard } from "@/components/evidence-card";
 import { MergeButtons } from "@/components/merge-buttons";
-import { Mono, ResultPill, RiskPill, VerdictPill } from "@/components/pills";
+import { ResultPill, RiskPill, VerdictPill } from "@/components/pills";
 import { EmptyState, PageTitle, Section } from "@/components/section";
-import type { Interpretation, RunBundle } from "@/lib/types";
+import type { Interpretation, ResultKind, RunBundle } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+
+const RESULT_ORDER: ResultKind[] = ["pass", "partial", "skipped", "fail", "error"];
 
 function diffSummary(run: RunBundle | undefined) {
   const files = run?.intake?.files ?? [];
@@ -21,43 +24,73 @@ function diffSummary(run: RunBundle | undefined) {
 
 function Side({ interp, run, chosen }: { interp: Interpretation; run: RunBundle | undefined; chosen: boolean }) {
   const diff = diffSummary(run);
-  const rc = run ? receiptCounts(run.evidence) : null;
   const ctx = run ? { changeId: run.changeId, runTs: run.runTs, commands: run.commands, mutants: run.mutants, tests: run.tests } : null;
+  const byResult = run ? RESULT_ORDER.map((k) => [k, run.evidence.filter((e) => e.result === k).length] as const).filter(([, n]) => n > 0) : [];
   return (
-    <div className={cn("min-w-0 space-y-4 rounded-md border p-4", chosen && "border-ok-foreground/40 bg-ok/30")} data-testid={`side-${interp.label}`}>
+    <div className={cn("min-w-0 space-y-3 rounded-md border p-4", chosen && "border-ok-foreground/40 bg-ok/30")} data-testid={`side-${interp.label}`}>
       <div className="flex items-start gap-3">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-md border bg-muted font-mono text-base font-semibold">{interp.label}</span>
-        <div className="min-w-0 space-y-1">
-          <p className="text-sm leading-6">{interp.summary}</p>
-          {interp.branch && <Mono className="break-all">{interp.branch}</Mono>}
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-sm border font-mono text-sm font-semibold">{interp.label}</span>
+        <div className="min-w-0 space-y-0.5">
+          <p className="text-sm leading-5">{interp.summary}</p>
+          {interp.branch && <div className="font-mono text-[11px] text-muted-foreground [overflow-wrap:anywhere]">{interp.branch}</div>}
           {chosen && <div className="text-xs font-medium text-ok-foreground">merged</div>}
         </div>
       </div>
 
       {run ? (
         <>
-          <div className="flex flex-wrap items-center gap-3 text-xs">
-            <VerdictPill verdict={run.receipt.verdict} />
+          <div className="flex flex-wrap items-start gap-x-2 gap-y-1 text-sm">
+            <VerdictPill verdict={run.receipt.verdict} className="mt-0.5" />
+            <p className="min-w-0 flex-1 leading-5 text-muted-foreground">{run.receipt.verdict_reason}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+            <span className="font-mono tabular-nums">{run.evidence.length} receipts</span>
+            {byResult.map(([k, n]) => (
+              <ResultPill key={k} result={k}>
+                {n} {k}
+              </ResultPill>
+            ))}
             <RiskPill risk={run.receipt.risk} />
-            {rc && (
-              <span className="font-mono tabular-nums">
-                <span className={rc.green ? "text-ok-foreground" : "text-muted-foreground"}>{rc.green} green</span> ·{" "}
-                <span className={rc.red ? "text-bad-foreground" : "text-muted-foreground"}>{rc.red} red</span>
-              </span>
-            )}
             <span className="font-mono text-muted-foreground">{run.receipt.head_sha.slice(0, 8)}</span>
           </div>
-          <p className="text-sm text-muted-foreground">{run.receipt.verdict_reason}</p>
+
+          {run.receipt.findings.length > 0 && (
+            <ul className="space-y-1 border-l-2 border-l-bad-foreground pl-3 text-sm">
+              {run.receipt.findings.map((f) => (
+                <li key={f.id} className="line-clamp-2 [overflow-wrap:anywhere]" title={f.claim}>
+                  {f.claim}
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <Disclosure label={`${run.receipt.checked.length} checks · ${run.evidence.length} receipts`} testId={`receipts-toggle-${interp.label}`}>
+            <div className="space-y-2">
+              <ul className="space-y-1 text-xs">
+                {run.receipt.checked.map((c, i) => (
+                  <li key={i} className="flex items-center gap-2">
+                    <ResultPill result={c.result} /> <span className="min-w-0 [overflow-wrap:anywhere]">{c.what}</span>
+                  </li>
+                ))}
+              </ul>
+              {run.evidence.length === 0 && <EmptyState>No receipts in this run.</EmptyState>}
+              {ctx && run.evidence.map((ev) => <EvidenceCard key={ev.id} ev={ev} ctx={ctx} />)}
+            </div>
+          </Disclosure>
 
           {diff && (
-            <div className="space-y-1 text-xs">
-              <div className="font-medium">
-                Diff: {diff.files} files, <span className="font-mono text-ok-foreground">+{diff.add}</span> <span className="font-mono text-bad-foreground">-{diff.del}</span>
-                {diff.generated > 0 && <span className="text-muted-foreground"> · {diff.generated} generated</span>}
-              </div>
+            <Disclosure
+              label={
+                <>
+                  {diff.files} files <span className="font-mono text-ok-foreground">+{diff.add}</span> <span className="font-mono text-bad-foreground">-{diff.del}</span>
+                  {diff.generated > 0 && <> · {diff.generated} generated</>}
+                </>
+              }
+              testId={`diff-toggle-${interp.label}`}
+            >
               <ul className="space-y-0.5 font-mono text-[11px] text-muted-foreground">
                 {diff.list.map((f) => (
-                  <li key={f.path} className="flex gap-2 break-all">
+                  <li key={f.path} className="flex gap-2 [overflow-wrap:anywhere]">
                     <span className="w-14 shrink-0 tabular-nums">
                       <span className="text-ok-foreground">+{f.additions}</span> <span className="text-bad-foreground">-{f.deletions}</span>
                     </span>
@@ -65,40 +98,12 @@ function Side({ interp, run, chosen }: { interp: Interpretation; run: RunBundle 
                   </li>
                 ))}
               </ul>
-            </div>
+            </Disclosure>
           )}
-
-          <div className="space-y-2">
-            <div className="text-xs font-medium">Checked</div>
-            <ul className="space-y-1 text-xs">
-              {run.receipt.checked.map((c, i) => (
-                <li key={i} className="flex items-center gap-2">
-                  <ResultPill result={c.result} /> <span className="min-w-0 [overflow-wrap:anywhere]">{c.what}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {run.receipt.findings.length > 0 && (
-            <div className="space-y-1 text-xs">
-              <div className="font-medium text-bad-foreground">{run.receipt.findings.length} verified finding(s)</div>
-              <ul className="list-disc pl-4">
-                {run.receipt.findings.map((f) => (
-                  <li key={f.id}>{f.claim}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <div className="text-xs font-medium">Receipts</div>
-            {run.evidence.length === 0 && <EmptyState>No receipts in this run.</EmptyState>}
-            {ctx && run.evidence.map((ev) => <EvidenceCard key={ev.id} ev={ev} ctx={ctx} />)}
-          </div>
 
           <div className="text-xs text-muted-foreground">
             <Link href={`/change/${encodeURIComponent(run.changeId)}`} className="underline-offset-4 hover:underline">
-              Full receipt for {run.changeId}
+              Full receipt
             </Link>
           </div>
         </>
@@ -128,7 +133,7 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
   const decision = readDecision(changeId);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <div className="text-xs text-muted-foreground">
         <Link href="/" className="hover:underline">
           Inbox
@@ -139,16 +144,13 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
         </Link>{" "}
         / decision
       </div>
-      <PageTitle eyebrow={r.requirement_id} title={`Decide: ${r.requirement_title}`}>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">{r.verdict_reason}</p>
-        {r.verdict !== "decision-A-B" && (
-          <p className="mt-1 text-xs text-warn-foreground">The verdict of this run is {r.verdict}, not decision-A-B. The A/B view is shown anyway.</p>
-        )}
+      <PageTitle eyebrow={r.requirement_id} title={r.requirement_title}>
+        <div className="mt-2 flex flex-wrap items-start gap-x-2 gap-y-1 text-sm">
+          <VerdictPill verdict={r.verdict} className="mt-0.5" />
+          <p className="min-w-0 flex-1 leading-6">{r.verdict_reason}</p>
+        </div>
+        {r.verdict !== "decision-A-B" && <p className="mt-1 text-xs text-warn-foreground">Verdict is {r.verdict}, not decision-A-B; A/B shown anyway.</p>}
       </PageTitle>
-
-      <Section title="Requirement">
-        <p className="text-sm leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">{r.requirement_text}</p>
-      </Section>
 
       <MergeButtons
         changeId={changeId}
@@ -172,6 +174,12 @@ export default async function DecisionPage({ params }: { params: Promise<{ id: s
           <Side key={i.label} interp={i} run={i.label === "A" ? runA : runB} chosen={decision?.choice === i.label} />
         ))}
       </div>
+
+      <Section title="Requirement">
+        <Disclosure label={`${r.requirement_id} full text`} testId="requirement-toggle">
+          <p className="max-w-3xl text-sm leading-6 whitespace-pre-wrap [overflow-wrap:anywhere]">{r.requirement_text}</p>
+        </Disclosure>
+      </Section>
     </div>
   );
 }

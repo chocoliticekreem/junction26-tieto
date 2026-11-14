@@ -2,7 +2,6 @@ import Link from "next/link";
 import { loadLatestRuns, pendingQuestions, readLedger } from "@/lib/data";
 import { currentHuman } from "@/lib/human";
 import { QuestionForm } from "@/components/question-form";
-import { Mono } from "@/components/pills";
 import { EmptyState, PageTitle, Section } from "@/components/section";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -16,11 +15,7 @@ export default async function QuestionsPage() {
 
   return (
     <div className="space-y-8">
-      <PageTitle title="Questions" eyebrow="intent the reviewer could not see">
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Asked only when the answer flips a verdict, at most three per change. Every answer lands in the context ledger and is never asked twice.
-        </p>
-      </PageTitle>
+      <PageTitle title="Questions" eyebrow="asked only when the answer flips a verdict" />
 
       <Section title="Pending" count={pending.length}>
         {pending.length === 0 ? (
@@ -28,19 +23,17 @@ export default async function QuestionsPage() {
         ) : (
           <div className="space-y-3">
             {pending.map((q) => (
-              <div key={q.id} className="space-y-3 rounded-md border p-4 [overflow-wrap:anywhere]" data-testid="pending-question">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                  <Link href={`/change/${encodeURIComponent(q.change_id)}`} className="font-mono hover:underline">
+              <div key={q.id} className="space-y-2 rounded-md border p-3 [overflow-wrap:anywhere]" data-testid="pending-question">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-xs text-muted-foreground">
+                  <Link href={`/change/${encodeURIComponent(q.change_id)}`} className="hover:underline">
                     {q.change_id}
                   </Link>
-                  <Mono>{q.area}</Mono>
-                  <span className="font-mono">{q.lens}</span>
-                  <span className="font-mono">{q.id}</span>
+                  <span>{q.area}</span>
+                  <span>{q.lens}</span>
+                  <span>{q.id}</span>
                 </div>
                 <p className="text-sm font-medium leading-6">{q.text}</p>
-                <p className="text-xs text-muted-foreground">
-                  <span className="font-medium text-foreground">Why it matters:</span> {q.why_it_matters}
-                </p>
+                <p className="text-xs text-muted-foreground">{q.why_it_matters}</p>
                 <QuestionForm q={q} human={human} />
               </div>
             ))}
@@ -48,7 +41,7 @@ export default async function QuestionsPage() {
         )}
       </Section>
 
-      <Section title="Answered" count={ledger.length} hint="context/ledger.jsonl, newest first">
+      <Section title="Answered" count={ledger.length}>
         {ledger.length === 0 ? (
           <EmptyState>The ledger is empty.</EmptyState>
         ) : (

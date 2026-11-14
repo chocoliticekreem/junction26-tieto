@@ -19,22 +19,16 @@ interface Row {
 }
 
 function Title({ r }: { r: Row }) {
+  const meta = `${r.run.receipt.head_sha.slice(0, 8)} · ${r.run.runTs}`;
   return (
-    <Link href={r.href} className="group block min-w-0">
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="font-mono text-xs text-muted-foreground">{r.run.receipt.requirement_id}</span>
-        <span className="font-medium group-hover:underline">{r.run.receipt.requirement_title}</span>
-      </div>
-      <div className="mt-0.5 flex flex-wrap gap-x-3 font-mono text-[11px] text-muted-foreground">
-        <span>{r.run.changeId}</span>
-        <span>{r.run.receipt.head_sha.slice(0, 8)}</span>
-        <span>{r.run.runTs}</span>
-        {r.decision && (
-          <span className="text-ok-foreground">
-            {r.decision.choice === "sign-off" ? "signed off" : `merged ${r.decision.choice}`} by {r.decision.who}
-          </span>
-        )}
-      </div>
+    <Link href={r.href} className="group flex min-w-0 flex-wrap items-baseline gap-x-2 md:flex-nowrap" title={meta}>
+      <span className="shrink-0 font-mono text-xs text-muted-foreground">{r.run.changeId}</span>
+      <span className="min-w-0 text-sm group-hover:underline md:flex-1 md:truncate">{r.run.receipt.requirement_title}</span>
+      {r.decision && (
+        <span className="shrink-0 text-xs text-ok-foreground">
+          {r.decision.choice === "sign-off" ? "signed off" : `merged ${r.decision.choice}`} by {r.decision.who}
+        </span>
+      )}
     </Link>
   );
 }
@@ -67,36 +61,36 @@ function Group({ title, rows }: { title: string; rows: Row[] }) {
         {title} <span className="ml-1 font-mono text-xs font-normal text-muted-foreground tabular-nums">{rows.length}</span>
       </h2>
       <div className="hidden rounded-md border md:block">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead className="h-8">Change</TableHead>
-              <TableHead className="h-8 w-32">Verdict</TableHead>
-              <TableHead className="h-8 w-16 text-right">Risk</TableHead>
-              <TableHead className="h-8 w-28 text-right">Receipts</TableHead>
+              <TableHead className="h-8 w-28">Verdict</TableHead>
+              <TableHead className="h-8 w-14 text-right">Risk</TableHead>
+              <TableHead className="h-8 w-32 text-right">Receipts</TableHead>
               <TableHead className="h-8 w-24 text-right">Questions</TableHead>
-              <TableHead className="h-8 w-24 text-right">Trust</TableHead>
+              <TableHead className="h-8 w-16 text-right">Trust</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((r) => (
               <TableRow key={r.run.changeId} data-testid="inbox-row">
-                <TableCell className="py-2 whitespace-normal">
+                <TableCell className="py-1.5 whitespace-normal">
                   <Title r={r} />
                 </TableCell>
-                <TableCell className="py-2">
+                <TableCell className="py-1.5">
                   <VerdictPill verdict={r.run.receipt.verdict} />
                 </TableCell>
-                <TableCell className="py-2 text-right">
+                <TableCell className="py-1.5 text-right">
                   <RiskPill risk={r.run.receipt.risk} />
                 </TableCell>
-                <TableCell className="py-2 text-right">
+                <TableCell className="py-1.5 text-right">
                   <Receipts r={r} />
                 </TableCell>
-                <TableCell className="py-2 text-right">
+                <TableCell className="py-1.5 text-right">
                   <Pending r={r} />
                 </TableCell>
-                <TableCell className="py-2 text-right">
+                <TableCell className="py-1.5 text-right">
                   <TrustLevel level={r.trust} />
                 </TableCell>
               </TableRow>
@@ -106,7 +100,7 @@ function Group({ title, rows }: { title: string; rows: Row[] }) {
       </div>
       <ul className="divide-y rounded-md border md:hidden">
         {rows.map((r) => (
-          <li key={r.run.changeId} className="space-y-2 p-3" data-testid="inbox-card">
+          <li key={r.run.changeId} className="space-y-1.5 px-3 py-2" data-testid="inbox-card">
             <Title r={r} />
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
               <VerdictPill verdict={r.run.receipt.verdict} />
@@ -148,11 +142,7 @@ export default function InboxPage() {
 
   return (
     <div className="space-y-8">
-      <PageTitle title="Inbox" eyebrow="latest run per change">
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          One row per change. Receipts are executed checks (pass / fail). Trust is the lowest area trust level touched by the change.
-        </p>
-      </PageTitle>
+      <PageTitle title="Inbox" eyebrow="latest run per change" />
       {rows.length === 0 && (
         <EmptyState>
           No runs found. Run <code className="font-mono">uv run receipts review --change ju26-issue-2283 --req REQ-2283</code> and reload.

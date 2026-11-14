@@ -1,6 +1,5 @@
-import { ChevronRight } from "lucide-react";
 import type { MetricsTable } from "@/lib/types";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Disclosure } from "@/components/disclosure";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export function fmtCell(v: string | number | null | undefined, column: string): string {
@@ -18,20 +17,6 @@ export function splitNote(note: string): { lead: string; rest: string } {
   const m = note.match(/^([^]*?[.!?])(\s+|$)/);
   if (!m) return { lead: note, rest: "" };
   return { lead: m[1], rest: note.slice(m[0].length).trim() };
-}
-
-export function Disclosure({ label, children, testId }: { label: React.ReactNode; children: React.ReactNode; testId?: string }) {
-  return (
-    <Collapsible>
-      <CollapsibleTrigger className="group inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground" data-testid={testId}>
-        <ChevronRight className="size-3 transition-transform group-aria-expanded:rotate-90" />
-        {label}
-      </CollapsibleTrigger>
-      <CollapsibleContent>
-        <div className="mt-2">{children}</div>
-      </CollapsibleContent>
-    </Collapsible>
-  );
 }
 
 export function NoteLine({ note }: { note?: string }) {
@@ -106,7 +91,7 @@ export function MetricsTableView({ t, testId, rows, wrap = false }: { t: Metrics
 
 export function StatTile({ label, value, unit, definition, testId }: { label: string; value: string; unit?: string; definition: string; testId?: string }) {
   return (
-    <div className="min-w-0 rounded-md border bg-card px-3 py-2.5" data-testid={testId ?? "stat-tile"}>
+    <div className="min-w-0 rounded-md border px-3 py-2.5" data-testid={testId ?? "stat-tile"} title={definition}>
       <div className="text-xs text-muted-foreground">{label}</div>
       <div className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5">
         <span className="text-2xl font-semibold tracking-tight whitespace-nowrap tabular-nums" data-testid="stat-value">
@@ -114,7 +99,8 @@ export function StatTile({ label, value, unit, definition, testId }: { label: st
         </span>
         {unit && <span className="text-xs text-muted-foreground">{unit}</span>}
       </div>
-      <div className="mt-1 text-[11px] leading-4 text-muted-foreground">{definition}</div>
     </div>
   );
 }
+
+export { Disclosure };
