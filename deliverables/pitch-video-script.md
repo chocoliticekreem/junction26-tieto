@@ -2,7 +2,7 @@
 
 Deck: "PullReceipts: AI review you can sign" (12 slides). The spoken words below are the deck's
 speaker notes, word for word: 283 words, ending at 1:57 at about 145 words per minute. Dashboard:
-https://receipts-demo-one.vercel.app (pages named in the Screen column).
+https://pullreceipts.vercel.app (pages named in the Screen column).
 
 Numbers come from `metrics/summary.json`, `notes/jev.md`, `notes/blast-radius.md`, `docs/verda.md`
 and `runs/ju26-issue-*/<latest>/impact.json`. Do not round them up on camera.
@@ -11,7 +11,7 @@ and `runs/ju26-issue-*/<latest>/impact.json`. Do not round them up on camera.
 
 | Time | Screen | Words |
 |---|---|---|
-| 0:00-0:05 | Deck 1, cover (Slip waving) | PullReceipts: AI review you can sign. How it works, ticket to signature. |
+| 0:00-0:05 | Deck 1, cover (Slip waving) | AI wrote the pull request, so we wrote the pull receipt. Here is how it works, ticket to signature. |
 | 0:05-0:14 | Deck 2, "Don’t take the AI’s word." | An AI reviewer’s opinion is not evidence. Someone still signs the merge and needs proof they can read, and a name on it. |
 | 0:14-0:17 | Deck 3, "One change, start to end." (eight-stage map, dots flowing) | Eight stages; a named human at the end. |
 | 0:17-0:29 | Deck 4, product context. Optional cut: dashboard `/context` (the product context doc, status draft, area tags) | Product context: the repo’s README, analyzer docs and git history, summarised by area with sources. A named human confirms it; answered questions grow it. Deliberate conventions are cited, not flagged. |
