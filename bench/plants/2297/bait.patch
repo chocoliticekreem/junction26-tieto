@@ -1,0 +1,45 @@
+diff --git a/README.md b/README.md
+index b09bde25..43d5ccf2 100644
+--- a/README.md
++++ b/README.md
+@@ -1638,6 +1638,7 @@ Learn more about using a mix of your own custom formatters and automatically gen
+ 
+ All generated formatters and resolvers are decorated with `[ExcludeFromCodeCoverage]`, so generated code does not skew code coverage reports.
+ The attribute is only emitted for targets where it is available (not `netstandard2.0` or .NET Framework).
++Types marked `[MessagePackObject(SuppressSourceGeneration = true)]` get no generated formatter, so there is nothing to decorate for them.
+ 
+ ### MagicOnion
+ 
+diff --git a/tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs b/tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs
+index 84045c55..3b4f5cd6 100644
+--- a/tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs
++++ b/tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs
+@@ -52,6 +52,13 @@ public class CodeCoverageExclusionTests
+             public int Value { get; set; }
+         }
+ 
++        [MessagePackObject(SuppressSourceGeneration = true)]
++        public class MySuppressedObject
++        {
++            [Key(0)]
++            public int Value { get; set; }
++        }
++
+         namespace MessagePack
+         {
+             [GeneratedMessagePackResolver]
+@@ -78,6 +85,14 @@ public class CodeCoverageExclusionTests
+         }
+     }
+ 
++    [Fact]
++    public async Task TypesThatSuppressSourceGenerationGetNoGeneratedFormatter()
++    {
++        IReadOnlyList<(string Path, string Text)> generated = await RunGeneratorAsync(TestSource);
++
++        Assert.DoesNotContain(generated, g => g.Path.Contains("MySuppressedObjectFormatter", StringComparison.Ordinal));
++    }
++
+     [Fact]
+     public async Task ExcludeAttributeIsGuardedForTargetsWhereItIsUnavailable()
+     {
