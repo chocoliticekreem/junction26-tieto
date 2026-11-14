@@ -30,16 +30,16 @@ Tieto's question: *How can AI review the code made by AI so that humans can trus
 2. **Routing**: the RuleRouter's floors cannot be lowered. Jev scores each hunk (about 200 ms each), and Claude Haiku is the fallback.
 3. **Sandbox** (.NET, real): builds base and head and runs the source generator tests: 167/167 on base, 170/170 on head.
 4. **Lenses**: requirement-tests, logic-edge, compatibility, security, product-context, test-quality.
-5. **Receipt checks**: the requirement-tests lens wrote 4 tests from the issue text alone. They **fail on base (the generator and analyzer do not survive the closed generic struct) and pass on head**. Mutation testing on `TypeCollector.cs` left **4 surviving mutants**: the change's own tests still pass when the diagnostic-reporting lines are deleted.
-6. **Verdict**: needs sign-off. Four verified findings, all test-quality gaps of medium severity, each linked to its mutant. 15 hunches withheld; one edge-case test the lens wrote did not compile, and the receipt says so instead of hiding it. Not checked: runtime test suites, NativeAOT and Unity targets, the ExecutionTests project (needs a newer compiler than the sandbox SDK).
+5. **Receipt checks**: the requirement-tests lens wrote 4 tests from the issue text alone. They **fail on base (the generator and analyzer do not survive the closed generic struct) and pass on head**. Mutation testing on the lines the change added to `TypeCollector.cs`: of 9 mutants, 3 are killed by the change's own tests, 4 only by the existing suite, and **2 survive the full suite** (`&&` swapped for `||` on line 1446, `FirstOrDefault()` for `First()` on line 1434). A Stryker.NET cross-check found the same two.
+6. **Verdict**: needs sign-off. Three verified findings: two medium test gaps (one per full-suite survivor) and one low note that the change's own tests miss what the existing suite catches. 15 hunches withheld; one edge-case test the lens wrote did not compile, and the receipt says so instead of hiding it. Not checked: runtime test suites, NativeAOT and Unity targets, the ExecutionTests project (needs a newer compiler than the sandbox SDK).
 7. **The human** reads one page, sees exactly what was proven and what was not, and signs off by name.
 
 ## What it found on Tieto's four agent-written changes
 
 | Change | Files (generated) | Verdict | Why |
 |---|---|---|---|
-| 2283 crash on closed generic struct | 4 (0) | needs sign-off | Fix proven (fail on base, pass on head); the change's tests have no teeth for diagnostic reporting (4 surviving mutants). |
-| 2234 analyzer off with SuppressSourceGeneration | 4 (0) | needs sign-off | Requirement tests fail on base and pass on head. 6 of 12 mutants survive on `TypeCollector.cs`. 0 of 3 independent readers found two readings. |
+| 2283 crash on closed generic struct | 4 (0) | needs sign-off | Fix proven (fail on base, pass on head). 2 mutants on the new lines survive the whole test suite (confirmed by Stryker.NET), so two branches of the fix are untested. |
+| 2234 analyzer off with SuppressSourceGeneration | 4 (0) | needs sign-off | Requirement tests fail on base and pass on head. 4 of 12 mutants on `TypeCollector.cs` survive the full suite. 0 of 3 independent readers found two readings. |
 | 2129 formatter for type in referenced assembly | 28 (0) | blocked, and A/B refused | Executed tests show the external type's own attributes are not honoured (2 of 2 fail on head). Bytes for 124 runtime cases are unchanged; public API +3/-0. 3 of 3 readers found two readings (contractless only vs an optional surrogate type); both are built, both blocked. |
 | 2297 ExcludeFromCodeCoverage on generated code | 237 (222) | blocked, and A/B refused | 222 generated files verified by 89 snapshot tests and never read; 15 reviewed. Generated tests show the attribute is dropped on netstandard2.0 and .NET Framework, where it exists. 3 of 3 readers found two readings (setting or no setting); both are built, but neither can merge until the shared defect is fixed. |
 
@@ -68,7 +68,7 @@ These numbers come from the pipeline before the last two hardening steps (claim-
 ## Trade-offs
 
 - **Receipts cost compute.** A full review of the four sample changes took 3.5 to 11 minutes (including A/B branches) and $0.53 to $0.97 in lens calls each. Depth-by-risk keeps the expensive part to the hunks that need it, and generated code costs a test run, not a read.
-- **Receipts are only as strong as the checks.** A byte diff over 124 sample values can miss a case outside the set (it did once, during building). Equivalent mutants survive on code that changes no behaviour. We report these as limits rather than hide them.
+- **Receipts are only as strong as the checks.** A byte diff over 124 sample values can miss a case outside the set (it did once, during building). Equivalent mutants survive on code that changes no behaviour. Our lightweight mutator makes 5 to 9 mutants per file. Cross-checked against Stryker.NET on 2283, the fates agree on every mutant both tools made, and Stryker made more. We report these as limits rather than hide them.
 - **Hunches are withheld from the main view.** A real bug the reviewer could not prove stays a hunch. That costs some recall and buys trust; the hunch list stays one click away.
 - **Questions interrupt.** Capped at 3, only verdict-flipping ones, never repeated.
 
