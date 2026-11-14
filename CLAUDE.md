@@ -2,7 +2,7 @@ Mode: hackathon
 
 # Junction 2026: Tieto "Earned Trust in AI Code" entry
 
-Build spec: `SPEC.md`. Startup prompt: `START.md`. Progress log: `PROGRESS.md` (the agent keeps it current).
+Challenge brief and judging rubric: `CHALLENGE.md` (what the judges want; compare every milestone against its self-check). Build spec: `SPEC.md`. Startup prompt: `START.md`. Progress log: `PROGRESS.md` (the agent keeps it current).
 
 Deadline: final submission Sun 15 Nov 2026, 10:00 Helsinki time (UTC+2). Peer review from 10:30.
 
