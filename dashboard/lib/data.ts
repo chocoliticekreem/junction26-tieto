@@ -250,3 +250,8 @@ export const AB_SUFFIX = /__(A|B)$/;
 export function isSampleChange(id: string): boolean {
   return id.startsWith("ju26-issue-");
 }
+
+/** Changes reviewed by the SQL sandbox adapter (examples/make_sql_repo.sh branches). */
+export function isSqlChange(id: string): boolean {
+  return id.startsWith("sql-");
+}

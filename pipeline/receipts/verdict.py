@@ -54,6 +54,7 @@ class VerdictInputs:
     ran: list[str] = field(default_factory=list)  # lens / check names that executed
     skip_mutation: bool = False
     lens_unavailable_reason: str = ""
+    adapter: str = "dotnet"  # the sandbox adapter that produced commands/evidence (adapters/)
 
 
 def load_trust() -> dict[str, int]:
@@ -101,6 +102,8 @@ def _derived_not_checked(inp: VerdictInputs) -> list[NotChecked]:
     for lens in ALL_LENSES:
         if lens not in ran:
             add(f"{lens} lens", lens_why)
+    if inp.adapter != "dotnet":
+        return out  # the rest names .NET checks; the adapter declares its own gaps upstream
 
     if "fail-before-pass-after" not in ran and "new-api" not in ran:
         add("requirement tests (fail on base, pass on head)",
@@ -227,7 +230,9 @@ def _residual(inp: VerdictInputs, verdict: str, risk: int, areas: list[str],
         (f"{deep} file(s) were routed for deep review, {light} for light review and {regen} to "
          "the regeneration check."),
     ]
-    if head and head.compiled:
+    if inp.adapter != "dotnet":
+        parts.append(f"Executed checks came from the {inp.adapter} sandbox adapter.")
+    elif head and head.compiled:
         parts.append(f"The existing source generator tests ran on head: {head.passed} of "
                      f"{head.total} passed, {head.failed} failed.")
     else:

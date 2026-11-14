@@ -1,0 +1,170 @@
+{
+  "change_id": "sql-data-loss",
+  "requirement_id": "REQ-SQL-2",
+  "requirement_title": "Rename the order amount column",
+  "requirement_text": "# REQ-SQL-2: Rename the order amount column\n\nRename `amount` to `amount_cents` on `orders`, so the unit is in the name. Every existing order\nkeeps its amount under the new name. `queries/report.sql` must keep working. The migration must be\nreversible.",
+  "run_ts": "20261114T084849Z",
+  "head_sha": "e9a9d1b288303c7f8d923b18e90cc2d50871d87d",
+  "verdict": "blocked",
+  "verdict_reason": "verified high finding(s) backed by receipts: F-sql-values",
+  "risk": 7,
+  "areas": [
+    "db-migrations",
+    "db-queries"
+  ],
+  "area_trust": {
+    "db-migrations": 1,
+    "db-queries": 1
+  },
+  "checked": [
+    {
+      "what": "sql-start: run -d exit 0 in 0.17s",
+      "by": "sandbox",
+      "evidence_id": "sql-start",
+      "result": "pass"
+    },
+    {
+      "what": "sql-ready: exec receipts-sql-cde2f0f438 exit 0 in 1.62s",
+      "by": "sandbox",
+      "evidence_id": "sql-ready",
+      "result": "pass"
+    },
+    {
+      "what": "sql-port: port receipts-sql-cde2f0f438 exit 0 in 0.04s",
+      "by": "sandbox",
+      "evidence_id": "sql-port",
+      "result": "pass"
+    },
+    {
+      "what": "sql-base-up-001_create_orders: exec -i exit 0 in 0.07s",
+      "by": "sandbox",
+      "evidence_id": "sql-base-up-001_create_orders",
+      "result": "pass"
+    },
+    {
+      "what": "sql-teardown: rm -f exit 0 in 0.17s",
+      "by": "sandbox",
+      "evidence_id": "sql-teardown",
+      "result": "pass"
+    },
+    {
+      "what": "Down migration restores the base schema exactly (7 schema objects compared)",
+      "by": "migration-up-down",
+      "evidence_id": "sql-reversible",
+      "result": "pass"
+    },
+    {
+      "what": "No rows lost across the up migration (orders 5 -> 5)",
+      "by": "row-preservation",
+      "evidence_id": "sql-rows",
+      "result": "pass"
+    },
+    {
+      "what": "Values lost in rename: orders.amount -> orders.amount_cents (checksum of the values differs after up)",
+      "by": "row-preservation",
+      "evidence_id": "sql-values",
+      "result": "fail"
+    },
+    {
+      "what": "Repo queries on the migrated schema: 1/1 succeeded",
+      "by": "existing-tests",
+      "evidence_id": "sql-queries",
+      "result": "pass"
+    },
+    {
+      "what": "routed 3 hunks across 3 files",
+      "by": "sql-rule",
+      "evidence_id": "",
+      "result": "pass"
+    }
+  ],
+  "findings": [
+    {
+      "id": "F-sql-values",
+      "lens": "compatibility",
+      "claim": "Values lost in rename: orders.amount -> orders.amount_cents (checksum of the values differs after up)",
+      "location": "migrations/002_rename_amount_to_amount_cents.up.sql",
+      "severity": "high",
+      "receipt_plan": {
+        "kind": "test",
+        "detail": "apply the migration up and down in a throwaway Postgres and compare schema, row and value snapshots"
+      },
+      "verified": true,
+      "evidence_ids": [
+        "sql-values"
+      ],
+      "verdict_depends_on_intent": false
+    }
+  ],
+  "hunches": [],
+  "refused": [],
+  "not_checked": [
+    {
+      "what": "performance of the migration on production-size data",
+      "why": "the sandbox seeds the repo's own fixture rows (5); duration and lock time on large tables are unknown"
+    },
+    {
+      "what": "locking behaviour under concurrent writes",
+      "why": "migrations ran on an idle database over a single connection"
+    },
+    {
+      "what": "values in columns the requirement does not name",
+      "why": "only row counts and the checksums of columns the requirement asks to rename are compared"
+    },
+    {
+      "what": "data restored by the down migration",
+      "why": "down is checked for schema equality with base; rows and values it fails to bring back are not compared"
+    },
+    {
+      "what": "other Postgres versions and other databases",
+      "why": "the sandbox runs postgres:16-alpine only"
+    },
+    {
+      "what": "application code that reads these tables",
+      "why": "only the repo's queries/*.sql were run against the migrated schema"
+    },
+    {
+      "what": "requirement-tests lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    },
+    {
+      "what": "logic-edge lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    },
+    {
+      "what": "compatibility lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    },
+    {
+      "what": "security lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    },
+    {
+      "what": "product-context lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    },
+    {
+      "what": "test-quality lens",
+      "why": "not run: deterministic adapter demo (no LLM call on SQL changes in this build)"
+    }
+  ],
+  "residual_risk": "This change touches 3 files (0 generated) in db-migrations, db-queries; the highest routed risk is 7/10. 2 file(s) were routed for deep review, 1 for light review and 0 to the regeneration check. Executed checks came from the sql sandbox adapter. 12 thing(s) were not checked, including performance of the migration on production-size data; locking behaviour under concurrent writes; values in columns the requirement does not name. By signing off, the signer accepts any defect that only those unchecked paths would have revealed. The change is blocked; signing off is not offered until the blocker is fixed.",
+  "routing": {
+    "migrations/002_rename_amount_to_amount_cents.down.sql": "deep",
+    "migrations/002_rename_amount_to_amount_cents.up.sql": "deep",
+    "queries/report.sql": "light"
+  },
+  "counts": {
+    "source": 3,
+    "test": 0,
+    "docs": 0,
+    "generated": 0,
+    "template": 0,
+    "total": 3,
+    "not_generated": 3
+  },
+  "questions": [],
+  "interpretations": [],
+  "narrative": "",
+  "mock_llm": false
+}

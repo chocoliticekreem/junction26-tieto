@@ -84,23 +84,33 @@ def dotnet_env() -> dict[str, str]:
 
 
 def run_cmd(
-    receipt_id: str, cmd: list[str], cwd: Path, run_dir: Path, timeout: int = BUILD_TIMEOUT_S
+    receipt_id: str, cmd: list[str], cwd: Path, run_dir: Path, timeout: int = BUILD_TIMEOUT_S,
+    env: dict[str, str] | None = None, stdin_path: Path | None = None,
 ) -> CommandReceipt:
+    """`env` replaces the .NET allowlist for other adapters; `stdin_path` (a file inside run_dir,
+    so the input is part of the receipt) is fed to the command's stdin."""
     log_rel = f"logs/{receipt_id}.log"
     log_path = run_dir / log_rel
     log_path.parent.mkdir(parents=True, exist_ok=True)
     started = now_iso()
     t0 = time.monotonic()
+    stdin_note = f"# stdin: {stdin_path.relative_to(run_dir)}\n" if stdin_path else ""
     with open(log_path, "w") as log:
-        log.write(portable(f"$ {' '.join(cmd)}\n# cwd: {cwd}\n# started: {started}\n\n"))
+        log.write(portable(f"$ {' '.join(cmd)}\n# cwd: {cwd}\n{stdin_note}"
+                           f"# started: {started}\n\n"))
         log.flush()
+        stdin = open(stdin_path) if stdin_path else None
         try:
             proc = subprocess.run(cmd, cwd=str(cwd), stdout=log, stderr=subprocess.STDOUT,
-                                  env=dotnet_env(), timeout=timeout)
+                                  stdin=stdin, env=env if env is not None else dotnet_env(),
+                                  timeout=timeout)
             code = proc.returncode
         except subprocess.TimeoutExpired:
             log.write(f"\n# TIMEOUT after {timeout}s\n")
             code = 124
+        finally:
+            if stdin_path:
+                stdin.close()
     duration = round(time.monotonic() - t0, 2)
     with open(log_path, "a") as log:
         log.write(f"\n# exit: {code}  duration: {duration}s\n")

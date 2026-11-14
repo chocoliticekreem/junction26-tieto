@@ -21,6 +21,12 @@ def main(argv: list[str] | None = None) -> int:
     r.add_argument("--req-tests-fixture", action="store_true",
                    help="also run fixtures/requirement-tests/<REQ>.cs as requirement tests")
 
+    s = sub.add_parser("review-sql", help="review one SQL migration change in a throwaway Postgres")
+    s.add_argument("--repo", required=True, help="bare git repo (examples/make_sql_repo.sh)")
+    s.add_argument("--change", required=True, help="branch name, e.g. sql-good")
+    s.add_argument("--req", required=True, help="requirement id, e.g. REQ-SQL-1")
+    s.add_argument("--base", default="main", help="base ref (default: main)")
+
     b = sub.add_parser("bench", help="mock-clone bench")
     bsub = b.add_subparsers(dest="bench_cmd", required=True)
     bsub.add_parser("generate", help="apply plants, create mock/<issue>/<variant> branches")
@@ -44,6 +50,12 @@ def main(argv: list[str] | None = None) -> int:
         return run_review(args.change, args.req, base=args.base, router=args.router,
                           skip_mutation=args.skip_mutation,
                           req_tests_fixture=args.req_tests_fixture, no_ab=args.no_ab)
+    if args.cmd == "review-sql":
+        from pathlib import Path
+
+        from .review_sql import run_review_sql
+
+        return run_review_sql(Path(args.repo), args.change, args.req, base=args.base)
     if args.cmd == "bench":
         from . import bench
 

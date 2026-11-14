@@ -1,0 +1,3 @@
+ALTER TABLE orders DROP COLUMN amount;
+ALTER TABLE orders ADD COLUMN amount_cents integer NOT NULL DEFAULT 0;
+ALTER TABLE orders ALTER COLUMN amount_cents DROP DEFAULT;

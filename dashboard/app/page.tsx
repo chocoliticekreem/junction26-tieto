@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AB_SUFFIX, isSampleChange, loadLatestRuns, minTrust, pendingQuestions, readDecision, receiptCounts } from "@/lib/data";
+import { AB_SUFFIX, isSampleChange, isSqlChange, loadLatestRuns, minTrust, pendingQuestions, readDecision, receiptCounts } from "@/lib/data";
 import type { Decision, RunBundle } from "@/lib/types";
 import { RiskPill, TrustLevel, VerdictPill } from "@/components/pills";
 import { EmptyState, PageTitle } from "@/components/section";
@@ -143,7 +143,8 @@ export default function InboxPage() {
       };
     });
   const sample = rows.filter((r) => isSampleChange(r.run.changeId));
-  const bench = rows.filter((r) => !isSampleChange(r.run.changeId));
+  const sql = rows.filter((r) => isSqlChange(r.run.changeId));
+  const bench = rows.filter((r) => !isSampleChange(r.run.changeId) && !isSqlChange(r.run.changeId));
 
   return (
     <div className="space-y-8">
@@ -159,6 +160,7 @@ export default function InboxPage() {
       )}
       <Group title="Tieto sample changes" rows={sample} />
       <Group title="Bench" rows={bench} />
+      <Group title="SQL migrations (second sandbox adapter)" rows={sql} />
     </div>
   );
 }

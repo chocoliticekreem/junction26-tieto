@@ -142,7 +142,8 @@ class Evidence(BaseModel):
     id: str
     kind: Literal[
         "fail-before-pass-after", "new-api", "mutation", "regeneration", "byte-diff",
-        "existing-tests", "build", "ledger-citation", "code-citation",
+        "existing-tests", "build", "ledger-citation", "code-citation", "migration-up-down",
+        "row-preservation",
     ]
     title: str
     result: Literal["pass", "fail", "partial", "error", "skipped"]
