@@ -1,0 +1,63 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "New analyzer diagnostics MsgPack019-022 are added to SupportedDiagnostics but the diff shows no entry in AnalyzerReleases.Unshipped.md and no doc pages. This breaks RS2000 (release tracking) in the generator's own build. Also, the diagnostics are reported from the generator via RegisterSourceOutput, not the analyzer, so users with the analyzer package disabled still see them. However, they only fire for the new attribute, so existing users are not affected.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:32",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check AnalyzerReleases.Unshipped.md for MsgPack019-022 rows and that doc/analyzers/MsgPack019.md..022.md exist (help link targets); build the generator project to see RS2000/RS2002."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities hunk excludes any class carrying [GeneratedMessagePackFormatter] from the hand-written formatter list. The exclusion is by attribute only, so a class carrying the attribute but rejected by GeneratedFormatterCollector (non-partial, bad type) is also dropped from the resolver. This only affects new-attribute users, but the generated partial class combined with a user-written body that already implements the formatter methods would collide (duplicate Serialize/Deserialize members). This is new opt-in usage, so not a break for existing users.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:35",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with an attributed formatter that fails collection and check resolver output has no registration and only diagnostics."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Template change emits 'partial class' for user-declared formatters, but the template output for non-user formatters is textually unchanged only if the ternary is evaluated correctly. The generated partial class omits accessibility/sealed, which is fine. However the resolver generation for ObjectInfos now includes the user-declared formatter's DataType in the generated resolver's GetFormatter table. For an existing project that already has a hand-written formatter plus a type with [MessagePackObject] there is no change, so existing snapshots should be byte-identical; this is worth confirming by running snapshot tests.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun generator snapshot tests (.verified.txt) at head; expect zero diffs for existing samples."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless members are sorted by name with ordinal comparison and int keys assigned by index. DynamicContractlessObjectResolver orders members differently (declaration order with base-first). The requirement says contractless behaviour; wire bytes from generated formatter may differ in map key order from the dynamic contractless formatter, and in what is serialized (read-only members written as serialize-only). Users switching from reflection-based contractless to this would see different byte ordering.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:166",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "byte-diff",
+          "detail": "Serialize a type with public properties Zeta, Alpha, Mid with ContractlessStandardResolver and with the generated formatter; compare map key order bytes."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Surrogate mode requires target members to be public read-write, so surrogate keys on get-only properties raise MsgPack022. Also in contractless mode a type with public fields of types needing a nested resolver (e.g. nullable reference) is fine. Not a compat break, but contractless mode ignores any [DataMember]/[MessagePackObject] attributes on T, contradicting 'If T does carry MessagePack attributes, they are honoured'.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:104",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a formatter for a type annotated [MessagePackObject] with [Key(5)] and [IgnoreMember] members without surrogate; assert generated keys honour the attributes. Currently CreateContractlessMembers ignores them."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18931,
+  "output_tokens": 1590,
+  "ms": 12837,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

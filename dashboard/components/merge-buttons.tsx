@@ -10,11 +10,14 @@ export function MergeButtons({
   human,
   decision,
   interpretations,
+  blocked = {},
 }: {
   changeId: string;
   human: string | null;
   decision?: Decision;
   interpretations: Interpretation[];
+  /** label -> verdict reason, for branches whose own run is blocked; those cannot be merged. */
+  blocked?: Record<string, string>;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<"A" | "B" | null>(null);
@@ -70,11 +73,16 @@ export function MergeButtons({
       </p>
       <div className="flex flex-wrap gap-2">
         {interpretations.map((i) => (
-          <Button key={i.label} onClick={() => void merge(i.label)} disabled={!human || busy !== null} size="sm" data-testid={`merge-${i.label}`}>
+          <Button key={i.label} onClick={() => void merge(i.label)} disabled={!human || busy !== null || i.label in blocked} size="sm" data-testid={`merge-${i.label}`}>
             {busy === i.label ? `Merging ${i.label}` : `Merge ${i.label}`}
           </Button>
         ))}
       </div>
+      {Object.entries(blocked).map(([label, reason]) => (
+        <p key={label} className="text-xs text-bad-foreground [overflow-wrap:anywhere]" data-testid={`merge-blocked-${label}`}>
+          {label} cannot be merged: its own review is blocked ({reason}).
+        </p>
+      ))}
       {error && (
         <p className="text-xs text-bad-foreground" data-testid="merge-error">
           {error}

@@ -1,0 +1,44 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The reportDiagnostic wrapper now drops every diagnostic whose location is not in source of this compilation, including location-less diagnostics (Location.None). Diagnostics created with a null location previously reported (e.g. MemberNeedsKey for metadata symbols, or other diagnostics built with GetLocation helpers returning null) are now silently suppressed. Users who relied on those warnings or errors, including warnings-as-errors gates, no longer see them. This is broader than the crash fix.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1442",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test: a [MessagePackObject] type in the compilation with a diagnostic whose location is null/Location.None (e.g. a type with a null identifier location such as a partial or otherwise location-less case). Assert the diagnostic is still reported at head as at base. Also run the existing analyzer test suite and compare the diagnostics."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The filter silently drops legitimate diagnostics for referenced-assembly types that the user's build previously saw, such as MsgPack00x diagnostics reported against an in-source attribute location (e.g. AOTDerivedKeyAttribute or other diagnostics) when it concerns a closed generic from metadata. Behavior changes without opt-in. Also, for a metadata type with members lacking keys, the previously-visible 'MemberNeedsKey' diagnostic with null location now vanishes rather than being reported.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:239",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test with a referenced-assembly type that has an unkeyed public member used as a member of a local [MessagePackObject]; compare diagnostics at base vs head."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should diagnostics with Location.None (no location) continue to be reported, or be dropped, for types from referenced assemblies?",
+        "options": [
+          "Drop all non-in-compilation diagnostics (current behavior)",
+          "Keep location-less diagnostics reported, drop only those whose location is in a foreign syntax tree"
+        ],
+        "why_it_matters": "If location-less diagnostics must still surface (e.g. under warnings-as-errors), the filter is a compatibility regression and should be narrowed; if dropping is intended, the findings are not defects.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 5751,
+  "output_tokens": 891,
+  "ms": 7973,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

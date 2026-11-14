@@ -114,7 +114,7 @@ export function EvidenceCard({ ev, ctx }: { ev: Evidence; ctx: Ctx }) {
     <div className="space-y-2 rounded-md border bg-card p-3" data-testid="evidence-card" id={`evidence-${ev.id}`}>
       <div className="flex flex-wrap items-center gap-2">
         <ResultPill result={ev.result} />
-        <span className="text-sm font-medium">{ev.title}</span>
+        <span className="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{ev.title}</span>
         <span className="ml-auto flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
           <span>{ev.kind}</span>
           <span>{ev.id}</span>

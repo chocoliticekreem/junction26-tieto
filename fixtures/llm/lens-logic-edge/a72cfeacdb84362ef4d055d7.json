@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "claude-opus-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `ReportIfLocatedInCompilation` wrapper silently drops MsgPack004 (MemberNeedsKey) when a type declared in source inherits public members from a base class in a referenced assembly. Example: `[MessagePackObject] class Derived : Lib.BaseType { [Key(0)] public int X {get;set;} }`, where `Lib.BaseType` has an unkeyed public `int Unkeyed`. The member's location is now null, so the diagnostic is discarded. Before this change the analyzer crashed loudly with AD0001; now the user gets nothing. The remark that the defining compilation reports these problems does not hold here: `BaseType` is not `[MessagePackObject]`, so `Lib` never validates it. L8 only covers types declared in metadata, not source types that inherit from them. The diagnostic should fall back to the derived type's identifier location instead of being dropped.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1077",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.InheritedMetadataMemberDiagnosticTests.MissingKeyOnInheritedMetadataMember_IsStillReported. It emits Lib to an in-memory image, runs MsgPack00xMessagePackAnalyzer on App, and asserts some MsgPack004 is reported. Expected on head: no MsgPack004."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Only two of the three unguarded `DeclaringSyntaxReferences[0]` sites named in the requirement (reporter lines 735, 1009 and 1101) are changed. The hunks touch the BothStringAndIntKeyAreNull and MemberNeedsKey sites but nothing near the earlier GetObjectInfo site (about line 711 on this base). The reporter did not determine which site fires for the repro. If that site evaluates `[0]` while building the diagnostic arguments, it throws before `reportDiagnostic` (and the new location filter) is ever called. In that case the generic record struct from a referenced assembly may still crash with CS8785/AD0001.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Grep head TypeCollector.cs for `DeclaringSyntaxReferences[0]`. Then confirm with a test: compile `[MessagePackObject] public partial record struct Item<T>([property: Key(0)] string Key);` into an in-memory metadata reference, and run the generator and analyzer on `Cmd` with an `Item<int>` member. Assert there is no CS8785 or AD0001 and that the resolver is generated."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/InheritedMetadataMemberDiagnosticTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Diagnostics;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class InheritedMetadataMemberDiagnosticTests\n{\n    private readonly ITestOutputHelper logger;\n\n    public InheritedMetadataMemberDiagnosticTests(ITestOutputHelper logger)\n    {\n        this.logger = logger;\n    }\n\n    [Fact]\n    public async Task MissingKeyOnInheritedMetadataMember_IsStillReported()\n    {\n        ImmutableArray<MetadataReference> framework = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        List<MetadataReference> refs = framework.Concat<MetadataReference>(ReferencesHelper.GetReferences(ReferencesSet.MessagePack)).ToList();\n\n        string libSource = \"\"\"\n            namespace Lib\n            {\n                public class BaseType\n                {\n                    public int Unkeyed { get; set; }\n                }\n            }\n            \"\"\";\n\n        CSharpCompilation lib = CSharpCompilation.Create(\n            \"Lib\",\n            new[] { CSharpSyntaxTree.ParseText(libSource) },\n            refs,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n        using var ms = new MemoryStream();\n        var emitResult = lib.Emit(ms);\n        emitResult.Success.Should().BeTrue(string.Join(Environment.NewLine, emitResult.Diagnostics));\n        MetadataReference libRef = MetadataReference.CreateFromImage(ms.ToArray());\n\n        string appSource = \"\"\"\n            using MessagePack;\n\n            namespace App\n            {\n                [MessagePackObject]\n                public class Derived : Lib.BaseType\n                {\n                    [Key(0)]\n                    public int X { get; set; }\n                }\n            }\n            \"\"\";\n\n        CSharpCompilation app = CSharpCompilation.Create(\n            \"App\",\n            new[] { CSharpSyntaxTree.ParseText(appSource) },\n            refs.Concat(new[] { libRef }),\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        ImmutableArray<DiagnosticAnalyzer> analyzers = ImmutableArray.Create<DiagnosticAnalyzer>(new MessagePack.SourceGenerator.Analyzers.MsgPack00xMessagePackAnalyzer());\n        ImmutableArray<Diagnostic> diagnostics = await app.WithAnalyzers(analyzers).GetAllDiagnosticsAsync();\n        foreach (Diagnostic d in diagnostics)\n        {\n            this.logger.WriteLine(d.ToString());\n        }\n\n        diagnostics.Should().NotContain(d => d.Id == \"AD0001\");\n        diagnostics.Should().Contain(d => d.Id == \"MsgPack004\", \"the source type Derived exposes an unkeyed public member inherited from a referenced assembly, and no other compilation validates it\");\n    }\n}\n",
+        "test_names": [
+          "MissingKeyOnInheritedMetadataMember_IsStillReported"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 9574,
+  "output_tokens": 8541,
+  "ms": 78958,
+  "prompt_preview": "<requirement id=\"REQ-2283\">\n# REQ-2283: Generator and analyzer crash with IndexOutOfRangeException on a closed generic struct from a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2283\nType: bug\n\n## Requirement\n\nBoth `MessagePackGenerator` (CS8785) and `MsgPack00xMessagePackAnalyzer` (AD0001) throw `IndexOutOfRangeException` when a `[MessagePackObject]"
+}

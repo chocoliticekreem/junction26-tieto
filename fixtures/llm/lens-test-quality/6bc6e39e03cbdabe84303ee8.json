@@ -1,0 +1,53 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new tests only assert that the attribute text and its guard appear in each generated file. They never compile the generated code under a netstandard2.0 or NETFRAMEWORK define, and never compile it where the attribute exists. A wrong guard symbol or a wrong attribute name that still matches the string constants would not be caught.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:77",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.cs:33 swap-boolean: '#if !NETSTANDARD2_0 && !NETFRAMEWORK' -> '#if NETSTANDARD2_0 && NETFRAMEWORK' in the emitted string, with the test constants left unchanged; the Guard constant would then mismatch and fail. Mutate the template and the constant together to see that no compile-based test fails."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The guarded-count assertion accepts only the exact forms '#if...\\n\\t[attr]\\n#endif\\n' and '#if...\\n[attr]\\n#endif\\n'. The test does not check where the attribute sits relative to the type declaration, so it would pass if the attribute were attached to the wrong declaration. In ResolverTemplate the attribute sits right after the XML doc comment. In FormatterTemplate it is emitted after the nesting-type lines. Placement is unverified.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:80",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/EnumTemplate.cs:27 delete-statement: move the attribute block to before 'using MsgPack' or into a position that does not precede the class; expected to survive because tests only count string occurrences."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The test's TestSource defines no generic, nested-type, or type-constrained cases. The TransformUtilities change from '{' to '{\\r\\n' for the constrained nesting-type path has no test, and the nested and generic emission paths of the templates are not exercised by the new tests.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: anyConstraints ? \"{\\r\\n\" : \" {\\r\\n\" -> anyConstraints ? \"{\" : \" {\\r\\n\"; expected to survive in CodeCoverageExclusionTests because it has no constrained nested generic type; only the snapshot tests might notice."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The assertion `generated.Count >= 5` is weak. It does not check that each template kind (object, string-key, enum, union, resolver) was emitted, so removing the attribute from one template's output could go unnoticed if some other file satisfies the count. The inner foreach would still catch a missing attribute in any emitted file, but a template that stops being exercised is not detected.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:62",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "tests/MessagePack.SourceGenerator.Tests/CodeCoverageExclusionTests.cs:62 off-by-one: >= 5 -> >= 1; expected to survive because the loop and count do not identify the template kinds."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 12097,
+  "output_tokens": 1323,
+  "ms": 9996,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

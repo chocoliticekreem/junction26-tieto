@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "Generated formatter for a surrogate/contractless type is emitted with the default MessagePackSecurity behavior only if the template uses the options' security; however in the user-declared partial class the generated code re-declares the base list and constraints (`partial class X : IMessagePackFormatter<T>`) and member array/depth handling is unchanged. A concrete security regression is not evidenced, but string-key contractless formatters deserialize attacker-controlled map keys: the StringKey template path is reused with IsUserDeclaredFormatter and must still call options.Security.DepthStep. Reading the template is needed to confirm.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.tt:18",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test for [GeneratedMessagePackFormatter] on a type from a referenced assembly and verify the generated Deserialize contains options.Security.DepthStep(ref reader) and reader.Depth-- in the finally, same as the existing string-key snapshot."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Constructor-less handling: for structs and for classes the collector passes empty constructorParameters and always treats every member as writable/settable. Members that are init-only or required are marked IsWritable: true with IsInitOnly set. If the generator emits object-initializer or direct assignment for properties whose setter is public but init-only it is fine, but required members on contractless types are not enforced, so deserialization can silently leave required members unset. This is a correctness edge, not a security hole.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:219",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a formatter for a referenced-assembly type with a `required` public property and deserialize a map lacking that key; assert behavior/compile result."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 17439,
+  "output_tokens": 697,
+  "ms": 7820,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

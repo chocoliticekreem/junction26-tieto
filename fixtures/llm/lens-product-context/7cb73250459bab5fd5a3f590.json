@@ -1,0 +1,65 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change moves the SuppressSourceGeneration early return later in CollectObject so analysis runs for suppressed types, which a context-free reviewer might see as reversing the opt-out. The ledger and requirement say generation stays suppressed while diagnostics still apply. The return null is preserved before ObjectSerializationInfo.Create, so no formatter is generated. Consistent with L1 and the requirement.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1410",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L1] The analyzer provides compiler warnings separately from optional AOT formatter generation, so suppressing generation should not disable diagnostics. Run the ExecutionTests NoFormatterIsGeneratedForSuppressedType test to confirm no formatter appears."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README states that suppressed types still get MsgPack011 (partial-class requirement), but a suppressed type does not need to be partial because no code is generated for it. The test PartialTypeRequiredIsReportedWhenSuppressed enshrines this. Whether reporting MsgPack011 for a type that generates nothing is wanted depends on 3.1.0 parity versus correctness.",
+        "location": "README.md:1632",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the MsgPack011 emission in TypeCollector or the analyzer and check whether it is conditioned on suppressSourceGeneration. Compare with 3.1.0 behaviour."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The new analyzer behaviour is documented only in the README. The per-rule docs under doc/analyzers/ (MsgPack004, MsgPack005, etc.) are not updated to mention suppressed types. This is minor.",
+        "location": "README.md:1620",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check doc/analyzers/MsgPack0xx.md for any mention of SuppressSourceGeneration; none is touched by this diff."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "For a type with SuppressSourceGeneration = true, should the analyzer report MsgPack011 (type must be partial)?",
+        "options": [
+          "Yes, keep 3.1.0 parity (as in the change)",
+          "No, skip it because nothing is generated, so partial is not needed"
+        ],
+        "why_it_matters": "If parity is intended, the change is correct. If the team wants no false positives when nothing is generated, MsgPack011 should be suppressed for these types and the README and test must change.",
+        "area": "type-collector",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Restore 3.1.0 parity exactly. Run the full analysis for suppressed types, including MsgPack011, but skip the AOT-only MsgPack016/017. Move the suppress early-return to just before ObjectSerializationInfo.Create, as the change does."
+      },
+      {
+        "label": "B",
+        "summary": "Run only the contract-validity diagnostics (003/004/005/015/012) for suppressed types, and skip generation-related ones such as MsgPack011 (partial required). Add a suppressSourceGeneration guard around the partial check and drop the MsgPack011 test and README sentence."
+      }
+    ]
+  },
+  "input_tokens": 9633,
+  "output_tokens": 1161,
+  "ms": 8644,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

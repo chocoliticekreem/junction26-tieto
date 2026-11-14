@@ -23,6 +23,12 @@ export async function POST(req: Request) {
   const interp = run.receipt.interpretations?.find((i) => i.label === choice);
   const branch = interp?.branch || `review/${changeId}/${choice}`;
   const sideRun = loadRun(`${changeId}__${choice}`);
+  if (sideRun?.receipt.verdict === "blocked") {
+    return NextResponse.json(
+      { error: `Reading ${choice} is blocked (${sideRun.receipt.verdict_reason}). Fix the blocker before merging.` },
+      { status: 409 },
+    );
+  }
   const evidenceIds = (sideRun ?? run).evidence.map((e) => e.id);
 
   let mergeSha: string;

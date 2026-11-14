@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guard drops the attribute on netstandard2.0 and .NET Framework targets, but the requirement says all generated code is decorated. On those targets the coverage skew the issue describes remains. Separately, a netstandard2.1 or netcoreapp project that defines no NETSTANDARD2_0 symbol gets the attribute. Whether the exclusion is intentional depends on product intent.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Run the generator snapshot tests and inspect the verified output for a netstandard2.0 or net472 compilation. Check that generated formatters carry no ExcludeFromCodeCoverage attribute under those symbols."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "CompositeResolverTemplate emits the attribute unconditionally, ignoring the EmitExcludeFromCodeCoverage option, while every other template honors it. Setting ExcludeFromCodeCoverage=false therefore still decorates the composite resolver and its FormatterCache, so the opt-out is inconsistent.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a composite resolver with [GeneratedMessagePackResolver(ExcludeFromCodeCoverage=false)] and assert the output contains no ExcludeFromCodeCoverage."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The option is read with `GetSingleNamedArgumentValue(\"ExcludeFromCodeCoverage\") is not false`. A missing or non-bool value falls back to true, which is fine. But the new public settable property on GeneratedMessagePackResolverAttribute is a public API addition. Adding a named property to the shipped attribute can break an existing user type that has a conflicting generated member or a source-level subclass. The attribute is probably sealed, so the risk is low. A new public API with an opt-out is also optional per the requirement.",
+        "location": "src/MessagePack/GeneratedMessagePackResolverAttribute.cs:34",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that GeneratedMessagePackResolverAttribute is sealed, and that the PublicAPI.Unshipped.txt files for all TFMs list the new members. The net8.0, net472, netstandard2.0 and netstandard2.1 files are included."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The TransformUtilities change from emitting \"{\" to \"{\\r\\n\" for nesting types with constraints changes generated output for every nested generic-constrained type. This is a whitespace change, but it alters user-visible, checked-in generated output outside the requirement's scope.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the snapshot tests for nested generic types with constraints and confirm that only the added newline differs from the base snapshots."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the attribute be skipped on netstandard2.0 and .NET Framework targets?",
+        "options": [
+          "Yes, skip it as in the diff, because the attribute or its AttributeTargets may be unavailable",
+          "No, emit it on all targets where the type exists"
+        ],
+        "why_it_matters": "If the attribute must be on all generated code, the preprocessor guard fails the requirement on those TFMs. If skipping is accepted, the finding is moot.",
+        "area": "codegen-templates",
+        "verdict_depends_on_intent": true
+      }
+    ]
+  },
+  "input_tokens": 13737,
+  "output_tokens": 1332,
+  "ms": 11005,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

@@ -32,7 +32,7 @@ export function QuestionForm({ q, human }: { q: Question; human: string | null }
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         {q.options.map((o) => (
-          <Button key={o} variant="outline" size="sm" disabled={busy || !human} onClick={() => void answer(o)} data-testid="answer-option">
+          <Button key={o} variant="outline" size="sm" disabled={busy || !human} onClick={() => void answer(o)} data-testid="answer-option" className="h-auto max-w-full py-1 text-left whitespace-normal">
             {o}
           </Button>
         ))}

@@ -1,0 +1,44 @@
+{
+  "purpose": "ab-variant",
+  "model": "claude-opus-5-5",
+  "data": {
+    "summary": "Report the partial-type rule MsgPack011 for SuppressSourceGeneration types as well; MsgPack016 and MsgPack017 stay unreported, as in 3.1.0.",
+    "quote_supporting_both": "With `SuppressSourceGeneration = true`, the MessagePack analyzer still reports its diagnostics (MsgPack0xx rules) for code that violates them.",
+    "edits": [
+      {
+        "path": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "search": "        // Do not source generate the formatter for this type if the attribute opted out.\n        if (suppressSourceGeneration is true)\n        {\n            // Skip any source generation\n            return null;\n        }\n\n        // If any property had a private setter",
+        "replace": "        // If any property had a private setter"
+      },
+      {
+        "path": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs",
+        "search": "            if (anyNonPartialTypesFound)\n            {\n                return null;\n            }\n        }\n\n        INamedTypeSymbol? formattedTypeDefinition",
+        "replace": "            if (anyNonPartialTypesFound)\n            {\n                return null;\n            }\n        }\n\n        // Do not source generate the formatter for this type if the attribute opted out.\n        if (suppressSourceGeneration is true)\n        {\n            // Skip any source generation\n            return null;\n        }\n\n        INamedTypeSymbol? formattedTypeDefinition"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs",
+        "search": "[{|MsgPack015:MessagePackObject(SuppressSourceGeneration = true)|}]\npublic class Foo\n{",
+        "replace": "[{|MsgPack015:MessagePackObject(SuppressSourceGeneration = true)|}]\npublic class {|MsgPack011:Foo|}\n{"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs",
+        "search": "    public async Task SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed()\n    {\n        // The partial-class requirement (MsgPack011) and the AOT-only checks (MsgPack016, MsgPack017)\n        // only matter when a formatter is generated, so they are not reported for a suppressed type.\n        string input = Preamble + @\"\n[MessagePackObject(AllowPrivate = true, SuppressSourceGeneration = true)]\npublic class Foo\n{",
+        "replace": "    public async Task PartialTypeRequiredIsReportedButAotChecksAreNotWhenSuppressed()\n    {\n        // The partial-class requirement (MsgPack011) is reported for a suppressed type,\n        // while the AOT-only checks (MsgPack016, MsgPack017) are not, matching 3.1.0.\n        string input = Preamble + @\"\n[MessagePackObject(AllowPrivate = true, SuppressSourceGeneration = true)]\npublic class {|MsgPack011:Foo|}\n{"
+      },
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/SuppressSourceGenerationAnalyzerTests.cs",
+        "search": "    [Key(2)]\n    public string Prop2 { get; set; }\n}\n\";\n\n        await new VerifyCS.Test\n        {\n            TestCode = input,\n        }.RunAsync();\n    }",
+        "replace": "    [Key(2)]\n    public string Prop2 { get; set; }\n}\n\";\n\n        await new VerifyCS.Test\n        {\n            TestCode = input,\n            MarkupOptions = MarkupOptions.UseFirstDescriptor,\n        }.RunAsync();\n    }"
+      },
+      {
+        "path": "README.md",
+        "search": "The analyzer does not report the partial-class requirement ([MsgPack011](doc/analyzers/MsgPack011.md)) or the AOT-only checks ([MsgPack016](doc/analyzers/MsgPack016.md) and [MsgPack017](doc/analyzers/MsgPack017.md)) for these types, because they only apply when a formatter is generated.",
+        "replace": "The analyzer also reports the partial-class requirement ([MsgPack011](doc/analyzers/MsgPack011.md)) for these types, as it does for source generated types. As in version 3.1.0, it does not report the AOT-only checks ([MsgPack016](doc/analyzers/MsgPack016.md) and [MsgPack017](doc/analyzers/MsgPack017.md)) for these types."
+      }
+    ]
+  },
+  "input_tokens": 51628,
+  "output_tokens": 3765,
+  "ms": 31846,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

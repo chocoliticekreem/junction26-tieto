@@ -1,0 +1,73 @@
+{
+  "purpose": "lens-test-quality",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The contractless-vs-attributes requirement ('If T does carry MessagePack attributes, they are honoured') is implemented nowhere in the collector and untested; CreateContractlessMembers ignores [Key]/[IgnoreMember]/[DataContract] on T. No test uses an external type with attributes.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:107",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add execution test with a type bearing [DataMember]/[IgnoreMember] or [MessagePackObject]+[Key] formatted via [GeneratedMessagePackFormatter]; assert keys follow attributes. Expected to fail."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Contractless member ordering and filter are untested beyond the single fixmap header: the OrderBy(Name) ordinal sort and IsPublicReadWrite (public fields, non-public setters, init-only, inherited members) have no tests. Fields are never exercised since all test types use properties only.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:IsPublicReadWrite IFieldSymbol branch swap-boolean: !field.IsReadOnly -> field.IsReadOnly; expected to survive because no external test type has public fields."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The GeneratorUtilities guard excluding [GeneratedMessagePackFormatter] classes from hand-written formatter registration is not directly tested; the only coverage is IsType assertions, so removal might produce a duplicate registration or a compile error that is not isolated. No snapshot test covers it.",
+        "location": "src/MessagePack.SourceGenerator/GeneratorUtilities.cs:37",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratorUtilities.cs:37 remove-guard: delete the !symbol.GetAttributes().Any(...) clause; expected to survive or fail only through unrelated compile errors, with no targeted assertion."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "Missing negative and positive generator snapshot tests: no test verifies generated output for the happy path (partial class body text), the no-parameterless-constructor path, the inaccessible type path, a generic type, or surrogate duplicate keys (MsgPack006) and missing [Key] (MsgPack003). Only the mixed-key case is covered.",
+        "location": "tests/MessagePack.SourceGenerator.Tests/GeneratedMessagePackFormatterTests.cs:210",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:~170 delete-statement: remove the claimedKeys.Add duplicate check (return null); expected to survive because no test has duplicate surrogate keys."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The surrogate test only checks the array header length (8) and a round trip; it never verifies that keys 3 and 7 carry the right values, so swapping the key assignment would survive. Also a string-key surrogate path (members.Count as intKey) is untested.",
+        "location": "tests/MessagePack.SourceGenerator.ExecutionTests/GeneratedFormatterForExternalTypesTests.cs:62",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "mutation",
+          "detail": "GeneratedFormatterCollector.cs:CreateSurrogateMembers off-by-one: intKey: intKey -> intKey+0 swapped for Id/Name keys; round-trip would still pass, only the header check on count exists."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The MapMode execution test project excludes the new tests, so the template change for IsUserDeclaredFormatter in the string-key template is only exercised via contractless; the int-key FormatterTemplate branch is covered only by the surrogate test. Existing snapshot tests for non-user formatters are not shown to check unchanged output.",
+        "location": "tests/MessagePack.SourceGenerator.MapModeExecutionTests/MessagePack.SourceGenerator.MapModeExecutionTests.csproj:14",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Rerun the generator snapshot tests to confirm the template edit leaves existing 'internal sealed class' output byte-identical."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 24858,
+  "output_tokens": 1612,
+  "ms": 13463,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

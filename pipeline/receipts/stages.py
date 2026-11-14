@@ -22,6 +22,7 @@ Contract for a stage function `fn(ctx: ReviewContext) -> StageResult`:
     wrap the loop in `with sandbox.lock(wt):` and call sandbox.reset(wt) after each mutant.
 """
 
+import re
 import traceback
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -72,9 +73,104 @@ class StageResult:
     ran: list[str] = field(default_factory=list)
 
 
+def _style_examples(ctx: ReviewContext) -> list[dict]:
+    from .lenses import EXAMPLE_FILES
+
+    out = []
+    for rel in EXAMPLE_FILES:
+        for wt in (ctx.head_wt, ctx.base_wt):
+            if wt is not None and (wt / rel).exists():
+                out.append({"path": rel, "content": (wt / rel).read_text()})
+                break
+    return out
+
+
+def _tie_findings_to_tests(findings: list[Finding], tests: list) -> list[Finding]:
+    """A finding whose receipt plan is a test from its own lens names that test in the plan detail,
+    so the receipt checks can match it to the executed test run."""
+    out = []
+    for f in findings:
+        own = [t for t in tests if t.lens == f.lens]
+        if f.receipt_plan.kind != "test" or not own:
+            out.append(f)
+            continue
+        text = f"{f.receipt_plan.detail} {f.location} {f.claim}"
+        named = [t for t in own
+                 if Path(t.path).stem in text or any(n.rsplit(".", 1)[-1] in text for n in t.test_names)]
+        plans = sum(1 for g in findings if g.lens == f.lens and g.receipt_plan.kind == "test")
+        tied = named or (own if len(own) == 1 and plans == 1 else [])
+        names_any = any(n.rsplit(".", 1)[-1] in text for t in tied for n in t.test_names)
+        names = [] if names_any else [n for t in tied for n in t.test_names]
+        if names:
+            detail = f"{f.receipt_plan.detail} (generated tests: {', '.join(names)})"
+            f = f.model_copy(update={"receipt_plan": f.receipt_plan.model_copy(update={"detail": detail})})
+        out.append(f)
+    return out
+
+
+def _citation_evidence(citations: list[Finding], ledger: list[dict]) -> list[Evidence]:
+    from .lenses.base import render_ledger
+
+    rendered = render_ledger(ledger).splitlines() if ledger else []
+    out = []
+    for f in citations:
+        refs = [int(n) for n in re.findall(r"\[L(\d+)\]", f.receipt_plan.detail)]
+        cited = [rendered[n - 1] for n in refs if 0 < n <= len(rendered)]
+        out.append(Evidence(
+            id=f"ledger-{f.id}", kind="ledger-citation",
+            title=f"{f.lens}: deliberate per ledger, not a defect: {f.claim}",
+            result="pass" if cited else "partial",
+            details={"lens": f.lens, "claim": f.claim, "location": f.location,
+                     "cited_entries": cited, "plan": f.receipt_plan.detail},
+            excerpt="\n".join(cited)[:1000] or "cited ledger entry not found"))
+    return out
+
+
 def run_lenses(ctx: ReviewContext) -> StageResult:
-    """[4] Lenses (Track C). Default: nothing runs; the verdict declares every lens unchecked."""
-    return StageResult()
+    """[4] Six independent lenses (lenses.run_all_lenses), each with minimal context."""
+    from . import context as review_context
+    from . import runstore
+    from .lenses import run_all_lenses
+    from .lenses.harness import TEST_PROJECT_DIR
+
+    areas_by_file = {f.path: f.area for f in ctx.intake.files}
+    touched = sorted({f.area for f in ctx.intake.files if f.kind != "generated"})
+    ledger = review_context.review_ledger(touched)
+    out = run_all_lenses(ctx.requirement_id, ctx.requirement_text, ctx.intake.hunks,
+                         ctx.routing.routes, ledger, _style_examples(ctx),
+                         change_id=ctx.change_id, areas=areas_by_file)
+
+    for t in out.generated_tests:
+        rel = t.path.removeprefix(TEST_PROJECT_DIR + "/")
+        ctx.generated_tests.append({"lens": t.lens, "path": rel, "content": t.content,
+                                    "test_names": t.test_names, "expects": t.expects})
+        dest = ctx.run_dir / "generated" / t.lens / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(t.content)
+
+    ran = [r.lens for r in out.runs if r.status == "ok"]
+    runstore.write(ctx.run_dir, "lenses.json", {
+        "lenses": [{"lens": r.lens, "status": r.status, "detail": r.detail, "model": r.model,
+                    "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
+                    "cost_usd": r.cost_usd, "ms": r.ms, "from_fixture": r.from_fixture,
+                    "hunks": len(r.hunk_ids)} for r in out.runs],
+        "total_cost_usd": out.total_cost_usd,
+        "ledger_entries": len(ledger),
+        "ambiguity": out.ambiguity,
+        "candidate_questions": len(out.candidate_questions),
+        "questions_after_budget": len(out.questions),
+        "generated_tests": [{"lens": t.lens, "path": t.path, "test_names": t.test_names,
+                             "expects": t.expects} for t in out.generated_tests],
+    })
+    return StageResult(
+        findings=_tie_findings_to_tests(out.findings + out.hunches, out.generated_tests),
+        evidence=_citation_evidence(out.citations, ledger),
+        questions=out.questions,
+        not_checked=out.not_checked,
+        refused=out.refusals,
+        interpretations=out.interpretations,
+        ran=ran,
+    )
 
 
 def run_receipt_checks(ctx: ReviewContext) -> StageResult:

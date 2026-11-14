@@ -37,7 +37,9 @@ def registry() -> dict[str, type]:
 
 
 def resolve_auto(reg: dict[str, type]) -> str:
-    if "jev" in reg and config.JEV_API_KEY:
+    # Recorded runs use Jev as the primary router, so a keyless MOCK_LLM replay must pick it too:
+    # another router would change the risk scores, the lens hunk selection and the fixture keys.
+    if "jev" in reg and (config.JEV_API_KEY or config.MOCK_LLM):
         return "jev"
     if "llm" in reg and (config.ANTHROPIC_API_KEY or config.MOCK_LLM):
         return "llm"

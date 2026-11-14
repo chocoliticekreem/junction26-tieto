@@ -1,0 +1,65 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "CompositeResolverTemplate emits ExcludeFromCodeCoverage unconditionally, ignoring the new Options.Generator.EmitExcludeFromCodeCoverage and the documented opt-out. README says opt-out via GeneratedMessagePackResolver(ExcludeFromCodeCoverage=false), but composite resolvers cannot be opted out, and the test for opt-out does not cover composite resolvers.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Generate a CompositeResolver with ExcludeFromCodeCoverage=false and assert the output has no [ExcludeFromCodeCoverage]; it will fail because the template has no condition."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The change adds a public opt-out property, GeneratedMessagePackResolverAttribute.ExcludeFromCodeCoverage, plus PublicAPI entries, though the requirement says no setting is needed. The API is optional per the requirement but permanent public surface; it is not recorded as a team preference.",
+        "location": "src/MessagePack/GeneratedMessagePackResolverAttribute.cs:34",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "REQ-2297: 'I do not feel like a setting is needed, but setting would be fine to have too'; the new public property and 4 PublicAPI.Unshipped.txt entries are added with no maintainer sign-off."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The attribute is skipped on netstandard2.0/.NETFRAMEWORK, so 'all generated code' is not covered on those targets. The README documents this limitation. Coverage is still skewed for those consumers.",
+        "location": "README.md:1640",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Guard '#if !NETSTANDARD2_0 && !NETFRAMEWORK' in every template; README line 1640 documents the limitation."
+        },
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the opt-out setting exist, or should the attribute be unconditional?",
+        "options": [
+          "Keep the opt-out property (ExcludeFromCodeCoverage on GeneratedMessagePackResolver)",
+          "Remove the setting and always emit the attribute"
+        ],
+        "why_it_matters": "If unconditional is preferred, the new public API, options plumbing and template conditions are unnecessary scope. If the opt-out is kept, the composite resolver template must honor it.",
+        "area": "serializer-runtime",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Emit the attribute on all generated formatters and resolvers by default, with an opt-out property GeneratedMessagePackResolver.ExcludeFromCodeCoverage (default true), guarded by #if !NETSTANDARD2_0 && !NETFRAMEWORK."
+      },
+      {
+        "label": "B",
+        "summary": "Emit the attribute unconditionally in every template with no setting. Remove the attribute property, the GeneratorOptions flag, the AnalyzerUtilities parsing and the PublicAPI entries, and drop the opt-out test and README sentence."
+      }
+    ]
+  },
+  "input_tokens": 17190,
+  "output_tokens": 1143,
+  "ms": 9555,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb"
+}

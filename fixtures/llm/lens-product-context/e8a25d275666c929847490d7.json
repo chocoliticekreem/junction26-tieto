@@ -1,0 +1,66 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The README documents analyzer behavior for suppressed types, but the diff does not touch AnalyzerReleases.Unshipped.md or any analyzer docs. If this fix changes which diagnostics fire for SuppressSourceGeneration types, no release note or docs record that. The README's claim that MsgPack011/016/017 are not reported is only partly covered by the tests: the 011 case is covered only because the class is non-partial, and that coverage is indirect.",
+        "location": "README.md:1620",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check that the change includes a note for the changed behavior and that the README list of reported and unreported rules matches the analyzer code. Compare README.md:1620-1632 with the analyzer's SuppressSourceGeneration handling."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The README lists MsgPack012 as reported for suppressed types, but no added test exercises MsgPack012 for a suppressed type. The README also claims MsgPack005 covers keys that are unique and 'all of the same kind', which the mixed-key test checks only through a single case.",
+        "location": "README.md:1626",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a SuppressSourceGeneration test with an inaccessible (e.g. nested private) type and expect MsgPack012. If the diagnostic does not fire, the README claim is wrong."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The ledger records that metadata-only types are deliberately skipped (L8). The change adds `continue` and ContainsKey guards in TypeCollector but leaves that early return alone. This is consistent with L8 and is not a defect.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:367",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] Types from referenced assemblies are deliberately not analysed, so no diagnostic for them is expected."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [
+      {
+        "text": "Should the analyzer report MsgPack011 (partial class required), MsgPack016 and MsgPack017 for types with SuppressSourceGeneration = true?",
+        "options": [
+          "No, these only apply when a formatter is generated (the change's choice)",
+          "Yes, report them as in 3.1.1 and later",
+          "Report them only when a GeneratedMessagePackResolver is present"
+        ],
+        "why_it_matters": "The requirement says the behavior should match 3.1.0, but nothing recorded says whether 3.1.0 reported these rules for suppressed types. If they should still be reported, the new SourceGenerationOnlyDiagnosticsAreNotReportedWhenSuppressed test and the README text are wrong. If not, the change is correct.",
+        "area": "tests",
+        "verdict_depends_on_intent": true
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Suppressed types get the full contract validation (MsgPack003, 004, 005, 012, 015), but the generation-only rules MsgPack011, 016 and 017 are skipped. This is what the change implements, along with the duplicate-key guards in TypeCollector so the analyzer does not crash."
+      },
+      {
+        "label": "B",
+        "summary": "Suppression disables only formatter emission, and the analyzer reports every diagnostic exactly as for unsuppressed types, including MsgPack011, 016 and 017. This requires removing the suppression-specific skips, and the test and README would assert that those rules are reported."
+      }
+    ]
+  },
+  "input_tokens": 9070,
+  "output_tokens": 1201,
+  "ms": 9259,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

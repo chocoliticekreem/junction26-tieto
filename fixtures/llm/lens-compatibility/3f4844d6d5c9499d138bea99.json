@@ -1,0 +1,43 @@
+{
+  "purpose": "lens-compatibility",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The new `continue` on key-kind mismatch changes generator output for users who do not set SuppressSourceGeneration. Previously a member that mixed int and string keys still fell through and was added to intMembers/stringMembers after MsgPack0xx was reported. Now it is dropped, so the generated formatter omits that member. The build already errors on the diagnostic, but users with that diagnostic suppressed or downgraded now get different generated code and different serialized bytes.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1008",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with a [MessagePackObject] type mixing [Key(0)] and [Key(\"a\")] members, with DoNotMixStringAndIntKeys severity downgraded. Regenerate on base and head and diff the generated formatter, which should differ by the dropped member. Repeat for the second `continue` at line 1148."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "The duplicate-key guards (`ContainsKey` before `Add`) silently keep the first member and drop later ones with the same key. Previously this threw an ArgumentException from Add. Whether the duplicate is reported depends on a separate analyzer path. Users who suppress that diagnostic now get a formatter that silently omits a member, and the choice of the first member depends on enumeration order.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1023",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer/generator test with two members sharing [Key(0)] (int) and two sharing [Key(\"a\")] (string). Assert the diagnostic is still reported once and that no exception is thrown. Also assert which member the generated output keeps."
+        },
+        "verdict_depends_on_intent": true
+      },
+      {
+        "claim": "Moving the suppressSourceGeneration early return later changes what runs before it: the nested-formatter-required handling, which may report diagnostics or record state, now runs even with SuppressSourceGeneration=true. That could add new diagnostics, such as MsgPack0xx for private setters not set by the constructor, in builds of users who have source generation suppressed. With warnings-as-errors those builds could break.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/TypeCollector.cs:1410",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Analyzer test with SuppressSourceGeneration=true on a type with a private-setter property that is not in the deserializing constructor. Compare diagnostics from base and head builds, and assert no new diagnostics beyond those in 3.1.0 behavior."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 5283,
+  "output_tokens": 970,
+  "ms": 8065,
+  "prompt_preview": "<requirement id=\"REQ-2234\">\n# REQ-2234: The analyzer does not work if SuppressSourceGeneration = true\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2234\nType: bug\n\n## Requirement\n\nThe analyzer does not work if `SuppressSourceGeneration = true`. This has happened since version 3.1.1. It still worked in 3.1.0.\n\n(The upstream issue contains no further text, repro or comment"
+}

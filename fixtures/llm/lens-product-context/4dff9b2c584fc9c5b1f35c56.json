@@ -1,0 +1,64 @@
+{
+  "purpose": "lens-product-context",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The change generates a formatter for a type from a referenced assembly. A context-free reviewer might see this as contradicting TypeCollector's deliberate skip of metadata-only types. The ledger records that skip as deliberate for the implicit path. The new explicit opt-in path via [GeneratedMessagePackFormatter] does not alter that behaviour.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:1",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L11] Types from referenced assemblies are deliberately not analysed or formatted by TypeCollector. The new collector is a separate explicit opt-in path and leaves CollectCore unchanged."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generated formatter defaults to contractless mode with no [MessagePackObject], which a context-free reviewer might flag against the 'explicit annotation required' policy. [L8] says that policy exists to enforce explicitness. The requirement explicitly asks for contractless-by-default here, and the opt-in attribute on the formatter supplies that explicitness, so it is acceptable.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "ledger-citation",
+          "detail": "[L8] Requiring annotations is intentional for explicitness; the [GeneratedMessagePackFormatter] attribute on the formatter is the explicit opt-in. The maintainer comment in REQ-2129 allows contractless."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The requirement says that if T carries MessagePack attributes (e.g. [MessagePackObject], [Key], [Union]), they are honoured. The collector ignores attributes on T entirely. It is always contractless or surrogate-driven, so a T with [Key] attributes would be serialized by name instead of using its declared keys.",
+        "location": "src/MessagePack.SourceGenerator/CodeAnalysis/GeneratedFormatterCollector.cs:150",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Add a type with [MessagePackObject] and [Key(0)] members, apply [GeneratedMessagePackFormatter] to a partial formatter for it, and assert that the serialized bytes are an array rather than a string-keyed map."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The new diagnostics MsgPack019-022 are added to the analyzer's descriptors and release notes. However, the analyzer's Initialize code in this diff never reports them. They are only reported from the generator via a separate path. This is a deviation from the convention that the analyzer owns MsgPack0xx diagnostics.",
+        "location": "src/MessagePack.SourceGenerator/Analyzers/MsgPack00xMessagePackAnalyzer.cs:315",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Check whether the analyzer registers any action that reports the new descriptors, versus the generator's RegisterSourceOutput reporting them. Confirm the IDE experience."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Contractless by default, plus an optional SurrogateType whose [Key]/[IgnoreMember] attributes define the keys. Attributes on T are not read. The change implements this."
+      },
+      {
+        "label": "B",
+        "summary": "Contractless by default, but if T carries [MessagePackObject]/[Key]/[Union] attributes, the generator honours them via the normal TypeCollector path. Surrogate types are not required. This needs the collector to read attributes on T."
+      }
+    ]
+  },
+  "input_tokens": 30492,
+  "output_tokens": 1303,
+  "ms": 10182,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

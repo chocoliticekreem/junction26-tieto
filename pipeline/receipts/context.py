@@ -19,7 +19,20 @@ SECTIONS = ["Product", "Users", "Public contract", "Deliberate conventions", "Ri
 DECISIONS_HEADING = "Decisions (from answered questions)"
 NO_DECISIONS = "_No decisions recorded yet._"
 AREAS = ["product", "annotations", "serializer", "generator", "analyzer", "security", "build", "docs"]
-SEED_MARKER = "<!-- seeded convention for the bait bench case -->"
+# Intake areas use code paths (intake.AREA_TABLE); context bullets use product tags (AREAS).
+# TypeCollector serves both the generator and the analyzers.
+AREA_TAGS = {
+    "type-collector": ("generator", "analyzer"),
+    "codegen-templates": ("generator",),
+    "source-generator": ("generator",),
+    "analyzer": ("analyzer",),
+    "public-api": ("annotations",),
+    "serializer-format": ("serializer",),
+    "serializer-runtime": ("serializer",),
+    "security": ("security",),
+    "docs": ("docs",),
+}
+SEED_MARKER ="<!-- seeded convention for the bait bench case -->"
 README_FOCUS = ["Analyzer", "Security", "Object Serialization"]
 GIT_LOG_LIMIT = 120
 
@@ -319,6 +332,30 @@ def entries_for_areas(areas: list[str]) -> list[str]:
             if _matches(e.area, areas):
                 out.append(f"- [area: {e.area}] Q: {e.question} A: {e.answer} "
                            f"(source: ledger, answered by {e.answered_by}, change {e.change_id})")
+    return out
+
+
+def context_tags(areas: list[str]) -> list[str]:
+    """Intake areas (intake.AREA_TABLE) plus the REVIEW_CONTEXT.md tags (AREAS) they belong to."""
+    return sorted({*areas, *(t for a in areas for t in AREA_TAGS.get(a, ()))})
+
+
+def review_ledger(areas: list[str]) -> list[dict]:
+    """What a lens sees for intake `areas`: the context bullets tagged with those areas or their
+    context tags as {"area", "text"}, plus the matching ledger.jsonl answers as LedgerEntry dicts
+    (question + area, so the question budget can tell an already-answered question)."""
+    out: list[dict] = []
+    for line in entries_for_areas(context_tags(areas)):
+        m = _BULLET_RE.match(line)
+        if m and "(source: ledger," not in m.group(2):
+            out.append({"area": m.group(1), "text": m.group(2)})
+    ledger = config.CONTEXT / "ledger.jsonl"
+    if ledger.exists():
+        for raw in ledger.read_text().splitlines():
+            if raw.strip():
+                e = LedgerEntry.model_validate_json(raw)
+                if _matches(e.area, areas):
+                    out.append(e.model_dump())
     return out
 
 

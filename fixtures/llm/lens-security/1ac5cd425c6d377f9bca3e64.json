@@ -1,0 +1,33 @@
+{
+  "purpose": "lens-security",
+  "model": "claude-sonnet-5-5",
+  "data": {
+    "findings": [
+      {
+        "claim": "The generated formatter is emitted without regard to MessagePackSecurity. Contractless string-key deserialization of an attacker-controlled external type relies on the generated StringKey template. If that template builds a dictionary or span lookup of keys, a hash-collision-resistant comparer is not involved. The generator also never routes the generated map and array reads through options.Security.DepthStep. The generated formatter for a type with nested members must call DepthStep. Nothing in the diff checks that this holds for the user-declared formatter path.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/StringKey/StringKeyFormatterTemplate.cs",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "regeneration",
+          "detail": "Add a snapshot test with [GeneratedMessagePackFormatter] on a partial formatter for an external type with a nested object member. Verify the generated Deserialize calls options.Security.DepthStep(ref reader) and reader.Depth--, then rerun the generator snapshot tests."
+        },
+        "verdict_depends_on_intent": false
+      },
+      {
+        "claim": "The generator discards all diagnostics for [GeneratedMessagePackFormatter] (reportDiagnostic: null) in the model path. If a formatter is rejected, for example when the type is not partial or the constructor is not found, no output is produced. The diagnostics are reported only through a separate pipeline step. Generated formatters register in the resolver as ObjectSerializationInfo. If the diagnostics pipeline throws or fails, the failure is silent. This reduces user-visible protection, but it is not a security hole. In particular, ReferenceSymbols.TryCreate failing silently emits no diagnostic.",
+        "location": "src/MessagePack.SourceGenerator/MessagePackGenerator.cs:112",
+        "severity": "low",
+        "receipt_plan": {
+          "kind": "code-citation",
+          "detail": "Read the generatedFormatterDiagnostics SelectMany. When ReferenceSymbols.TryCreate returns false, it returns an empty array and no diagnostic is shown."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": []
+  },
+  "input_tokens": 18585,
+  "output_tokens": 721,
+  "ms": 6800,
+  "prompt_preview": "<requirement id=\"REQ-2129\">\n# REQ-2129: Feature Request: Allow generation of Formatter for a type in a referenced assembly\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2129\nType: feature\n\n## Requirement\n\nGiven Project A (contains `ProjectA.MyType`, has no and cannot have a reference to the MessagePack NuGet package) and Project B (references Project A and MessagePack), "
+}

@@ -427,10 +427,6 @@ def verify_findings(findings: list[Finding], evidence: list[Evidence],
         by_kind.setdefault(e.kind, []).append(e)
     test_ev = [e for e in by_kind.get("fail-before-pass-after", []) + by_kind.get("new-api", [])
                if e.result == "fail" and e.details.get("failed_on_head")]
-    survivors_by_file: dict[str, list[Mutant]] = {}
-    for m in mutants:
-        if m.status == "survived":
-            survivors_by_file.setdefault(m.file, []).append(m)
     out: list[Finding] = []
     for f in findings:
         if f.verified and f.evidence_ids:
@@ -450,9 +446,11 @@ def verify_findings(findings: list[Finding], evidence: list[Evidence],
             elif len(same_lens) == 1 and lens_plans == 1:
                 ids = [same_lens[0].id]
         elif plan == "mutation":
-            path = f.location.split(":", 1)[0]
-            if survivors_by_file.get(path):
+            if matching_survivors(f, mutants):
                 ids = ["mutation"]
+                # A surviving mutant proves a gap in the change's tests, not a defect in the code.
+                if f.severity in ("high", "critical"):
+                    f = f.model_copy(update={"severity": "medium"})
         elif plan == "byte-diff":
             ids = [e.id for e in by_kind.get("byte-diff", []) if e.result == "fail"]
         elif plan == "regeneration":
@@ -461,6 +459,41 @@ def verify_findings(findings: list[Finding], evidence: list[Evidence],
             f = f.model_copy(update={"verified": True, "evidence_ids": ids})
         out.append(f)
     return out
+
+
+def refuted_findings(findings: list[Finding], evidence: list[Evidence]) -> dict[str, str]:
+    """Unverified test-plan findings whose own generated test ran and passed on head: the claimed
+    defect did not show. Finding id -> the evidence id that refutes it."""
+    tests = [e for e in evidence if e.kind in ("fail-before-pass-after", "new-api")
+             and e.result in ("pass", "partial") and e.details.get("test_names")]
+    out: dict[str, str] = {}
+    for f in findings:
+        if f.verified or f.receipt_plan.kind != "test":
+            continue
+        text = f"{f.receipt_plan.detail} {f.location} {f.claim}"
+        same_lens = [e for e in tests if e.details.get("lens") == f.lens]
+        # Only a test the finding names refutes it; removing a claim needs a direct link.
+        named = [e for e in same_lens if any(_short(n) in text for n in e.details["test_names"])]
+        if named:
+            out[f.id] = named[0].id
+    return out
+
+
+MUTANT_LINE_WINDOW = 2
+
+
+def matching_survivors(f: Finding, mutants: list[Mutant]) -> list[Mutant]:
+    """Survivors that back a mutation-plan finding: same file, within MUTANT_LINE_WINDOW lines of a
+    line the finding names, and the same operator when the finding names one."""
+    path = f.location.split(":", 1)[0]
+    text = f"{f.location} {f.receipt_plan.detail}"
+    lines = {int(n) for n in re.findall(re.escape(Path(path).name) + r":(\d+)", text)}
+    ops = {op for op in ("negate-condition", "remove-guard", "off-by-one", "swap-boolean",
+                         "delete-statement") if op in f.receipt_plan.detail}
+    return [m for m in mutants
+            if m.status == "survived" and m.file == path
+            and any(abs(m.line - n) <= MUTANT_LINE_WINDOW for n in lines)
+            and (not ops or m.operator in ops)]
 
 
 def _short(test_name: str) -> str:
@@ -497,11 +530,21 @@ def run_receipt_checks(ctx: ReviewContext) -> StageResult:
         res.ran.append("byte-diff")
 
     ctx.findings = verify_findings(ctx.findings, res.evidence, res.mutants)
-    claimed = {f.location.split(":", 1)[0] for f in ctx.findings
-               if f.lens == "test-quality" and f.verified and "mutation" in f.evidence_ids}
+    refuted = refuted_findings(ctx.findings, res.evidence)
+    for e in res.evidence:
+        gone = [f for f in ctx.findings if refuted.get(f.id) == e.id]
+        if gone:
+            e.details["refutes"] = [{"id": f.id, "lens": f.lens, "claim": f.claim} for f in gone]
+            e.title += f"; refutes {len(gone)} lens claim(s): {', '.join(f.id for f in gone)}"
+    ctx.findings = [f for f in ctx.findings if f.id not in refuted]
+    claimed = {(m.file, m.line) for f in ctx.findings
+               if f.verified and "mutation" in f.evidence_ids
+               for m in matching_survivors(f, res.mutants)}
     compat_claimed = any(f.lens == "compatibility" and f.verified
                          and "compat-bytes" in f.evidence_ids for f in ctx.findings)
     res.findings = [*ctx.findings,
-                    *[f for f in survivor_findings if f.location.split(":", 1)[0] not in claimed],
+                    *[f for f in survivor_findings
+                      if tuple(f.location.rsplit(":", 1)) not in
+                      {(p, str(n)) for p, n in claimed}],
                     *([] if compat_claimed else compat_findings)]
     return res

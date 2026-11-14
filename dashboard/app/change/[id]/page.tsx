@@ -154,7 +154,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
               <TableBody>
                 {r.checked.map((c, i) => (
                   <TableRow key={i}>
-                    <TableCell className="py-1.5 text-sm">
+                    <TableCell className="min-w-56 py-1.5 text-sm whitespace-normal [overflow-wrap:anywhere]">
                       {c.what}
                       {c.evidence_id && (
                         <a href={`#evidence-${c.evidence_id}`} className="ml-2 font-mono text-[11px] text-primary underline-offset-4 hover:underline">

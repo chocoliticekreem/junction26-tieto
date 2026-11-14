@@ -1,0 +1,262 @@
+[
+  {
+    "id": "requirement-tests-1",
+    "lens": "requirement-tests",
+    "claim": "Generated code for netstandard2.0 and .NET Framework targets is not decorated. Every template wraps the attribute in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`. `System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute` exists in .NET Framework 4.0+ and in netstandard2.0, and it can target classes there. So the exclusion is unnecessary and breaks the criterion 'All generated code is decorated' for a large share of consumers (netstandard2.0 libraries, .NET Framework apps). The README documents the gap rather than closing it.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:15",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageDownlevelTargetTests.GeneratedTypesAreExcludedWhenTargetSymbolIsDefined (NETSTANDARD2_0 / NETFRAMEWORK). The generated formatter and resolver types lack the attribute, so the test fails on head. Supporting premise: resolve ReferenceAssemblies.NetStandard.NetStandard20 and ReferenceAssemblies.NetFramework.Net472.Default and show that compilation.GetTypeByMetadataName(\"System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute\") is non-null."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-2"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-1",
+    "lens": "logic-edge",
+    "claim": "Every opt-in emission is wrapped in `#if !NETSTANDARD2_0 && !NETFRAMEWORK`, so a consumer project targeting netstandard2.0 or .NET Framework (net472, net48) gets no `[ExcludeFromCodeCoverage]` on any generated formatter or resolver. `System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute` has existed since .NET Framework 4.0 and is in netstandard2.0, and it has always allowed AttributeTargets.Class. Only AttributeTargets.Assembly was added later. The guard therefore drops the attribute on targets where it compiles fine. That breaks 'all generated code is decorated' for netstandard2.0 libraries, which are the most common MessagePack consumers.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:15",
+    "severity": "high",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageNetStandardReceipts.FormattersAreDecoratedWhenNetStandard20SymbolDefined. It first proves the attribute compiles on a class against netstandard2.0 reference assemblies. It then runs MessagePackGenerator with preprocessor symbol NETSTANDARD2_0 and asserts the generated formatter and resolver class declarations carry the attribute. It fails on head because the attribute sits in a disabled #if region."
+    },
+    "verified": true,
+    "evidence_ids": [
+      "gentest-3"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-2",
+    "lens": "logic-edge",
+    "claim": "CompositeResolverTemplate.tt adds the attribute to the nested `FormatterCache<T>` class (second .tt hunk), but CompositeResolverTemplate.cs, the precompiled T4 output that is actually built, has only the outer-class change. The two are out of sync: the shipped composite resolver's FormatterCache is not decorated, and rerunning T4 would change the .cs.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:35",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Re-run the T4 transform for CompositeResolverTemplate.tt and diff against the committed CompositeResolverTemplate.cs. The FormatterCache<T> attribute lines will appear only in the regenerated output."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-1",
+    "lens": "compatibility",
+    "claim": "The `#if !NETSTANDARD2_0 && !NETFRAMEWORK` guard drops the attribute on netstandard2.0 and .NET Framework targets, but the requirement says all generated code is decorated. On those targets the coverage skew the issue describes remains. Separately, a netstandard2.1 or netcoreapp project that defines no NETSTANDARD2_0 symbol gets the attribute. Whether the exclusion is intentional depends on product intent.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/FormatterTemplate.tt:14",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Run the generator snapshot tests and inspect the verified output for a netstandard2.0 or net472 compilation. Check that generated formatters carry no ExcludeFromCodeCoverage attribute under those symbols."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "compatibility-2",
+    "lens": "compatibility",
+    "claim": "CompositeResolverTemplate emits the attribute unconditionally, ignoring the EmitExcludeFromCodeCoverage option, while every other template honors it. Setting ExcludeFromCodeCoverage=false therefore still decorates the composite resolver and its FormatterCache, so the opt-out is inconsistent.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Generate a composite resolver with [GeneratedMessagePackResolver(ExcludeFromCodeCoverage=false)] and assert the output contains no ExcludeFromCodeCoverage."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "compatibility-4",
+    "lens": "compatibility",
+    "claim": "The TransformUtilities change from emitting \"{\" to \"{\\r\\n\" for nesting types with constraints changes generated output for every nested generic-constrained type. This is a whitespace change, but it alters user-visible, checked-in generated output outside the requirement's scope.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "regeneration",
+      "detail": "Rerun the snapshot tests for nested generic types with constraints and confirm that only the added newline differs from the base snapshots."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "product-context-1",
+    "lens": "product-context",
+    "claim": "CompositeResolverTemplate emits ExcludeFromCodeCoverage unconditionally, ignoring the new Options.Generator.EmitExcludeFromCodeCoverage and the documented opt-out. README says opt-out via GeneratedMessagePackResolver(ExcludeFromCodeCoverage=false), but composite resolvers cannot be opted out, and the test for opt-out does not cover composite resolvers.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "test",
+      "detail": "Generate a CompositeResolver with ExcludeFromCodeCoverage=false and assert the output has no [ExcludeFromCodeCoverage]; it will fail because the template has no condition."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-1",
+    "lens": "test-quality",
+    "claim": "The CompositeResolverTemplate (both .tt and .cs) emits the attribute unconditionally and ignores Options.Generator.EmitExcludeFromCodeCoverage. The opt-out test only exercises the GeneratedMessagePackResolver path, so it never covers CompositeResolver generation, and the opt-out cannot be shown to work for it.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.cs:27 remove-guard: unconditional attribute emission -> n/a; ExcludeFromCodeCoverageCanBeDisabled never generates a composite resolver, and AllGeneratedTypesAreExcludedFromCodeCoverage has no composite resolver input, so removing the attribute from CompositeResolverTemplate (lines 27 or 56) is expected to survive."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-2",
+    "lens": "test-quality",
+    "claim": "AllGeneratedTypesAreExcludedFromCodeCoverage only checks that each file contains the attribute at least once. Generated files have multiple types (resolver, FormatterCache, GetFormatterHelper), so deleting the attribute from the nested FormatterCache or GetFormatterHelper emission in ResolverTemplate leaves the test passing. The guard test only compares attribute count with guarded count, so it is also satisfied when fewer attributes are emitted.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:59",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.cs:59 delete-statement: Write(\"#if ...ExcludeFromCodeCoverage...\") for FormatterCache<T> and GetFormatterHelper -> removed; expected to survive because the resolver file still contains the attribute on the outer partial class."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-3",
+    "lens": "test-quality",
+    "claim": "The opt-out test only asserts that the attribute string is absent. It does not check that the generated output still compiles or that the #if guard is gone. Mutating the AnalyzerUtilities default `is not false` to `is true` would make a missing named argument disable the attribute, which AllGeneratedTypesAreExcludedFromCodeCoverage would catch, but there is no test that a resolver with other named arguments (e.g. UseMapMode only) keeps the default. The `is not false` parsing is only indirectly covered.",
+    "location": "src/MessagePack.SourceGenerator/Utils/AnalyzerUtilities.cs:76",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Utils/AnalyzerUtilities.cs:76 swap-boolean: `is not false` -> `is true`; expected to be killed by the default test, but a variant that ignores the argument and always returns true survives all tests except ExcludeFromCodeCoverageCanBeDisabled. Add a test combining UseMapMode=true with the default."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "test-quality-4",
+    "lens": "test-quality",
+    "claim": "The tests only assert on generated text. No test compiles the generated output against netstandard2.0, net472 or net8.0 to prove the #if guard yields valid code, which is an acceptance criterion. The TransformUtilities change (`{` -> `{\\r\\n`) that alters nesting-type output for constrained types has no dedicated test beyond snapshots.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "src/MessagePack.SourceGenerator/Transforms/TransformUtilities.cs:58 swap-boolean: `anyConstraints ? \"{\\r\\n\" : ...` -> `anyConstraints ? \"{\" : ...`; expected to survive unless a snapshot covers a nested generic type with constraints. Confirm via regeneration."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "requirement-tests-2",
+    "lens": "requirement-tests",
+    "claim": "The new opt-out does not apply to composite resolvers. CompositeResolverTemplate emits `[ExcludeFromCodeCoverage]` on the composite resolver and its FormatterCache<T> unconditionally, while every other template checks Options.Generator.EmitExcludeFromCodeCoverage. The README says all generated resolvers carry the attribute and that `ExcludeFromCodeCoverage = false` opts out, but a composite resolver cannot be opted out.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "CompositeResolverTemplate.tt lines 7-9 and 35-37 have no `<# if (Options.Generator.EmitExcludeFromCodeCoverage) #>` guard, unlike ResolverTemplate.tt, FormatterTemplate.tt, EnumTemplate.tt, UnionTemplate.tt and StringKeyFormatterTemplate.tt. README.md:1639-1641 promises a uniform opt-out."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "logic-edge-3",
+    "lens": "logic-edge",
+    "claim": "The composite resolver template emits the attribute unconditionally and ignores the new opt-out. Every other template checks Options.Generator.EmitExcludeFromCodeCoverage, so a user who opts out still gets the attribute on [CompositeResolver]-generated classes.",
+    "location": "src/MessagePack.SourceGenerator/Transforms/CompositeResolverTemplate.tt:7",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "CompositeResolverTemplate.tt lines 7-9 and 35-37 have no `<# if (Options.Generator.EmitExcludeFromCodeCoverage) #>` guard, unlike ResolverTemplate.tt, FormatterTemplate.tt, EnumTemplate.tt, UnionTemplate.tt and StringKeyFormatterTemplate.tt."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "compatibility-3",
+    "lens": "compatibility",
+    "claim": "The option is read with `GetSingleNamedArgumentValue(\"ExcludeFromCodeCoverage\") is not false`. A missing or non-bool value falls back to true, which is fine. But the new public settable property on GeneratedMessagePackResolverAttribute is a public API addition. Adding a named property to the shipped attribute can break an existing user type that has a conflicting generated member or a source-level subclass. The attribute is probably sealed, so the risk is low. A new public API with an opt-out is also optional per the requirement.",
+    "location": "src/MessagePack/GeneratedMessagePackResolverAttribute.cs:34",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Check that GeneratedMessagePackResolverAttribute is sealed, and that the PublicAPI.Unshipped.txt files for all TFMs list the new members. The net8.0, net472, netstandard2.0 and netstandard2.1 files are included."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "product-context-2",
+    "lens": "product-context",
+    "claim": "The change adds a public opt-out property, GeneratedMessagePackResolverAttribute.ExcludeFromCodeCoverage, plus PublicAPI entries, though the requirement says no setting is needed. The API is optional per the requirement but permanent public surface; it is not recorded as a team preference.",
+    "location": "src/MessagePack/GeneratedMessagePackResolverAttribute.cs:34",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "REQ-2297: 'I do not feel like a setting is needed, but setting would be fine to have too'; the new public property and 4 PublicAPI.Unshipped.txt entries are added with no maintainer sign-off."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "product-context-3",
+    "lens": "product-context",
+    "claim": "The attribute is skipped on netstandard2.0/.NETFRAMEWORK, so 'all generated code' is not covered on those targets. The README documents this limitation. Coverage is still skewed for those consumers.",
+    "location": "README.md:1640",
+    "severity": "low",
+    "receipt_plan": {
+      "kind": "code-citation",
+      "detail": "Guard '#if !NETSTANDARD2_0 && !NETFRAMEWORK' in every template; README line 1640 documents the limitation."
+    },
+    "verified": false,
+    "evidence_ids": [],
+    "verdict_depends_on_intent": true
+  },
+  {
+    "id": "mutation-survivor-m1",
+    "lens": "test-quality",
+    "claim": "the change's tests do not detect swap-boolean at src/MessagePack.SourceGenerator/CodeAnalysis/AnalyzerOptions.cs:206",
+    "location": "src/MessagePack.SourceGenerator/CodeAnalysis/AnalyzerOptions.cs:206",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "public bool EmitExcludeFromCodeCoverage { get; init; } = true; -> public bool EmitExcludeFromCodeCoverage { get; init; } = false;"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  },
+  {
+    "id": "mutation-survivor-m3",
+    "lens": "test-quality",
+    "claim": "the change's tests do not detect swap-boolean at src/MessagePack/GeneratedMessagePackResolverAttribute.cs:35",
+    "location": "src/MessagePack/GeneratedMessagePackResolverAttribute.cs:35",
+    "severity": "medium",
+    "receipt_plan": {
+      "kind": "mutation",
+      "detail": "public bool ExcludeFromCodeCoverage { get; set; } = true; -> public bool ExcludeFromCodeCoverage { get; set; } = false;"
+    },
+    "verified": true,
+    "evidence_ids": [
+      "mutation"
+    ],
+    "verdict_depends_on_intent": false
+  }
+]
