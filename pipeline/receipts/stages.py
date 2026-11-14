@@ -172,6 +172,7 @@ def run_lenses(ctx: ReviewContext) -> StageResult:
     ran = [r.lens for r in out.runs if r.status == "ok"]
     runstore.write(ctx.run_dir, "lenses.json", {
         "lenses": [{"lens": r.lens, "status": r.status, "detail": r.detail, "model": r.model,
+                    "effort": r.effort,
                     "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
                     "cost_usd": r.cost_usd, "ms": r.ms, "from_fixture": r.from_fixture,
                     "hunks": len(r.hunk_ids)} for r in out.runs],

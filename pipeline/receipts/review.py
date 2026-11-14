@@ -1,8 +1,9 @@
 """`receipts review`: one change end to end, every artifact written under runs/<change>/<ts>/."""
 
+import shutil
 from pathlib import Path
 
-from . import config, runstore, sandbox, stages
+from . import config, llm, runstore, sandbox, stages
 from .intake import run_intake
 from .models import Evidence, Interpretation, NotChecked, TestRun
 from .routers.combine import route_all
@@ -38,6 +39,29 @@ def _test_evidence(run: TestRun, side: str) -> Evidence:
     )
 
 
+def _collect(run_dir, change, req, title, req_text, req_missing, intake, routing) -> int:
+    """collect mode: queue the LLM requests this review would make, then discard the run. Lens and
+    reader prompts depend on intake, routing, the ledger and two style files read from the
+    worktrees, never on builds or tests, so nothing is built. Queued router requests stop the
+    review before the lenses: their hunk selection depends on the router's answers."""
+    try:
+        if llm.pending_count() == 0:
+            base_wt = sandbox.worktree("base", intake.base)
+            head_wt = sandbox.worktree("head", intake.head_sha)
+            stages.run_lenses(stages.ReviewContext(
+                run_dir=run_dir, change_id=change, requirement_id=req, requirement_title=title,
+                requirement_text=req_text, requirement_missing=req_missing, intake=intake,
+                routing=routing, base_sha=intake.base, head_sha=intake.head_sha, base_wt=base_wt,
+                head_wt=head_wt, base_build_ok=False, head_build_ok=False, base_tests=None,
+                head_tests=None, skip_mutation=True))
+        print(f"[collect] {llm.pending_count()} LLM request(s) queued; run discarded")
+    finally:
+        shutil.rmtree(run_dir, ignore_errors=True)
+        if run_dir.parent.exists() and not any(run_dir.parent.iterdir()):
+            run_dir.parent.rmdir()
+    return 0
+
+
 def run_review(change: str, req: str, base: str | None = None, router: str = "auto",
                skip_mutation: bool = False, req_tests_fixture: bool = False,
                head: str | None = None, ab_reading: Interpretation | None = None,
@@ -61,6 +85,8 @@ def run_review(change: str, req: str, base: str | None = None, router: str = "au
                     for d in ("deep", "light", "regeneration")}
     print(f"[2] routing ({routing.router}): max risk "
           f"{max((r.risk for r in routing.routes), default=1)}, {depth_counts}")
+    if config.LLM_MODE == "collect":
+        return _collect(run_dir, change, req, title, req_text, req_missing, intake, routing)
 
     commands = []
     tests: list[TestRun] = []

@@ -27,7 +27,7 @@ nothing that contradicts it?
 SPEC = LensSpec(
     name="requirement-tests",
     model=config.MODEL_DEEP,
-    effort="high",
+    effort=config.LENS_EFFORT["requirement-tests"],
     system=SYSTEM,
     select=requirement_scope,
     extra_properties={**GENERATED_TESTS_PROPERTY, **AMBIGUITY_PROPERTIES},

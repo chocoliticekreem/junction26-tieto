@@ -269,10 +269,14 @@ def _json(path: Path, default=None):
     return json.loads(path.read_text()) if path.exists() else default
 
 
-def run_case(entry: dict, mode: str, seq: int, log_dir: Path) -> dict:
+def _review_cmd(entry: dict) -> list[str]:
+    return [sys.executable, "-m", "receipts.cli", "review", "--change", entry["id"],
+            "--req", entry["requirement"], "--no-ab"]
+
+
+def run_case(entry: dict, mode: str, seq: int, log_dir: Path, env: dict | None = None) -> dict:
     before = _latest(entry["id"])
-    cmd = [sys.executable, "-m", "receipts.cli", "review", "--change", entry["id"],
-           "--req", entry["requirement"], "--no-ab"]
+    cmd = _review_cmd(entry)
     log = log_dir / f"{entry['id']}.log"
     rec: dict = {"id": entry["id"], "mode": mode, "seq": seq,
                  "log": str(log.relative_to(config.RUNS))}
@@ -280,7 +284,8 @@ def run_case(entry: dict, mode: str, seq: int, log_dir: Path) -> dict:
     try:
         with open(log, "w") as fh:
             proc = subprocess.run(cmd, cwd=str(config.PIPELINE), stdout=fh,
-                                  stderr=subprocess.STDOUT, timeout=CASE_TIMEOUT_S)
+                                  stderr=subprocess.STDOUT, timeout=CASE_TIMEOUT_S,
+                                  env={**os.environ, **(env or {})})
         rec["exit_code"] = proc.returncode
     except subprocess.TimeoutExpired:
         rec["exit_code"], rec["error"] = 124, f"timeout after {CASE_TIMEOUT_S}s"
@@ -415,22 +420,123 @@ def prune_raw(run_dir: Path) -> int:
 
 
 def _finish_case(fut, entry: dict, mode: str, seq: int, commit: str, keep: set[str],
-                 oracle_log: list[dict]) -> dict:
+                 oracle_log: list[dict], oracle: bool = True) -> dict:
     try:
         rec = fut.result()
     except Exception as e:  # noqa: BLE001 - one broken case must not stop the bench
         rec = {"id": entry["id"], "mode": mode, "seq": seq, "error": f"{type(e).__name__}: {e}"}
-    if mode == "cold" and rec.get("run"):
-        answers = answer_with_oracle(entry, config.RUNS / rec["run"])
-        rec["oracle_answers"] = len(answers)
-        oracle_log += [{"id": entry["id"], **a} for a in answers]
+    if oracle and mode == "cold" and rec.get("run"):
+        _oracle_case(entry, rec, oracle_log)
     rec["worktrees_removed"] = cleanup_worktrees(entry, commit, keep)
     if rec.get("run"):
         prune_raw(config.RUNS / rec["run"])
     return rec
 
 
-def run(warm: bool = False, only: str | None = None, jobs: int = DEFAULT_JOBS) -> int:
+def _oracle_case(entry: dict, rec: dict, oracle_log: list[dict]) -> None:
+    answers = answer_with_oracle(entry, config.RUNS / rec["run"])
+    rec["oracle_answers"] = len(answers)
+    oracle_log += [{"id": entry["id"], **a} for a in answers]
+
+
+# Batch mode ----------------------------------------------------------------------------------
+#
+# `bench run --batch` answers every case's LLM calls through the Message Batches API (50% price):
+#   round r: every case runs `receipts review` with RECEIPTS_LLM_MODE=collect, which queues the
+#            requests that miss a fixture (no builds; see review._collect); the queue is submitted
+#            as one batch and the results are written as fixtures, exactly as live calls would be.
+#   A prompt that depends on an earlier answer is queued in a later round: the six lenses and
+#   three readers in round 1, the readers' orientation call in round 2 when two readers flag an
+#   ambiguity (and the Haiku router, if it is the router, goes one round ahead of the lenses).
+#   final:   every case runs in full with RECEIPTS_LLM_MODE=replay, so no live Anthropic call is
+#            possible; a request that still has no fixture is reported under "not checked".
+# In a cold batch run the oracle answers questions after the final pass, in manifest order: a case
+# answered mid-run would change the ledger later cases' prompts are built from, and those prompts
+# were already batched against the empty ledger. So every cold case sees the empty ledger.
+
+MAX_ROUNDS = 4
+
+
+def collect_case(entry: dict, log: Path) -> int:
+    env = {**os.environ, "RECEIPTS_LLM_MODE": "collect", "RECEIPTS_BATCH_DIR": str(config.BATCH_DIR)}
+    try:
+        with open(log, "w") as fh:
+            return subprocess.run(_review_cmd(entry), cwd=str(config.PIPELINE), stdout=fh,
+                                  stderr=subprocess.STDOUT, timeout=CASE_TIMEOUT_S, env=env).returncode
+    except subprocess.TimeoutExpired:
+        return 124
+
+
+def batch_rounds(entries: list[dict], jobs: int, log_dir: Path, max_usd: float | None,
+                 dry_run: bool, client=None) -> tuple[int | None, list[dict]]:
+    """Collect, estimate, batch, repeat until no case queues a request (at most MAX_ROUNDS
+    batches). Returns (exit code to stop with, or None to go on to the final pass; round log)."""
+    from . import estimate, llm
+
+    config.BATCH_DIR.mkdir(parents=True, exist_ok=True)
+    llm.failed_path().unlink(missing_ok=True)
+    history = estimate.historical_output()
+    rounds: list[dict] = []
+    for rnd in range(1, MAX_ROUNDS + 1):
+        llm.queue_path().unlink(missing_ok=True)
+        with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+            codes = dict(zip([e["id"] for e in entries], pool.map(
+                lambda e: collect_case(e, log_dir / f"{e['id']}.collect-r{rnd}.log"), entries)))
+        requests = llm.unique_requests(llm.read_jsonl(llm.queue_path()))
+        info: dict = {"round": rnd, "requests": len(requests),
+                      "collect_errors": sorted(i for i, c in codes.items() if c != 0)}
+        if info["collect_errors"]:
+            print(f"  round {rnd}: collect failed for {info['collect_errors']} (logs in {log_dir})")
+        if not requests:
+            print(f"  round {rnd}: no request left to batch")
+            rounds.append(info)
+            return None, rounds
+        lines = estimate.estimate(requests, history)
+        info["estimate"] = estimate.to_json(lines)
+        t = info["estimate"]["totals"]
+        print(f"  round {rnd}: {len(requests)} requests queued; estimate "
+              f"${t['batch_usd']:.2f} batch vs ${t['standard_usd']:.2f} live")
+        print(estimate.format_table(lines))
+        rounds.append(info)
+        if dry_run:
+            print("bench run --dry-run: estimate only, nothing submitted. Requests that depend on "
+                  "round 1 answers (an orientation call after a new reader vote) come in later "
+                  "rounds and are not included.")
+            return 0, rounds
+        if max_usd is not None and t["batch_usd"] > max_usd:
+            print(f"bench run: refusing to submit: estimated ${t['batch_usd']:.2f} exceeds "
+                  f"--max-usd {max_usd:.2f}")
+            return 2, rounds
+        rep = llm.run_batch(requests, client=client)
+        info.update(batch_id=rep.batch_id, succeeded=rep.succeeded, errored=rep.errored,
+                    cost_usd=rep.cost_usd)
+        print(f"  round {rnd}: batch {rep.batch_id}: {rep.succeeded} ok, {len(rep.errored)} failed, "
+              f"${rep.cost_usd:.2f} at batch prices")
+        for err in rep.errored:
+            print(f"    failed {err['purpose']}/{err['custom_id']}: {err['reason']}")
+    print(f"bench run: {MAX_ROUNDS} batch rounds done; any call still unanswered is reported as "
+          "not checked in the final pass")
+    return None, rounds
+
+
+def _run_cases(entries: list[dict], mode: str, jobs: int, log_dir: Path, seq_of: dict,
+               commits: dict, keep: set[str], oracle_log: list[dict], env: dict | None,
+               oracle: bool) -> list[dict]:
+    records: list[dict] = []
+    with ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        futures = {pool.submit(run_case, e, mode, seq_of[e["id"]], log_dir, env): e for e in entries}
+        for fut in as_completed(futures):
+            e = futures[fut]
+            rec = _finish_case(fut, e, mode, seq_of[e["id"]], commits[e["id"]], keep, oracle_log,
+                               oracle)
+            records.append(rec)
+            print(f"  [{len(records)}/{len(entries)}] {e['id']}: {rec.get('verdict', 'ERROR')} "
+                  f"in {rec.get('wall_s', '?')}s" + (f" ({rec['error']})" if rec.get("error") else ""))
+    return records
+
+
+def run(warm: bool = False, only: str | None = None, jobs: int = DEFAULT_JOBS,
+        batch: bool = False, max_usd: float | None = None, dry_run: bool = False) -> int:
     mode = "warm" if warm else "cold"
     manifest = load_manifest()
     entries = select_entries(manifest, only)
@@ -445,22 +551,31 @@ def run(warm: bool = False, only: str | None = None, jobs: int = DEFAULT_JOBS) -
     log_dir = config.RUNS / "_bench-logs" / mode
     log_dir.mkdir(parents=True, exist_ok=True)
     started, t0 = time.time(), time.monotonic()
-    records: list[dict] = []
     oracle_log: list[dict] = []
-    print(f"bench run [{mode}]: {len(entries)} cases, {jobs} at a time")
-    with LedgerScope(mode), ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        futures = {pool.submit(run_case, e, mode, seq_of[e["id"]], log_dir): e for e in entries}
-        for fut in as_completed(futures):
-            e = futures[fut]
-            rec = _finish_case(fut, e, mode, seq_of[e["id"]], commits[e["id"]], keep, oracle_log)
-            records.append(rec)
-            print(f"  [{len(records)}/{len(entries)}] {e['id']}: {rec.get('verdict', 'ERROR')} "
-                  f"in {rec.get('wall_s', '?')}s" + (f" ({rec['error']})" if rec.get("error") else ""))
+    batch_log: list[dict] = []
+    print(f"bench run [{mode}]: {len(entries)} cases, {jobs} at a time"
+          + (" (batch)" if batch else " (dry run)" if dry_run else ""))
+    with LedgerScope(mode):
+        if batch or dry_run:
+            stop, batch_log = batch_rounds(entries, jobs, log_dir, max_usd, dry_run)
+            if stop is not None:
+                return stop
+        env = {"RECEIPTS_LLM_MODE": "replay", "RECEIPTS_BATCH_DIR": str(config.BATCH_DIR)} if batch else None
+        records = _run_cases(entries, mode, jobs, log_dir, seq_of, commits, keep, oracle_log, env,
+                             oracle=not batch)
+        if batch and mode == "cold":
+            by_id = {r["id"]: r for r in records}
+            for e in entries:
+                if by_id.get(e["id"], {}).get("run"):
+                    _oracle_case(e, by_id[e["id"]], oracle_log)
     leaks = leak_scan(started, [config.RUNS / r["run"] for r in records if r.get("run")])
     meta = {"only": only, "jobs": jobs,
             "started_at": datetime.fromtimestamp(started, timezone.utc).isoformat(timespec="seconds"),
             "elapsed_s": round(time.monotonic() - t0, 1), "oracle_answers": oracle_log,
-            "leak_scan": leaks}
+            "leak_scan": leaks, "lens_effort": config.LENS_EFFORT}
+    if batch:
+        meta["batch"] = {"rounds": batch_log,
+                         "cost_usd": round(sum(r.get("cost_usd", 0.0) for r in batch_log), 4)}
     path = _write_summary(mode, records, meta)
     errors = sum(1 for r in records if r.get("error"))
     print(f"bench run [{mode}]: {len(records) - errors} ok, {errors} errors in {meta['elapsed_s']}s; "

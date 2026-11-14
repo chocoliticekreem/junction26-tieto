@@ -20,7 +20,7 @@ and then the right answer is zero findings.
 SPEC = LensSpec(
     name="security",
     model=config.MODEL_LENS,
-    effort="medium",
+    effort=config.LENS_EFFORT["security"],
     system=SYSTEM,
     select=risky_code_scope,
 )

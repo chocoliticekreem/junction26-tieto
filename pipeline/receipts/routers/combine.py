@@ -12,7 +12,7 @@ this run (failures are systematic: missing key, network down).
 import importlib
 import time
 
-from .. import config
+from .. import config, llm
 from ..models import Depth, FileChange, Hunk, RouteResult, RoutingReport
 from .rule import RuleRouter, floor_for
 
@@ -123,6 +123,10 @@ def route_all(hunks: list[Hunk], requirement_text: str, context: dict,
         try:
             res = other.route(h, requirement_text, hctx)
             routes.append(_merge(rule_res, res, router_name))
+        except llm.PendingLLM:
+            # collect mode: keep queueing every hunk; the review stops before any lens reads these
+            # placeholder routes (review._collect checks llm.pending_count after routing).
+            routes.append(rule_res)
         except Exception as e:  # noqa: BLE001 - a failing router must never fail the review
             fallback_reason = f"router '{router_name}' raised ({type(e).__name__}: {e}); rule result used"
             other = None
