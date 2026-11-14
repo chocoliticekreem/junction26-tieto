@@ -24,7 +24,8 @@ def main(argv: list[str] | None = None) -> int:
     bsub.add_parser("generate", help="apply plants, create mock/<issue>/<variant> branches")
     br = bsub.add_parser("run", help="review every bench variant")
     br.add_argument("--warm", action="store_true", help="keep ledger answers from the cold run")
-    br.add_argument("--only", default=None, help="substring filter on branch names")
+    br.add_argument("--only", default=None, help="substring filter on manifest ids")
+    br.add_argument("--jobs", type=int, default=3, help="cases reviewed in parallel (processes)")
 
     sub.add_parser("metrics", help="aggregate runs/ into metrics/ T1-T7")
     sub.add_parser("bootstrap-context", help="build context/REVIEW_CONTEXT.md draft from the repo")
@@ -46,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if args.bench_cmd == "generate":
             return bench.generate()
-        return bench.run(warm=args.warm, only=args.only)
+        return bench.run(warm=args.warm, only=args.only, jobs=args.jobs)
     if args.cmd == "metrics":
         from .metrics import run_metrics
 

@@ -20,8 +20,14 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
+import sys
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 
 from . import config
@@ -151,5 +157,270 @@ def generate() -> int:
     return 1 if failures else 0
 
 
-def run(warm: bool = False, only: str | None = None) -> int:
-    raise NotImplementedError("bench run lands with the metrics track")
+# Run -----------------------------------------------------------------------------------------
+#
+# Each case runs `receipts review --change <manifest id> --req <REQ>` in its own process. The change
+# id must resolve in the mock repo, so `refs/tags/<manifest id>` is pointed at the variant branch
+# first. Neither the id nor the branch name reaches a prompt: routers and lenses see hunks,
+# requirement text and ledger entries only (leak_scan checks this after every run).
+
+CASE_TIMEOUT_S = 3600
+DEFAULT_JOBS = 3
+LEAK_PATTERNS = [r"mock[/-]\d{4}", r"\bmanifest\b", r"\bbait\b", r"\bplant(ed|s)?\b",
+                 r"missing-test", r"\bdrift\b"]
+
+
+def select_entries(manifest: list[dict], only: str | None) -> list[dict]:
+    return [e for e in manifest if not only or only in e["id"]]
+
+
+def alias_ref(repo: Path, entry: dict) -> str:
+    commit = resolve_commit(repo, f"refs/heads/{entry['branch']}")
+    if commit is None:
+        raise RuntimeError(f"{entry['branch']} not in {repo}; run `receipts bench generate`")
+    _git(repo, "update-ref", f"refs/tags/{entry['id']}", commit)
+    return commit
+
+
+def _lines(path: Path) -> list[str]:
+    return [ln for ln in path.read_text().splitlines() if ln.strip()] if path.exists() else []
+
+
+def _write_lines(path: Path, lines: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("".join(ln + "\n" for ln in lines))
+    tmp.replace(path)
+
+
+def _is_oracle(line: str) -> bool:
+    from .oracle import ORACLE
+
+    try:
+        return json.loads(line).get("answered_by") == ORACLE
+    except ValueError:
+        return False
+
+
+def _strip_oracle_decisions() -> None:
+    from .oracle import ORACLE
+
+    md = config.CONTEXT / "REVIEW_CONTEXT.md"
+    if md.exists():
+        kept = [ln for ln in md.read_text().split("\n") if f"answered by {ORACLE}" not in ln]
+        md.write_text("\n".join(kept))
+
+
+class LedgerScope:
+    """Cold: ledger emptied. Warm: only the oracle's answers. Real entries come back on exit.
+
+    Real (non-oracle) entries are first merged into context/ledger.cold-backup.jsonl, so nothing a
+    person answered is lost even if the process dies mid-run.
+    """
+
+    def __init__(self, mode: str):
+        self.mode = mode
+        self.path = config.CONTEXT / "ledger.jsonl"
+        self.backup = config.CONTEXT / "ledger.cold-backup.jsonl"
+        self.real: list[str] = []
+
+    def __enter__(self):
+        lines = _lines(self.path)
+        self.real = [ln for ln in lines if not _is_oracle(ln)]
+        saved = _lines(self.backup)
+        _write_lines(self.backup, saved + [ln for ln in self.real if ln not in saved])
+        if self.mode == "cold":
+            _write_lines(self.path, [])
+            _strip_oracle_decisions()
+        else:
+            _write_lines(self.path, [ln for ln in lines if _is_oracle(ln)])
+        return self
+
+    def __exit__(self, *exc):
+        now = _lines(self.path)
+        _write_lines(self.path, self.real + [ln for ln in now if ln not in self.real])
+        return False
+
+
+def _latest(change_id: str) -> str:
+    f = config.RUNS / change_id / "latest"
+    return f.read_text().strip() if f.exists() else ""
+
+
+def _json(path: Path, default=None):
+    return json.loads(path.read_text()) if path.exists() else default
+
+
+def run_case(entry: dict, mode: str, seq: int, log_dir: Path) -> dict:
+    before = _latest(entry["id"])
+    cmd = [sys.executable, "-m", "receipts.cli", "review", "--change", entry["id"],
+           "--req", entry["requirement"]]
+    log = log_dir / f"{entry['id']}.log"
+    rec: dict = {"id": entry["id"], "mode": mode, "seq": seq,
+                 "log": str(log.relative_to(config.RUNS))}
+    t0 = time.monotonic()
+    try:
+        with open(log, "w") as fh:
+            proc = subprocess.run(cmd, cwd=str(config.PIPELINE), stdout=fh,
+                                  stderr=subprocess.STDOUT, timeout=CASE_TIMEOUT_S)
+        rec["exit_code"] = proc.returncode
+    except subprocess.TimeoutExpired:
+        rec["exit_code"], rec["error"] = 124, f"timeout after {CASE_TIMEOUT_S}s"
+    rec["wall_s"] = round(time.monotonic() - t0, 1)
+    after = _latest(entry["id"])
+    if not after or after == before:
+        rec.setdefault("error", f"no new complete run (exit {rec['exit_code']}); see {rec['log']}")
+        return rec
+    run_dir = config.RUNS / entry["id"] / after
+    (run_dir / "bench.json").write_text(json.dumps(
+        {"mode": mode, "seq": seq, "manifest_id": entry["id"], "wall_s": rec["wall_s"]}, indent=2))
+    receipt = _json(run_dir / "receipt.json")
+    routing = _json(run_dir / "routing.json", {})
+    lenses = _json(run_dir / "lenses.json")
+    rec.update(run=str(run_dir.relative_to(config.RUNS)), verdict=receipt["verdict"],
+               findings=len(receipt.get("findings", [])), hunches=len(receipt.get("hunches", [])),
+               questions=len(_json(run_dir / "questions.json", [])),
+               router=routing.get("router", ""), router_usd=routing.get("cost_usd", 0.0),
+               lens_usd=lenses.get("total_cost_usd", 0.0) if lenses else None)
+    return rec
+
+
+def answer_with_oracle(entry: dict, run_dir: Path) -> list[dict]:
+    from . import context, oracle
+    from .models import Question
+    from .questions import load_ledger
+    from .review import load_requirement
+
+    questions = [Question.model_validate(q) for q in _json(run_dir / "questions.json", [])]
+    if not questions:
+        return []
+    _, req_text, _ = load_requirement(entry["requirement"])
+    return oracle.answer_questions(questions, entry["id"], req_text, load_ledger(),
+                                   context.append_ledger)
+
+
+def _remove_worktree(path: Path) -> None:
+    from . import sandbox
+    from .gitutil import GitError, git
+
+    if not path.exists():
+        return
+    with sandbox._flock(config.WORK / ".locks" / "worktree-admin.lock"), sandbox.lock(path):
+        try:
+            git("worktree", "remove", "--force", str(path), cwd=config.MOCK_REPO)
+        except GitError:
+            shutil.rmtree(path, ignore_errors=True)
+            git("worktree", "prune", cwd=config.MOCK_REPO, check=False)
+
+
+def cleanup_worktrees(entry: dict, commit: str, keep: set[str]) -> list[str]:
+    """Drop the case's private mutation worktree and its head worktree, unless the head is shared
+    (the clean variant's head is the agent branch the sample reviews also use). Base stays."""
+    names = [f"mut-{entry['id']}"]
+    if commit not in keep:
+        names.append(f"head-{commit[:10]}")
+    removed = []
+    for n in names:
+        if (config.WORK / n).exists():
+            _remove_worktree(config.WORK / n)
+            removed.append(n)
+    return removed
+
+
+def leak_scan(since: float, run_dirs: list[Path]) -> list[dict]:
+    """Search what prompts are built from (intake hunks) and every LLM fixture written during this
+    run for bench labels: branch names, manifest ids, variant words."""
+    pats = [re.compile(p, re.I) for p in LEAK_PATTERNS]
+    sources: list[tuple[str, str]] = []
+    for f in config.FIXTURES_LLM.rglob("*.json"):
+        if f.stat().st_mtime >= since:
+            sources.append((str(f.relative_to(config.ROOT)), f.read_text(errors="replace")))
+    for d in run_dirs:
+        data = _json(d / "intake.json")
+        if data:
+            text = "\n".join(h["file"] + "\n" + h["text"] for h in data.get("hunks", []))
+            sources.append((str((d / "intake.json").relative_to(config.RUNS)), text))
+    hits: list[dict] = []
+    for name, text in sources:
+        for p in pats:
+            m = p.search(text)
+            if m:
+                hits.append({"source": name, "pattern": p.pattern,
+                             "context": text[max(0, m.start() - 60): m.end() + 60]})
+    return hits
+
+
+def _write_summary(mode: str, records: list[dict], meta: dict) -> Path:
+    """Merge by case id, so a partial (--only) re-run updates its cases and keeps the rest."""
+    path = config.RUNS / f"bench-{mode}-summary.json"
+    by_id = {r["id"]: r for r in (_json(path, {}) or {}).get("cases", [])}
+    by_id.update({r["id"]: r for r in records})
+    order = {e["id"]: i for i, e in enumerate(load_manifest())}
+    cases = sorted(by_id.values(), key=lambda r: order.get(r["id"], 999))
+    walls = [r["wall_s"] for r in cases if "wall_s" in r]
+    summary = {
+        "mode": mode, **meta, "cases": cases,
+        "totals": {
+            "cases": len(cases), "errors": sum(1 for r in cases if r.get("error")),
+            "wall_s_sum": round(sum(walls), 1), "wall_s_max": max(walls, default=0),
+            "router_usd": round(sum(r.get("router_usd") or 0 for r in cases), 6),
+            "lens_usd": round(sum(r.get("lens_usd") or 0 for r in cases), 4),
+            "verdicts": {v: sum(r.get("verdict") == v for r in cases)
+                         for v in sorted({r["verdict"] for r in cases if r.get("verdict")})},
+        },
+    }
+    config.RUNS.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(summary, indent=2) + "\n")
+    return path
+
+
+def _finish_case(fut, entry: dict, mode: str, seq: int, commit: str, keep: set[str],
+                 oracle_log: list[dict]) -> dict:
+    try:
+        rec = fut.result()
+    except Exception as e:  # noqa: BLE001 - one broken case must not stop the bench
+        rec = {"id": entry["id"], "mode": mode, "seq": seq, "error": f"{type(e).__name__}: {e}"}
+    if mode == "cold" and rec.get("run"):
+        answers = answer_with_oracle(entry, config.RUNS / rec["run"])
+        rec["oracle_answers"] = len(answers)
+        oracle_log += [{"id": entry["id"], **a} for a in answers]
+    rec["worktrees_removed"] = cleanup_worktrees(entry, commit, keep)
+    return rec
+
+
+def run(warm: bool = False, only: str | None = None, jobs: int = DEFAULT_JOBS) -> int:
+    mode = "warm" if warm else "cold"
+    manifest = load_manifest()
+    entries = select_entries(manifest, only)
+    if not entries:
+        print(f"bench run: no manifest entry matches {only!r}")
+        return 1
+    repo = mock_repo_path()
+    seq_of = {e["id"]: i for i, e in enumerate(manifest, start=1)}
+    commits = {e["id"]: alias_ref(repo, e) for e in entries}
+    keep = {c for b in config.SAMPLE_BRANCHES
+            if (c := resolve_commit(repo, f"refs/heads/{b}", f"refs/remotes/origin/{b}"))}
+    log_dir = config.RUNS / "_bench-logs" / mode
+    log_dir.mkdir(parents=True, exist_ok=True)
+    started, t0 = time.time(), time.monotonic()
+    records: list[dict] = []
+    oracle_log: list[dict] = []
+    print(f"bench run [{mode}]: {len(entries)} cases, {jobs} at a time")
+    with LedgerScope(mode), ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
+        futures = {pool.submit(run_case, e, mode, seq_of[e["id"]], log_dir): e for e in entries}
+        for fut in as_completed(futures):
+            e = futures[fut]
+            rec = _finish_case(fut, e, mode, seq_of[e["id"]], commits[e["id"]], keep, oracle_log)
+            records.append(rec)
+            print(f"  [{len(records)}/{len(entries)}] {e['id']}: {rec.get('verdict', 'ERROR')} "
+                  f"in {rec.get('wall_s', '?')}s" + (f" ({rec['error']})" if rec.get("error") else ""))
+    leaks = leak_scan(started, [config.RUNS / r["run"] for r in records if r.get("run")])
+    meta = {"only": only, "jobs": jobs,
+            "started_at": datetime.fromtimestamp(started, timezone.utc).isoformat(timespec="seconds"),
+            "elapsed_s": round(time.monotonic() - t0, 1), "oracle_answers": oracle_log,
+            "leak_scan": leaks}
+    path = _write_summary(mode, records, meta)
+    errors = sum(1 for r in records if r.get("error"))
+    print(f"bench run [{mode}]: {len(records) - errors} ok, {errors} errors in {meta['elapsed_s']}s; "
+          f"{len(oracle_log)} oracle answers; leak scan: {len(leaks)} hit(s); summary {path}")
+    return 1 if errors or leaks else 0
