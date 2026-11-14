@@ -204,6 +204,8 @@ test("sign-off writes a decision record", async ({ page }) => {
   expect(decision.evidence_ids).toContain("E-req");
   const again = await page.request.post("/api/decisions/sign-off", { data: { change_id: "ju26-issue-2283" } });
   expect(again.status()).toBe(409);
+  const md = await (await page.request.get("/api/receipt-markdown?change=ju26-issue-2283")).text();
+  expect(md).toContain(`**Signed off by: ${HUMAN}** at ${decision.ts}`);
   await page.goto("/");
   await expect(page.getByTestId("inbox-row").filter({ hasText: "ju26-issue-2283" })).toContainText(`signed off by ${HUMAN}`);
 });
@@ -224,10 +226,73 @@ test("track record renders tables, charts and trust levels", async ({ page }) =>
   await expect(page.getByTestId("table-T1")).toContainText("requirement-tests");
   await expect(page.getByTestId("table-T1")).toContainText("88%");
   await expect(page.getByTestId("table-T3")).toContainText("full review");
+  await page.getByTestId("t5-toggle").click();
   await expect(page.getByTestId("table-T5")).toContainText("warm");
   await expect(page.getByRole("img", { name: "bar chart" })).toBeVisible();
   await expect(page.getByRole("img", { name: "line chart" })).toBeVisible();
   await expect(page.getByTestId("trust-levels")).toContainText("annotations/public-api");
+});
+
+test("track record leads with headline tiles from summary.json and the new tables", async ({ page }) => {
+  await page.goto("/track-record");
+  const headline = page.getByTestId("headline");
+  const tiles = headline.getByTestId("stat-tile");
+  await expect(tiles).toHaveCount(6);
+  await expect(tiles.filter({ hasText: "Planted defects caught" }).getByTestId("stat-value")).toHaveText("19/24");
+  await expect(tiles.filter({ hasText: "Escapes" }).getByTestId("stat-value")).toHaveText("0");
+  await expect(tiles.filter({ hasText: "False alarms" }).getByTestId("stat-value")).toHaveText("4/8");
+  await expect(tiles.filter({ hasText: "Questions per change" }).getByTestId("stat-value")).toHaveText("0.25 → 0.04");
+  await expect(tiles.filter({ hasText: "routed away from humans" }).getByTestId("stat-value")).toHaveText("94%");
+  await expect(tiles.filter({ hasText: "Model cost per change" }).getByTestId("stat-value")).toHaveText("$0.68");
+  await expect(page.getByTestId("provenance")).toContainText("PR #11");
+  await expect(page.getByTestId("provenance")).toContainText("simulated human");
+
+  await expect(page.getByTestId("t5-summary")).toContainText("bait false alarms");
+  await expect(page.getByTestId("trust-history")).toContainText("source-generator/tests");
+  await expect(page.getByTestId("trust-history")).toContainText("Stayed at L1 for the whole bench: security, source-generator/analyzer");
+  await expect(page.getByRole("img", { name: /trust level over the bench/ })).toHaveCount(1);
+
+  const sample = page.getByTestId("t4-sample");
+  await expect(sample).toContainText("ju26-issue-2297");
+  await expect(sample).toContainText("15");
+  await expect(sample).toContainText("of 237 files to a human");
+  await expect(page.getByTestId("table-T4")).toBeHidden();
+  await page.getByTestId("t4-bench-toggle").click();
+  await expect(page.getByTestId("table-T4")).toContainText("mock/2283/logic");
+
+  await expect(page.getByTestId("table-T2")).toContainText("correctness");
+  await expect(page.getByTestId("t6-headline")).toContainText("233 of 233 findings shown have an executed receipt");
+  await expect(page.getByTestId("table-T7")).toContainText("PR #2305");
+});
+
+test("Copy as PR comment puts the receipt markdown on the clipboard", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/change/ju26-issue-2283");
+  await page.getByTestId("copy-pr-comment").click();
+  await expect(page.getByTestId("copy-pr-comment")).toHaveText("Copied");
+  const text = await page.evaluate(() => navigator.clipboard.readText());
+  expect(text).toContain("## Trust receipt: REQ-2283");
+  expect(text).toContain("**Verdict: Needs sign-off**");
+  await expect(page.getByTestId("receipt-markdown-link")).toHaveAttribute("href", "/api/receipt-markdown?change=ju26-issue-2283");
+});
+
+test("receipt markdown API returns a PR comment with the verdict and requirement id", async ({ request }) => {
+  const res = await request.get("/api/receipt-markdown?change=ju26-issue-2283");
+  expect(res.status()).toBe(200);
+  expect(res.headers()["content-type"]).toContain("text/markdown");
+  const md = await res.text();
+  expect(md).toContain("## Trust receipt: REQ-2283 — Fix IndexOutOfRangeException");
+  expect(md).toContain("**Verdict: Needs sign-off**");
+  expect(md).toContain("| Requirement tests fail on base, pass on head | requirement-tests | pass | `E-req` |");
+  expect(md).toContain("`F-2283-1`");
+  expect(md).toContain("`E-mut` mutation: Mutants on changed lines: 4 killed, 1 survived — partial");
+  expect(md).toContain("2 hunches withheld");
+  expect(md).toContain("Signed off by:");
+
+  const missing = await request.get("/api/receipt-markdown?change=nope");
+  expect(missing.status()).toBe(404);
+  const bad = await request.get("/api/receipt-markdown");
+  expect(bad.status()).toBe(400);
 });
 
 test("log API refuses path traversal", async ({ request }) => {

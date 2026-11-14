@@ -235,15 +235,49 @@ export interface ContextStatus {
   ts?: string;
 }
 
-/** metrics/T1.json, T3.json, T5.json. See dashboard/README.md. */
+/** metrics/T1.json … T7.json. See dashboard/README.md. */
 export interface MetricsTable {
   columns: string[];
   rows: (string | number | null)[][];
   note?: string;
 }
 
+export type MetricsTableName = "T1" | "T2" | "T3" | "T4" | "T5" | "T6" | "T7";
+
 /** metrics/trust.json: area -> level 0..3 */
 export type TrustLevels = Record<string, number>;
+
+/** metrics/trust-history.json: one event per area per bench case, in bench order. */
+export interface TrustHistoryEvent {
+  seq: number;
+  change_id: string;
+  area: string;
+  level: number;
+  event: string;
+}
+
+/** metrics/summary.json: the headline numbers. Only the keys the dashboard reads. */
+export interface MetricsSummaryMode {
+  cases: number;
+  planted: number;
+  caught: number;
+  recall: number;
+  control_bait_cases: number;
+  false_alarm_cases: number;
+  questions: number;
+  questions_per_change: number;
+  escapes: number;
+  lens_cost_usd?: number;
+  router_cost_usd?: number;
+}
+
+export interface MetricsSummary {
+  oracle?: string;
+  cold?: Partial<MetricsSummaryMode>;
+  warm?: Partial<MetricsSummaryMode>;
+  "ju26-issue-2297_routed_away_from_humans"?: { generated_files: number; files_total: number; share: number };
+  excluded_incomplete_runs?: Record<string, string[]>;
+}
 
 /** One run folder, fully loaded. Optional files may be absent. */
 export interface RunBundle {
