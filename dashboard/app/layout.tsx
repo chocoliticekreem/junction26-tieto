@@ -3,7 +3,9 @@ import { IBM_Plex_Mono, Instrument_Sans } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { PageEnter } from "@/components/motion";
+import { DemoBanner } from "@/components/demo-banner";
 import { SiteHeader } from "@/components/site-header";
+import { isEphemeral } from "@/lib/demo-state";
 import { currentHuman } from "@/lib/human";
 
 const sans = Instrument_Sans({ subsets: ["latin"], variable: "--font-instrument", display: "swap" });
@@ -20,6 +22,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html lang="en" suppressHydrationWarning className={`${sans.variable} ${mono.variable}`}>
       <body className="min-h-screen bg-background text-foreground antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+          {isEphemeral() && <DemoBanner />}
           <SiteHeader human={human} />
           <main className="mx-auto w-full max-w-6xl overflow-x-clip px-4 py-6 sm:px-6 sm:py-8">
             <PageEnter>{children}</PageEnter>

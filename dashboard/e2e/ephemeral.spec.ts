@@ -44,12 +44,13 @@ async function stateCookie(ctx: BrowserContext) {
   return (await ctx.cookies()).find((c) => c.name === STATE_COOKIE);
 }
 
-test("no demo footer or read-only note, actions enabled", async () => {
+test("demo banner with start over, no read-only note, actions enabled", async () => {
   await page.goto("/");
   await page.getByTestId("human-input").fill(HUMAN);
   await page.getByTestId("human-save").click();
   await expect(page.getByTestId("human-display")).toContainText(HUMAN);
-  await expect(page.getByTestId("ephemeral-note")).toHaveCount(0);
+  await expect(page.getByTestId("demo-banner")).toContainText("never reach the repo");
+  await expect(page.getByTestId("demo-reset")).toHaveAttribute("href", "/api/demo-reset");
   await page.goto("/change/ju26-issue-2283");
   await expect(page.getByTestId("readonly-note")).toHaveCount(0);
   await expect(page.getByTestId("sign-off")).toBeEnabled();
