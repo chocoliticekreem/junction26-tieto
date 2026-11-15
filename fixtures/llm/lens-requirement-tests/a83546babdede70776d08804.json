@@ -1,0 +1,38 @@
+{
+  "purpose": "lens-requirement-tests",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/CoverageDecorationReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class CoverageDecorationReceiptTests\n{\n    private const string Source = \"\"\"\n        using MessagePack;\n\n        [MessagePackObject]\n        public class MyObject\n        {\n            [Key(0)]\n            public int Value { get; set; }\n\n            [Key(1)]\n            public MyEnum EnumValue { get; set; }\n        }\n\n        [MessagePackObject(true)]\n        public class StringKeyedObject\n        {\n            public string Name { get; set; }\n        }\n\n        public enum MyEnum\n        {\n            None,\n            Value,\n        }\n\n        [GeneratedMessagePackResolver]\n        public partial class TestResolver\n        {\n        }\n        \"\"\";\n\n    [Fact]\n    public async Task AllGeneratedTypesAreDecoratedWithoutAnySetting()\n    {\n        (ImmutableArray<SyntaxTree> generatedTrees, CSharpCompilation compilation) = await GenerateAsync(Array.Empty<string>());\n\n        generatedTrees.Should().NotBeEmpty();\n        compilation.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error).Should().BeEmpty();\n\n        foreach (SyntaxTree tree in generatedTrees)\n        {\n            ClassDeclarationSyntax[] generatedClasses = tree.GetRoot().DescendantNodes().OfType<ClassDeclarationSyntax>().ToArray();\n            generatedClasses.Should().NotBeEmpty(\"every generated source file should contain its generated type\");\n            generatedClasses.Should().OnlyContain(\n                type => HasCoverageAttribute(type),\n                \"every generated class, including resolvers and nested helpers, should be excluded from code coverage by default\");\n        }\n    }\n\n    [Theory]\n    [InlineData(\"NETSTANDARD2_0\")]\n    [InlineData(\"NETFRAMEWORK\")]\n    public async Task GeneratedCodeCompilesWhenCoverageAttributeIsConditionallyOmitted(string targetSymbol)\n    {\n        (ImmutableArray<SyntaxTree> generatedTrees, CSharpCompilation compilation) = await GenerateAsync(new[] { targetSymbol });\n\n        generatedTrees.Should().NotBeEmpty();\n        compilation.GetDiagnostics().Where(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error).Should().BeEmpty();\n    }\n\n    private static bool HasCoverageAttribute(ClassDeclarationSyntax declaration)\n    {\n        return declaration.AttributeLists\n            .SelectMany(list => list.Attributes)\n            .Any(attribute => attribute.Name.ToString() == \"global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage\");\n    }\n\n    private static async Task<(ImmutableArray<SyntaxTree> GeneratedTrees, CSharpCompilation Compilation)> GenerateAsync(IEnumerable<string> preprocessorSymbols)\n    {\n        var parseOptions = new CSharpParseOptions(LanguageVersion.CSharp7_3, preprocessorSymbols: preprocessorSymbols);\n        SyntaxTree sourceTree = CSharpSyntaxTree.ParseText(Source, parseOptions);\n        ImmutableArray<MetadataReference> references = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        references = references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        var compilation = CSharpCompilation.Create(\n            \"CoverageDecorationReceipt\",\n            new[] { sourceTree },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator(),\n            parseOptions: parseOptions);\n        driver.RunGeneratorsAndUpdateCompilation(compilation, out Compilation outputCompilation, out _, CancellationToken.None);\n\n        return (driver.GetRunResult().GeneratedTrees, (CSharpCompilation)outputCompilation);\n    }\n}\n",
+        "test_names": [
+          "AllGeneratedTypesAreDecoratedWithoutAnySetting",
+          "GeneratedCodeCompilesWhenCoverageAttributeIsConditionallyOmitted"
+        ],
+        "expects": "fail-on-base-pass-on-head"
+      }
+    ],
+    "ambiguity": true,
+    "interpretations": [
+      {
+        "label": "A",
+        "summary": "Emit ExcludeFromCodeCoverage unconditionally by default on every generated formatter, resolver, and nested helper class wherever the attribute is available, with conditional compilation only to preserve older-target compilation and no configuration setting."
+      },
+      {
+        "label": "B",
+        "summary": "Decorate the same complete set of generated types by default, but also add a generator option that lets a consumer opt out of emitting ExcludeFromCodeCoverage; the option would default to preserving the decoration."
+      }
+    ]
+  },
+  "input_tokens": 7659,
+  "output_tokens": 10516,
+  "ms": 114473,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.180717
+}
