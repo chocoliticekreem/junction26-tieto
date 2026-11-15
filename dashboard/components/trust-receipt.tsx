@@ -14,18 +14,19 @@ import { cn } from "@/lib/utils";
 
 const PRINT_STEP = 0.07;
 
-function Line({ label, value, href, tone, note, testId, index, reduce }: { label: React.ReactNode; value: React.ReactNode; href?: string; tone?: string; note?: string; testId?: string; index: number; reduce: boolean }) {
+function Line({ label, value, href, tone, note, raw, testId, index, reduce, wrapValue }: { label: React.ReactNode; value: React.ReactNode; href?: string; tone?: string; note?: string; raw?: string; testId?: string; index: number; reduce: boolean; wrapValue?: boolean }) {
   const inner = (
     <>
-      <span className="min-w-0 shrink [overflow-wrap:anywhere]">{label}</span>
+      <span className={cn("min-w-0 [overflow-wrap:anywhere]", wrapValue ? "shrink-0" : "shrink")}>{label}</span>
       <span className="dots" aria-hidden />
-      <span className={cn("shrink-0 tabular-nums", tone)}>{value}</span>
+      <span className={cn("tabular-nums", wrapValue ? "min-w-0 shrink" : "shrink-0", tone)}>{value}</span>
     </>
   );
   return (
     <motion.li
       className="min-w-0"
       data-testid={testId}
+      title={raw}
       initial={reduce ? false : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18, delay: index * PRINT_STEP, ease: "easeOut" }}
@@ -106,7 +107,7 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
                 </>
               }
               value={
-                <span className="inline-flex items-center gap-1 uppercase">
+                <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap uppercase">
                   <ResultIcon result={c.result} />
                   {resultWord[c.result]}
                 </span>
@@ -114,6 +115,7 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
               tone={resultTone[c.result]}
               href={c.evidence_id ? `#evidence-${c.evidence_id}` : undefined}
               note={h.note}
+              raw={h.raw}
             />
           );
         })}
@@ -124,25 +126,24 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
         <Line
           index={next()}
           reduce={reduce}
-          label={<><Term k="receipt">Receipts</Term> ({run.evidence.length})</>}
+          wrapValue
+          label={<span className="whitespace-nowrap"><Term k="receipt">Receipts</Term> ({run.evidence.length})</span>}
           value={
-            <span className="inline-flex items-center gap-2" title={`${byResult("pass")} pass · ${byResult("partial")} partial · ${byResult("fail") + byResult("error")} fail`}>
-              <span className="inline-flex items-center gap-0.5 text-ok-foreground">
+            <span className="flex flex-wrap items-center justify-end gap-x-2 text-[11px] leading-4" title={`${byResult("pass")} passed · ${byResult("partial")} partial · ${byResult("fail") + byResult("error")} failed`}>
+              <span className="inline-flex items-center gap-0.5 whitespace-nowrap text-ok-foreground">
                 <CircleCheck className="size-3" aria-hidden />
-                {byResult("pass")}
+                {byResult("pass")} passed
               </span>
               {byResult("partial") > 0 && (
-                <span className="inline-flex items-center gap-0.5 text-warn-foreground">
+                <span className="inline-flex items-center gap-0.5 whitespace-nowrap text-warn-foreground">
                   <CircleMinus className="size-3" aria-hidden />
-                  {byResult("partial")}
+                  {byResult("partial")} partial
                 </span>
               )}
-              {byResult("fail") + byResult("error") > 0 && (
-                <span className="inline-flex items-center gap-0.5 text-bad-foreground">
-                  <CircleX className="size-3" aria-hidden />
-                  {byResult("fail") + byResult("error")}
-                </span>
-              )}
+              <span className={cn("inline-flex items-center gap-0.5 whitespace-nowrap", byResult("fail") + byResult("error") > 0 ? "text-bad-foreground" : "text-muted-foreground")}>
+                <CircleX className="size-3" aria-hidden />
+                {byResult("fail") + byResult("error")} failed
+              </span>
             </span>
           }
           href="#technical"
@@ -153,7 +154,7 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
           label="Impact on other features"
           value={
             impact ? (
-              <span className="inline-flex items-center gap-1 uppercase">
+              <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap uppercase">
                 <ResultIcon result={impact.result} />
                 {resultWord[impact.result]}
               </span>
@@ -193,7 +194,7 @@ export function TrustReceipt({ run, decision, pending = 0, className }: { run: R
       </div>
 
       <div className="mt-3 flex items-center gap-2 text-[10px] text-muted-foreground">
-        <Slip key={stamp.kind} pose={slipPose(stamp.kind)} size={46} className="-my-1 -ml-1.5" delay={stampDelay} decorative />
+        <Slip key={stamp.kind} pose={slipPose(stamp.kind)} size={64} className="-my-2 -ml-2" delay={stampDelay} decorative />
         <span className="min-w-0 flex-1">No receipt, no finding. A named human decides.</span>
         {r.mock_llm && (
           <span className="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-1.5 py-px" title="Lens output replayed from recorded fixtures (MOCK_LLM=1); sandbox receipts are real." data-testid="replayed-badge">

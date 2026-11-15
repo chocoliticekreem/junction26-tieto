@@ -152,13 +152,11 @@ export function ReceiptBar({ pass, partial, fail, className }: { pass: number; p
         {seg(partial, "bg-warn-foreground", "partial")}
         {seg(fail, "bg-bad-foreground", "fail")}
       </span>
-      <span className="font-mono text-xs tabular-nums">
-        <span className={pass ? "text-ok-foreground" : "text-muted-foreground"}>{pass}</span>
-        <span className="text-muted-foreground">/</span>
-        <span className={fail ? "text-bad-foreground" : "text-muted-foreground"}>{fail}</span>
-      </span>
-      <span className="sr-only">
-        {pass} green, {fail} red
+      <span className="whitespace-nowrap font-mono text-[11px] tabular-nums text-muted-foreground">
+        <span className={pass ? "text-ok-foreground" : undefined}>{pass} passed</span>
+        {" · "}
+        <span className={fail ? "text-bad-foreground" : undefined}>{fail} failed</span>
+        {partial > 0 && <> · {partial} partial</>}
       </span>
     </span>
   );

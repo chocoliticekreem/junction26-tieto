@@ -38,9 +38,7 @@ export default async function QuestionsPage() {
                   <Link href={`/change/${encodeURIComponent(q.change_id)}`} className="font-mono hover:text-foreground hover:underline">
                     {q.change_id}
                   </Link>
-                  <span className="font-mono">{q.area}</span>
-                  <span>{lensLabel[q.lens] ?? q.lens} lens</span>
-                  <span className="font-mono text-[11px]">{q.id}</span>
+                  <span title={`${lensLabel[q.lens] ?? q.lens} lens · ${q.area} · ${q.id}`}>Asked because the answer changes the verdict</span>
                 </div>
                 <p className="text-base font-medium leading-6 tracking-tight">{q.text}</p>
                 <p className="text-sm text-muted-foreground">{q.why_it_matters}</p>

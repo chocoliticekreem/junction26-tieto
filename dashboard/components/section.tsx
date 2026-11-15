@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { Disclosure } from "@/components/disclosure";
-import { splitNote } from "@/components/metrics-table";
+import { humanizeGap } from "@/lib/humanize";
 
 export function Section({
   title,
@@ -58,18 +58,18 @@ export function PageTitle({ eyebrow, title, right, children }: { eyebrow?: strin
   );
 }
 
-/** what — first sentence of why; the rest of a long why sits behind "More". */
+/** Plain title — plain reason, through the gap mapper; the pipeline's own wording sits behind "More". */
 export function TightList({ items, testId }: { items: { what: string; why: string }[]; testId?: string }) {
   return (
     <ul className="divide-y text-sm" data-testid={testId}>
       {items.map((x, i) => {
-        const { lead, rest } = splitNote(x.why);
+        const g = humanizeGap(x);
         return (
-          <li key={i} className="py-2 [overflow-wrap:anywhere]">
-            <span className="font-medium">{x.what}</span> <span className="text-muted-foreground">— {lead}</span>
-            {rest && (
+          <li key={i} className="py-2 [overflow-wrap:anywhere]" title={x.what}>
+            <span className="font-medium">{g.title}</span> <span className="text-muted-foreground">— {g.why}</span>
+            {g.raw && (
               <Disclosure label="More">
-                <p className="text-muted-foreground">{rest}</p>
+                <p className="font-mono text-[11px] leading-5 text-muted-foreground">{g.raw}</p>
               </Disclosure>
             )}
           </li>

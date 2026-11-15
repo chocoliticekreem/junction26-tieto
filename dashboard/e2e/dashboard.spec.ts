@@ -19,7 +19,7 @@ test("queue shows only the Tieto sample changes as cards grouped by what the use
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Your queue" })).toBeVisible();
   await expect(page.getByText("AI-written changes, reviewed with proof. You make the call.")).toBeVisible();
-  await expect(page.getByTestId("need-you")).toHaveText("2 need you");
+  await expect(page.getByTestId("need-you")).toHaveText("2 to decide");
   const cards = page.getByTestId("queue-card");
   await expect(cards).toHaveCount(2);
   await expect(page.getByText("ju26-issue-2297__A")).toHaveCount(0);
@@ -34,8 +34,8 @@ test("queue shows only the Tieto sample changes as cards grouped by what the use
   await expect(card2283.getByTestId("verdict-pill")).toHaveText("Needs sign-off");
   await expect(card2283.getByTestId("queue-action")).toHaveText(/Review and sign off/);
   await expect(card2283.getByTestId("queue-action")).toHaveAttribute("href", "/change/ju26-issue-2283");
-  await expect(card2283.getByTestId("receipt-counts")).toContainText("6 green");
-  await expect(card2283.getByTestId("receipt-counts")).toContainText("1 red");
+  await expect(card2283.getByTestId("receipt-counts")).toContainText("6 passed");
+  await expect(card2283.getByTestId("receipt-counts")).toContainText("1 failed");
   await expect(card2283.getByTestId("queue-status")).toContainText("Changes code 7 other places use; old behaviour changed for 1 function, 2 of them are untested.");
   const card2297 = cards.filter({ hasText: "ju26-issue-2297" });
   await expect(card2297.getByTestId("verdict-pill")).toHaveText("Decision A/B");
@@ -220,7 +220,7 @@ test("SQL adapter change page shows the schema diff and row counts behind the bl
   const rows = page.locator("#evidence-sql-rows").getByTestId("evidence-row_counts");
   await expect(rows.getByRole("columnheader")).toHaveText(["table", "base", "after up", "after down"]);
   await expect(rows.getByRole("cell", { name: "5" })).toHaveCount(3);
-  await expect(page.getByTestId("not-checked-list")).toContainText("locking behaviour under concurrent writes");
+  await expect(page.getByTestId("not-checked-list")).toContainText("Locking behaviour under concurrent writes");
   await expect(page.getByTestId("not-checked-list")).not.toContainText("NativeAOT");
 });
 
@@ -259,7 +259,8 @@ test("answering a question inline on the change page appends to ledger.jsonl and
   await page.goto("/change/ju26-issue-2297");
   const pending = page.getByTestId("pending-question");
   await expect(pending).toHaveCount(1);
-  await expect(pending).toContainText("Q-2297-1");
+  await expect(pending).not.toContainText("Q-2297-1");
+  await expect(pending).toContainText("Asked because the answer changes the verdict");
   await expect(page.getByTestId("pending-questions")).toContainText("Before you decide: 1 question for you");
   await pending.getByTestId("answer-option").filter({ hasText: "All generated types" }).click();
   await expect(page.getByTestId("pending-question")).toHaveCount(0);
@@ -281,7 +282,7 @@ test("answering a question inline on the change page appends to ledger.jsonl and
   // The queue no longer shows a question for it.
   await page.goto("/");
   await expect(page.getByTestId("queue-card").filter({ hasText: "ju26-issue-2297" }).getByTestId("queue-question")).toHaveCount(0);
-  await expect(page.getByTestId("need-you")).toHaveText("2 need you");
+  await expect(page.getByTestId("need-you")).toHaveText("2 to decide");
 });
 
 test("sign-off is refused on a blocked change, in the UI and the API", async ({ page }) => {

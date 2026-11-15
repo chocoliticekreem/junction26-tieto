@@ -83,7 +83,7 @@ function MemberRow({ impact, m, dotOffset, reduce }: { impact: ImpactReport; m: 
         </span>
         <span className="flex items-center gap-1" aria-label={`${outside.length} callers: ${outside.filter((c) => c.tested === true).length} tested, ${outside.filter((c) => c.tested === false).length} untested`} data-testid="impact-dots">
           {outside.slice(0, 24).map((c, i) => (
-            <Dot key={`${c.file}:${c.line}`} caller={c} index={dotOffset + i} reduce={reduce} />
+            <Dot key={`${c.file}:${c.line}:${i}`} caller={c} index={dotOffset + i} reduce={reduce} />
           ))}
           {outside.length > 24 && <span className="font-mono text-[10px] text-muted-foreground">+{outside.length - 24}</span>}
         </span>
@@ -102,8 +102,8 @@ function MemberRow({ impact, m, dotOffset, reduce }: { impact: ImpactReport; m: 
             <p className="py-1.5 text-xs text-muted-foreground">No call sites found.</p>
           ) : (
             <ul className="divide-y" data-testid="impact-callers">
-              {m.callers.map((c) => (
-                <CallerRow key={`${c.file}:${c.line}:${c.member}`} c={c} />
+              {m.callers.map((c, i) => (
+                <CallerRow key={`${c.file}:${c.line}:${c.member}:${i}`} c={c} />
               ))}
             </ul>
           )}

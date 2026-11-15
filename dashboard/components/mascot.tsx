@@ -72,7 +72,7 @@ export function Slip({ pose = "idle", size = 96, className, label, decorative, d
       aria-hidden={decorative || undefined}
       data-testid="slip"
       data-pose={pose}
-      initial={reduce ? false : stamp ? { opacity: 0, y: -10, scaleY: 1.08, scaleX: 0.96 } : { opacity: 0, scaleY: 0.82, scaleX: 1.12 }}
+      initial={reduce ? false : stamp ? { opacity: 1, y: -10, scaleY: 1.08, scaleX: 0.96 } : { opacity: 1, scaleY: 0.82, scaleX: 1.12 }}
       animate={{ opacity: 1, y: 0, scaleY: 1, scaleX: 1 }}
       transition={{ type: "spring", stiffness: stamp ? 560 : 380, damping: stamp ? 22 : 15, mass: 0.7, delay: stamp ? delay : 0 }}
     >

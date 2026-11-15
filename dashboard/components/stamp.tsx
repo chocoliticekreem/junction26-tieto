@@ -12,14 +12,14 @@ const tone: Record<VerdictKind | "signed", string> = {
   signed: "text-ok-foreground",
 };
 
-/** A rubber stamp that lands on the receipt: scale-down + fade, skipped under prefers-reduced-motion. */
+/** A rubber stamp that lands on the receipt: scale-down only, so it is visible in every frame (screenshots, reduced motion, delays). */
 export function Stamp({ kind, children, className, testId, delay = 0.15 }: { kind: VerdictKind | "signed"; children: React.ReactNode; className?: string; testId?: string; delay?: number }) {
   const reduce = useReducedMotion();
   return (
     <motion.span
       className={cn("stamp text-sm sm:text-base", tone[kind], className)}
-      initial={reduce ? false : { opacity: 0, scale: 1.6, rotate: -6 }}
-      animate={{ opacity: 1, scale: 1, rotate: -6 }}
+      initial={reduce ? false : { scale: 1.35, rotate: -6 }}
+      animate={{ scale: 1, rotate: -6 }}
       transition={{ type: "spring", stiffness: 420, damping: 22, mass: 0.6, delay }}
       data-testid={testId ?? "stamp"}
       data-kind={kind}
