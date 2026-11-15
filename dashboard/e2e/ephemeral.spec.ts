@@ -4,7 +4,6 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { E2E_TMP } from "../playwright.config";
 
 const HUMAN = "Demo Visitor";
-const NOTE = "Public demo: your clicks are kept in a cookie in your browser only; nothing is saved on the server.";
 const SIMULATED = "Merge recorded (simulated on the public demo: no git repository here)";
 const STATE_COOKIE = "receipts_demo_state";
 
@@ -45,16 +44,13 @@ async function stateCookie(ctx: BrowserContext) {
   return (await ctx.cookies()).find((c) => c.name === STATE_COOKIE);
 }
 
-test("one quiet footer line with a reset link, no read-only note, actions enabled", async () => {
+test("no demo footer or read-only note, actions enabled", async () => {
   await page.goto("/");
   await page.getByTestId("human-input").fill(HUMAN);
   await page.getByTestId("human-save").click();
   await expect(page.getByTestId("human-display")).toContainText(HUMAN);
-  await expect(page.getByTestId("ephemeral-note")).toHaveCount(1);
-  await expect(page.getByTestId("ephemeral-note")).toContainText(NOTE);
-  await expect(page.getByTestId("demo-reset")).toHaveText("Reset my demo clicks");
+  await expect(page.getByTestId("ephemeral-note")).toHaveCount(0);
   await page.goto("/change/ju26-issue-2283");
-  await expect(page.getByTestId("ephemeral-note")).toHaveCount(1);
   await expect(page.getByTestId("readonly-note")).toHaveCount(0);
   await expect(page.getByTestId("sign-off")).toBeEnabled();
 });
@@ -134,8 +130,7 @@ test("merge still refuses without a named human and on a change that is not deci
 });
 
 test("reset clears every click", async () => {
-  await page.goto("/");
-  await page.getByTestId("demo-reset").click();
+  await page.goto("/api/demo-reset");
   await expect(page).toHaveURL(/\/$/);
   expect(await stateCookie(visitor)).toBeUndefined();
   await page.goto("/change/ju26-issue-2283");
