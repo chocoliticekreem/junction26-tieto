@@ -46,7 +46,7 @@ TEST_PROJECT = "tests/MessagePack.SourceGenerator.Tests/MessagePack.SourceGenera
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 # Hard cap on real Anthropic spend (live calls and Message Batches), summed in
 # ANTHROPIC_SPEND_FILE across every process and run (receipts/anthropic_spend.py).
-ANTHROPIC_MAX_USD = float(os.environ.get("ANTHROPIC_MAX_USD") or 20)
+ANTHROPIC_MAX_USD = float(os.environ.get("ANTHROPIC_MAX_USD") or 30)
 ANTHROPIC_SPEND_FILE = Path(os.environ.get("ANTHROPIC_SPEND_FILE")
                             or WORK / "anthropic-spend.json")
 JEV_API_KEY = os.environ.get("JEV_API_KEY", "")
