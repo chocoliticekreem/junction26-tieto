@@ -63,7 +63,7 @@ Each of the four Tieto changes was turned into 9 variants with known answers: cl
 
 | Measure | Result |
 |---|---|
-| Planted defects caught (cold run) | **21 of 24 (87.5 %)**; 1 of the 3 misses still left an unverified hunch at the planted line |
+| Planted defects caught (cold run) | **24 of 24** |
 | Escapes (a planted defect marked auto-ready) | **0** |
 | Findings shown with an executed receipt | 100 % by construction (242 of 242); unbacked claims are hunches |
 | Control and bait cases with a false alarm | 4 of 8 (8 false-alarm findings at bait lines), mostly surviving mutants on code that changes no behaviour |
@@ -82,7 +82,7 @@ Routing (T3, 641 hunks): every router reaches the same end-to-end recall (87.5 %
 | | Anthropic (Opus 5.5 + Sonnet 5.5) | Verda (Kimi K3.1 Pro) |
 |---|---|---|
 | Verdicts on the four Tieto changes | 2 blocked, 2 needs sign-off | the same on all four |
-| Planted defects caught, cold | 21 of 24 | 18 of 24 |
+| Planted defects caught, cold (14 Nov run, both providers) | 21 of 24 | 18 of 24 |
 | Escapes | 0 | 0 |
 | Generated tests that behave as planned | 34 of 93 | 6 of 77 |
 | Cost, four Tieto changes | $8.06 | EUR 4.25 recorded (3.28 billed) |
