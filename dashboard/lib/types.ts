@@ -127,7 +127,8 @@ export type EvidenceKind =
   | "migration-up-down"
   | "row-preservation"
   | "behaviour-preserved"
-  | "behaviour-changed";
+  | "behaviour-changed"
+  | "test-removal";
 
 export interface Evidence {
   id: string;
