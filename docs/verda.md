@@ -202,7 +202,7 @@ runs belong to another track.
 
 | Bench, cold, 36 cases | Anthropic (Opus + Sonnet, batched) | Verda (Kimi, live) |
 |---|---|---|
-| Planted defects caught | **21/24** (87.5%) | **18/24** (75%) |
+| Planted defects caught (14 Nov run) | **21/24** (87.5%; 24/24 after the 15 Nov fixes) | **18/24** (75%) |
 | Escapes (planted defect marked auto-ready) | 0 | 0 |
 | Control/bait cases with a false alarm | 4/8 | 4/8 |
 | False-alarm findings at bait lines | 8 | 6 |
