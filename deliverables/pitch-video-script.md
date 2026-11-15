@@ -16,7 +16,7 @@ So: AI wrote the pull request, and we wrote the pull receipt.
 Here's how it works. It learns your product context, then sets the review depth by risk. It builds the code, runs the real tests, and independent AI reviewers try to break it. And nothing counts as a finding unless it's proven.
 
 **[Deck: depth funnel]**
-On our biggest change, 222 of 237 files didn't need reading at all: we rebuilt them and checked they match. The AI reviews the rest. You just read the receipt.
+Review depth follows risk. Our biggest change touched 237 files. 222 were generated code, so we regenerate them and prove they match. The AI digs into the other 15. And you? You just read the receipt.
 
 **[Live: Product context page → click "Confirm"]**
 It starts with your product. The reviewer drafts what it knows, your conventions and what's deliberate, and a named person confirms it. From then on, it reviews against that.
