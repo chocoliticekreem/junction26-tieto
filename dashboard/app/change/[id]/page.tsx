@@ -190,8 +190,8 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
                   <div key={q.id} className="space-y-2 rounded-lg border border-warn-foreground/25 bg-warn/40 p-4 [overflow-wrap:anywhere] dark:bg-warn/25" data-testid="pending-question">
                     <p className="text-base font-medium leading-6 tracking-tight">{q.text}</p>
                     <p className="text-sm text-muted-foreground">{q.why_it_matters}</p>
-                    <p className="font-mono text-[11px] text-muted-foreground">
-                      {lensLabel[q.lens] ?? q.lens} lens · {q.area} · {q.id}
+                    <p className="text-xs text-muted-foreground" title={`${lensLabel[q.lens] ?? q.lens} lens · ${q.area} · ${q.id}`}>
+                      Asked because the answer changes the verdict
                     </p>
                     <QuestionForm q={q} human={human} readOnly={readOnly} />
                   </div>
@@ -280,6 +280,7 @@ export default async function ChangePage({ params }: { params: Promise<{ id: str
                               <div className="mt-0.5 flex flex-wrap gap-x-2 font-mono text-[11px] text-muted-foreground">
                                 <span>{c.by}</span>
                                 {h.note && <span>{h.note}</span>}
+                                {h.raw && <span className="[overflow-wrap:anywhere]">{h.raw}</span>}
                                 {c.evidence_id && (
                                   <a href={`#evidence-${c.evidence_id}`} className="text-primary underline-offset-4 hover:underline">
                                     {c.evidence_id}

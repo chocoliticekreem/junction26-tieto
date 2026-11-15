@@ -6,7 +6,7 @@ import { decisionFor } from "@/lib/demo-state";
 import { currentHuman } from "@/lib/human";
 import { isReadOnly } from "@/lib/readonly";
 import { DemoNote } from "@/components/demo-note";
-import { abMismatchMessage, firstSentence, humanizeTitle, quotedRequirement, readerVote } from "@/lib/humanize";
+import { abMismatchMessage, firstSentence, humanizeClaim, humanizeTitle, quotedRequirement, readerVote } from "@/lib/humanize";
 import { Disclosure } from "@/components/disclosure";
 import { EvidenceCard } from "@/components/evidence-card";
 import { Slip } from "@/components/mascot";
@@ -72,7 +72,7 @@ function Side({ interp, run, chosen }: { interp: Interpretation; run: RunBundle 
             <ul className="space-y-1.5 rounded-md border border-bad-foreground/20 bg-bad/40 px-3 py-2 text-sm dark:bg-bad/25">
               {run.receipt.findings.map((f) => (
                 <li key={f.id} className="line-clamp-2 [overflow-wrap:anywhere]" title={f.claim}>
-                  {f.claim}
+                  {humanizeClaim(f.claim)}
                 </li>
               ))}
             </ul>

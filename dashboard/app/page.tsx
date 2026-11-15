@@ -87,7 +87,9 @@ export default async function QueuePage() {
   const done = cards.filter((c) => c.decided);
   const blocked = cards.filter((c) => !c.decided && c.verdict === "blocked");
   const needs = cards.filter((c) => !c.decided && c.verdict !== "blocked");
-  const needYou = needs.length + blocked.filter((c) => c.pending > 0).length;
+  const questions = blocked.reduce((n, c) => n + c.pending, 0);
+  const needYou = needs.length + questions;
+  const needLabel = [needs.length > 0 ? `${needs.length} to decide` : null, questions > 0 ? `${questions} ${questions === 1 ? "question" : "questions"}` : null].filter(Boolean).join(" · ");
 
   return (
     <div className="space-y-10">
@@ -97,10 +99,10 @@ export default async function QueuePage() {
           <p className="mt-1 text-[15px] text-muted-foreground">AI-written changes, reviewed with proof. You make the call.</p>
         </div>
         {cards.length > 0 && (
-          <div className="flex items-end gap-3">
-            <Slip pose={needYou === 0 ? "empty" : "reviewing"} size={64} className="-mb-1" decorative />
-            <div className="rounded-full border bg-card px-3 py-1 text-sm font-medium tabular-nums" data-testid="need-you">
-              {needYou === 0 ? "Nothing needs you" : `${needYou} need${needYou === 1 ? "s" : ""} you`}
+          <div className="flex items-end gap-4">
+            <Slip pose={needYou === 0 ? "empty" : "reviewing"} size={120} className="-my-4 -mr-1" decorative />
+            <div className="mb-1 rounded-full border bg-card px-3.5 py-1.5 text-sm font-medium tabular-nums" data-testid="need-you">
+              {needYou === 0 ? "Nothing needs you" : needLabel}
             </div>
           </div>
         )}

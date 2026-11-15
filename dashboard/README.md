@@ -149,5 +149,7 @@ write folders pointed at scratch copies, then a Playwright script at 1440 and 39
 Every machine string the pipeline writes (verdict reasons such as `max routed risk 7 >= 5; not every receipt is green (gentest-2, mutation)`,
 evidence titles, sandbox step names) is rendered through `lib/humanize.ts` before a human sees it. The raw text stays one hover or
 click away (a `title` tooltip, or the "pipeline reason" disclosure). Shapes the mapper does not know fall back to the raw text, so a
-new pipeline string is never hidden, only unpolished. Add a case to `humanizeVerdict` / `humanizeTitle` and a test in
-`e2e/humanize.spec.ts` when the pipeline grows a new shape.
+new pipeline string is never hidden, only unpolished. Add a case to `humanizeVerdict` / `humanizeTitle` / `humanizeGap` and a test in
+`e2e/humanize.spec.ts` when the pipeline grows a new shape. Sandbox command lines (`<id>: <cmd> exit N in Ns`) map through
+`commandSubject(id)`; "not checked" and "refused" entries map through `humanizeGap` (short title + one plain reason, the pipeline
+wording behind "More").

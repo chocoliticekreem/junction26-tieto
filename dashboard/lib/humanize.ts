@@ -100,6 +100,12 @@ function mapClause(clause: string, ctx?: HumanizeCtx): string[] | null {
   }
   if (/^no AI lens ran$/.test(clause)) return ["No AI lens ran"];
   if ((m = clause.match(/^risky area touched: (.+)$/))) return [`Never auto-ready area: ${m[1]}`];
+  if ((m = clause.match(/^modifies existing code used elsewhere \(blast radius\): (.+)$/))) {
+    const hits = [...m[1].matchAll(/\((\d+) caller(?:s|\(s\))? outside the change\)/g)];
+    const callers = hits.reduce((s, x) => s + Number(x[1]), 0);
+    const functions = hits.length;
+    return [`Changes ${plural(functions || 1, "function")} that ${plural(callers, "other place")} ${callers === 1 ? "uses" : "use"}`];
+  }
   return null;
 }
 
@@ -184,12 +190,149 @@ export function abMismatchMessage(verdict: VerdictKind, bothBlocked: boolean): s
   return `This change was reviewed as "${verdictHeadline[verdict] ?? verdict}", not as an A/B decision. Both readings are shown anyway.`;
 }
 
+/** "1.3 s" / "17 s" / "2 min 10 s" for a sandbox command duration. */
+export function duration(seconds: number): string {
+  if (seconds >= 90) return `${Math.floor(seconds / 60)} min ${Math.round(seconds % 60)} s`;
+  if (seconds >= 10) return `${Math.round(seconds)} s`;
+  return `${seconds.toFixed(1)} s`;
+}
+
+/** What a sandbox command (by its CommandReceipt id) did, in plain words. Unknown ids fall back to "Sandbox step: <id>". */
+export function commandSubject(id: string, ok = true): string {
+  let m: RegExpMatchArray | null;
+  const side = (s: string) => (s === "base" ? "before the change" : "after the change");
+  if (id === "impact") return "Found who calls the changed code";
+  if (id === "coverage-head") return "Measured which callers tests reach";
+  if ((m = id.match(/^build-(base|head)$/))) return `Built the code ${side(m[1])}`;
+  if ((m = id.match(/^characterize-(base|head)$/))) return `Pinned the old behaviour ${side(m[1])}`;
+  if ((m = id.match(/^test-(base|head)-existing$/))) return `Ran the existing tests ${side(m[1])}`;
+  if ((m = id.match(/^gentest-(\d+)-(base|head)$/))) return `Ran written test ${m[1]} ${side(m[2])}`;
+  if ((m = id.match(/^mutant-(\d+)-suite$/))) return `Ran the full suite against mutant ${m[1]}`;
+  if ((m = id.match(/^mutant-(\d+)$/))) return `Ran the change's tests against mutant ${m[1]}`;
+  if ((m = id.match(/^ab-(\w)-test-(\d+)$/))) return `Ran reading ${m[1]}'s tests (attempt ${m[2]})`;
+  if ((m = id.match(/^compat-build-harness-(base|head)$/))) return `Built the compatibility harness ${side(m[1])}`;
+  if ((m = id.match(/^compat-build-mp-(base|head)$/))) return `Built the runtime library ${side(m[1])}`;
+  if ((m = id.match(/^compat-api-(base|head)$/))) return `Listed the public API ${side(m[1])}`;
+  if ((m = id.match(/^compat-bytes-(base|head)$/))) return `Serialized the fixtures ${side(m[1])}`;
+  if (id === "compat-roundtrip-head") return "Read old saved data after the change";
+  if (id === "sql-start") return "Database sandbox started";
+  if (id === "sql-ready") return "Database sandbox ready";
+  if (id === "sql-port") return "Database port mapped";
+  if (id === "sql-teardown") return "Database sandbox removed";
+  if (id === "sql-query-report") return "Ran the app's queries on the migrated schema";
+  if ((m = id.match(/^sql-snapshot-(base|up|down)$/))) return `Snapshot of the schema ${m[1] === "base" ? "before" : `after ${m[1]}`}`;
+  if ((m = id.match(/^sql-base-up-(.+)$/))) return `Base migration applied: ${m[1]}`;
+  if ((m = id.match(/^sql-(up|down)-(.+)$/))) return `Migration ${m[1]} applied: ${m[2]}`;
+  return ok ? `Sandbox step: ${id}` : `Sandbox step failed: ${id}`;
+}
+
+export interface HumanGap {
+  /** Short plain title, e.g. "Mutation testing". */
+  title: string;
+  /** One short plain reason, e.g. "none of the risky new lines were the kind it can break". */
+  why: string;
+  /** The pipeline's what and why, for the "More" disclosure; undefined when the plain text already says it all. */
+  raw?: string;
+}
+
+const PROJECT_WORDS: [RegExp, string][] = [
+  [/SourceGenerator\.Unity/, "Unity generator"],
+  [/UnityShims/, "Unity shims"],
+  [/SourceGenerator\.Tests/, "generator tests"],
+  [/SourceGenerator/, "source generator"],
+  [/Annotations/, "annotations"],
+];
+
+/** "Unity generator, CompositeResolverGenerator.cs:44" from a repo path. */
+function placeName(loc: string): string {
+  const [file, line] = loc.trim().split(":");
+  const name = file.split("/").pop() ?? file;
+  const project = PROJECT_WORDS.find(([re]) => re.test(file))?.[1] ?? file.split("/").slice(-2, -1)[0];
+  return `${project ? `${project}, ` : ""}${name}${line ? `:${line}` : ""}`;
+}
+
+function capitalize(s: string): string {
+  return s ? s[0].toUpperCase() + s.slice(1) : s;
+}
+
+function lensName(id: string): string {
+  return lensLabel[id] ?? capitalize(id.replace(/-/g, " "));
+}
+
+/** The pipeline's not-checked / refused entries as a short plain title and reason; the raw text stays behind "More". */
+export function humanizeGap(item: { what: string; why: string }): HumanGap {
+  const what = item.what.trim();
+  const why = item.why.trim();
+  const raw = `${what} — ${why}`;
+  let m: RegExpMatchArray | null;
+
+  if ((m = what.match(/^(\d+) callers? of (\S+) (?:are|is) not exercised by any test \(legacy coverage gap\): (.+)$/))) {
+    const n = Number(m[1]);
+    const places = [...new Set(m[3].split(/,\s*/).map(placeName))];
+    const shown = places.slice(0, 3).join("; ") + (places.length > 3 ? ` and ${places.length - 3} more` : "");
+    return { title: `${plural(n, "place")} that call${n === 1 ? "s" : ""} ${m[2]} ${n === 1 ? "has" : "have"} no test`, why: shown, raw };
+  }
+  if (/^semantic call graph of modified members$/.test(what)) return { title: "Exact call graph", why: "callers are found by name, so shared names may over-count and framework or reflection callers are missed", raw };
+  if (/^test coverage of callers \(legacy coverage gap\)$/.test(what)) return { title: "Which callers are tested", why: "coverage could not be collected, so every caller counts as unknown", raw };
+  if (/^blast radius/.test(what)) return { title: "Who calls the changed code", why: why.replace(/^the impact analysis did not run$/, "the impact analysis did not run"), raw };
+  if (/^mutation testing$/i.test(what)) {
+    if ((m = why.match(/^(\d+) source hunk\(s\) routed at risk >= \d+, but none has an added line the mutation operators apply to$/))) {
+      return { title: "Mutation testing", why: `none of the ${m[1]} risky changed blocks adds a line it can break`, raw };
+    }
+    if (/^no changed source hunk routed at risk/.test(why)) return { title: "Mutation testing", why: "no changed code was risky enough to need it", raw };
+    if (/^head does not build$/.test(why)) return { title: "Mutation testing", why: "the changed code does not build", raw };
+    return { title: "Mutation testing", why: firstClause(why), raw };
+  }
+  if ((m = what.match(/^([\w-]+) lens$/))) {
+    const title = `${lensName(m[1])} reading`;
+    if (/^not run: deterministic adapter demo/.test(why)) return { title, why: "not run: no AI pass on database changes in this build", raw };
+    if (/connection error|timed out|disconnected/i.test(why)) return { title, why: "the AI provider did not answer", raw };
+    if (/output invalid/i.test(why)) return { title, why: "the AI's answer was malformed and could not be repaired", raw };
+    if (/^unavailable/i.test(why)) return { title, why: "the AI provider was unavailable", raw };
+    return { title, why: firstClause(why), raw };
+  }
+  if ((m = what.match(/^tests\/([\w.]+) \(changed by this diff\)$/))) {
+    const title = `${m[1].replace(/^MessagePack\./, "")} test project (also changed here)`;
+    if (/^not built or run: only .* in sandbox scope$/.test(why)) return { title, why: "only the source generator tests run in the sandbox", raw };
+    if (/does not compile in this sandbox even on base/.test(why)) return { title, why: "it does not compile in the sandbox, even before the change", raw };
+    return { title, why: firstClause(why), raw };
+  }
+  if (/^tests\/MessagePack\.Tests and other runtime test suites$/.test(what)) return { title: "The runtime test suites", why: "only the source generator tests run in the sandbox", raw };
+  if (/^NativeAOT, Unity and non-net8\.0 target frameworks$/.test(what)) return { title: "Other build targets (NativeAOT, Unity, older .NET)", why: "the sandbox builds and tests .NET 8 only", raw };
+  if (/^compatibility byte diff/.test(what)) {
+    const title = "Whether saved data still reads the same";
+    if (/byte diff not needed/.test(why)) return { title, why: "nothing in the runtime library changed, so there is nothing to compare", raw };
+    if (/none in src\/MessagePack/.test(why)) return { title, why: "the changed code is outside the runtime library the comparison covers", raw };
+    return { title, why: firstClause(why), raw };
+  }
+  if (/^generated formatter bytes/.test(what)) return { title: "The bytes of the generated code", why: "the comparison covers the runtime library, not generated code", raw };
+  if (/^requirement tests \(fail on base, pass on head\)$/.test(what)) return { title: "Tests written from the requirement", why: "none were generated and run", raw };
+  if (/^A\/B review branches$/.test(what)) return { title: "Building both readings", why: "the two readings were recorded but not built in this run", raw };
+  if ((m = what.match(/^reading (\w) branch and its receipts$/))) {
+    const attempts = why.match(/after (\d+) attempt/);
+    return { title: `Reading ${m[1]}`, why: `it did not build or pass tests${attempts ? ` after ${plural(Number(attempts[1]), "attempt")}` : ""}`, raw };
+  }
+  if ((m = why.match(/(\d+) of (\d+) independent readers found two readings/))) {
+    return { title: capitalize(what), why: `${m[1]} of ${m[2]} independent readers saw two readings, so the AI will not pick`, raw };
+  }
+  const plainWhy = firstClause(why).replace(/\s*\([^)]*\)/g, "");
+  return { title: capitalize(what.replace(/\s*\([^)]*\)/g, "")), why: plainWhy, raw: plainWhy === why && !/\(/.test(what) ? undefined : raw };
+}
+
+/** The first sentence or semicolon clause of a long pipeline reason. */
+function firstClause(s: string): string {
+  const m = s.match(/^(.+?)(?:;|\.\s|$)/);
+  return (m ? m[1] : s).trim();
+}
+
 export interface HumanTitle {
   text: string;
   /** e.g. "4/4", "222/222 files" */
   count?: string;
   /** Secondary detail: a file path, project name, list of files. */
   note?: string;
+  /** The command line behind a sandbox step: tooltip and technical drawer only, never printed on the receipt. */
+  raw?: string;
 }
 
 /** Evidence titles and checked-item labels, as the pipeline writes them, into a short sentence + count + note. */
@@ -240,17 +383,31 @@ export function humanizeTitle(title: string): HumanTitle {
     return { text: "Edge-case tests pass: no defect shown", count: `${m[2]}/${m[2]}`, note: m[3] ? `${m[1]} · refutes ${m[4]}` : m[1] };
   }
   if ((m = t.match(/^(.+\.\w+): (edge-case|requirement) test does not compile on head$/))) return { text: `${m[2] === "edge-case" ? "Edge-case" : "Requirement"} test didn't compile`, note: m[1] };
+  if ((m = t.match(/^(.+\.\w+): requirement test does not discriminate: passes before the change \((\d+) tests? pass on base and head\); weak receipt$/))) {
+    return { text: "Requirement tests already passed before the change (weak proof)", count: `${m[2]}/${m[2]}`, note: m[1] };
+  }
+  if ((m = t.match(/^(.+?): (\d+) characterization test\(?s?\)? pass on base and head$/))) return { text: `Old behaviour of ${m[1]} still holds`, count: `${m[2]}/${m[2]} pinned tests` };
+  if ((m = t.match(/^Down migration restores the base schema exactly \((\d+) schema objects? compared\)$/))) return { text: "Down migration restores the schema", count: `${m[1]} objects` };
+  if ((m = t.match(/^No rows lost across the up migration \((.+)\)$/))) return { text: "No rows lost across the migration", note: m[1] };
+  if ((m = t.match(/^Values lost in rename: (\S+) -> (\S+) \(.+\)$/))) return { text: "Values lost in the column rename", note: `${m[1]} → ${m[2]}` };
+  if ((m = t.match(/^Reading (\w) built as (\S+) \((\w+)\): builds and the .* tests pass \(attempt (\d+) of (\d+)\)$/))) {
+    return { text: `Reading ${m[1]} builds and passes the tests`, note: `attempt ${m[4]} of ${m[5]} · ${m[2]}` };
+  }
+  if ((m = t.match(/^Reading (\w) could not be built as a working branch after (\d+) attempt\(s\)$/))) return { text: `Reading ${m[1]} could not be built`, count: `${plural(Number(m[2]), "attempt")}` };
+  if ((m = t.match(/^([\w.@-]+): (\d+)\/(\d+) passed, (\d+) failed \((base|head)\)$/))) {
+    const failed = Number(m[4]);
+    return { text: `${commandSubject(m[1])}: ${failed ? "some fail" : "all pass"}`, count: `${m[2]}/${m[3]}`, note: m[1] };
+  }
+  if ((m = t.match(/^([\w.@-]+): tests did not compile$/))) return { text: `${commandSubject(m[1])} didn't compile`, note: m[1] };
   if ((m = t.match(/^Migration not reversible: schema after down differs from base \((\d+) line\(s\)\)$/))) return { text: "Down migration doesn't restore the schema", count: `${plural(Number(m[1]), "line")} differ` };
   if ((m = t.match(/^No rows lost across the up migration \((.+)\)$/))) return { text: "No rows lost across the migration", note: m[1] };
   if ((m = t.match(/^Repo queries on the migrated schema: (\d+)\/(\d+) succeeded$/))) return { text: "Application queries run on the migrated schema", count: `${m[1]}/${m[2]}` };
-  if ((m = t.match(/^sql-([\w-]+): (.+) exit (\d+) in ([\d.]+)s$/))) {
-    const step: Record<string, string> = { start: "Database sandbox started", ready: "Database sandbox ready", port: "Database port mapped", teardown: "Database sandbox removed" };
-    const text = step[m[1]] ?? (m[1].startsWith("base-up-") ? `Base migration applied: ${m[1].slice("base-up-".length)}` : `Sandbox step: ${m[1]}`);
-    return { text, count: `${m[4]}s`, note: `${m[2]} · exit ${m[3]}` };
+  if ((m = t.match(/^([\w.@-]+): (.+) exit (\d+) in ([\d.]+)s$/))) {
+    return { text: commandSubject(m[1], Number(m[3]) === 0), count: duration(Number(m[4])), raw: `${m[1]}: ${m[2]} · exit ${m[3]}` };
   }
   if ((m = t.match(/^Characterization: (\S+) behaviour preserved \((\d+)\/(\d+) pinned tests? pass on base and head\)$/))) return { text: `Old behaviour of ${m[1]} still holds`, count: `${m[2]}/${m[3]} pinned tests` };
   if ((m = t.match(/^Characterization: (\S+) behaviour changed \((\d+)\/(\d+) pinned tests? pass on base, (\d+) fails? on head\)$/))) return { text: `Old behaviour of ${m[1]} changed`, count: `${m[4]}/${m[3]} pinned tests fail` };
-  if ((m = t.match(/^routed (\d+) hunks across (\d+) files$/))) return { text: "Every hunk routed to a review depth", count: `${m[1]} hunks, ${m[2]} files` };
+  if ((m = t.match(/^routed (\d+) hunks across (\d+) files$/))) return { text: "Every changed block routed to a review depth", count: `${m[1]} blocks, ${m[2]} files` };
   if ((m = t.match(/^(requirement-tests|logic-edge|compatibility|security|product-context|test-quality) lens$/))) return { text: `${lensLabel[m[1]]} lens ran` };
   return { text: t };
 }
