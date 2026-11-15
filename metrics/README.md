@@ -12,6 +12,16 @@ Produced by `uv run receipts metrics` from `bench/manifest.json` and the runs un
 | T7 | Upstream comparison, written by hand from `gh` and the diffs | Not pipeline output |
 | `verda/`, `provider-comparison.json` | `runs/*@verda` (Kimi K3.1 Pro on Verda, every role) next to the Anthropic runs | Same final pipeline; see `docs/verda.md` |
 
+### Sun 15 Nov: 24/24 cold
+
+The three cold misses of the 14 Nov run were re-run on the current pipeline (04:17-04:30 EET); the other 33 cold runs are the 14 Nov ones.
+
+- `mock-2297-drift`: caught after PR #63 (requirement claims placed at the producing template, so the docs guard no longer drops the receipt).
+- `mock-2129-missing-test`: caught after PR #64 (a deleted passing test the ticket does not ask to remove is a verified finding).
+- `mock-2297-missing-test`: caught after PR #64 and PR #65. PR #65 corrected this case's ground truth after the miss: the manifest gave the deleted file the range `:0-0`, which no finding in a deleted file could match; it is now scored at file level, like every plant listed without lines.
+
+Both fixes were checked on the 4 clean and 4 control cases in scratch runs: no new findings and no new false alarms. Warm numbers are unchanged.
+
 The PR #11 bench (recorded 07:10-09:10 EET) is replaced. Its summaries stay in
 `runs/bench-cold-summary-pr11.json` and `runs/bench-warm-summary-pr11.json`; its run folders are in
 git history.
@@ -20,7 +30,7 @@ git history.
 
 | | PR #11 | Final pipeline | Why it moved |
 |---|---|---|---|
-| Planted defects caught | 19/24 | **21/24** | +1 edge plant, +1 security plant (T2). Claim-tied verification was expected to cost recall; it did not, because catches now come from tests tied to the claim (fail-before-pass-after verifies 10 of 12 in-scope plants). One run each, so a 2-case difference is within run-to-run variation. |
+| Planted defects caught | 19/24 | **21/24** (24/24 after the 15 Nov fixes) | +1 edge plant, +1 security plant (T2). Claim-tied verification was expected to cost recall; it did not, because catches now come from tests tied to the claim (fail-before-pass-after verifies 10 of 12 in-scope plants). One run each, so a 2-case difference is within run-to-run variation. |
 | Escapes | 0 | 0 | |
 | Control/bait cases with a false alarm | 4/8 | 4/8 | Unchanged. Mostly equivalent mutants (test-quality). |
 | False-alarm findings at bait lines | 8 | 8 | Stripping the "deliberate" comments did not add bait false alarms, and did not remove any. |

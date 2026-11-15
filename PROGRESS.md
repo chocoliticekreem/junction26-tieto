@@ -53,6 +53,7 @@
 
 ## In progress
 Nothing. The pipeline and measurement are final; what remains is human-only (Next).
+- 04:30 (15 Nov) Bench 24/24 cold: PR #63 (drift: requirement claims at the producing file), PR #64 (deleted passing tests are verified findings), PR #65 (2297 deleted-file plant scored at file level); the three misses re-run, metrics regenerated. Anthropic ledger $18.70 of the $30 cap.
 
 ## Next (human steps only)
 - BLOCKED.md section 2: set your name in the dashboard, confirm the context, decide on 2297 round 2 side A (sign off as a plain change or send back), optionally sign off 2283 and 2234, commit `decisions/` and `context/status.json` through a PR.
@@ -108,7 +109,7 @@ This pass: **$15.12**; ledger total $16.51 of $20.
 | Named human signs off, no AI-merge path | met in code; human step pending | merge and sign-off routes refuse without a name and refuse blocked changes; `ab.py` only writes `review/*` branches; a local, uncommitted sign-off of 2234 by "anson" exists in the main checkout (`decisions/ju26-issue-2234.json`, 15:08); the rest is BLOCKED.md section 2 |
 | Risk routes depth | met | 2297 routing: 222 regeneration, 14 deep, 1 light (T4); blast-radius floor 8 on all four Tieto changes (`impact.json`), so none can be auto-ready; T3 router comparison |
 | Trust per area with data | met (bench) | `metrics/trust.json`: tests and type-collector at 3, seven other areas at 1; reset on escape implemented; 0 escapes |
-| Measurement | met, final pipeline | `metrics/summary.json`: 21/24 caught cold, 0 escapes, 4/8 control/bait cases with a false alarm, 94 % of 2297 routed away (222/237), questions 0.50 to 0.28 per change on the same 18 cases (`cold_on_warm_cases`); review time 0.8 to 11.1 min per bench case live on Verda (`provider-comparison.json`); Verda next to Anthropic in `metrics/verda/`; provenance in `metrics/README.md` |
+| Measurement | met, final pipeline | `metrics/summary.json`: 24/24 caught cold, 0 escapes, 4/8 control/bait cases with a false alarm, 94 % of 2297 routed away (222/237), questions 0.50 to 0.28 per change on the same 18 cases (`cold_on_warm_cases`); review time 0.8 to 11.1 min per bench case live on Verda (`provider-comparison.json`); Verda next to Anthropic in `metrics/verda/`; provenance in `metrics/README.md` |
 | Judges' three questions in writing | met | concept card sections "Limits", "How it scales", "Who owns the decision"; demo script |
 | Data synthetic or cleared, no 8x | met | only the public Tieto sample repo, bench variants derived from it, and the synthetic SQL repo in `examples/` |
 | MIT LICENSE, README that runs, no keys in git | met | `LICENSE`; every `receipts` subcommand in `README.md` checked with `--help` (setup, review, review-sql, bench generate/run, estimate-verda, metrics); `MOCK_LLM=1 uv run pytest -q`: 312 passed, 38 skipped (agent worktree, 23:39) |

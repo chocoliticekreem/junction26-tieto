@@ -22,7 +22,7 @@ PullReceipts: AI code review where every finding has an executed receipt, every 
 
 **Measured, not claimed.** A bench of 36 changes with planted defects and traps, labels hidden from the reviewer, on the final pipeline:
 
-- 21 of 24 planted defects caught, 0 escapes (no planted defect marked auto-ready). 4 of 8 control and bait cases drew a false alarm, mostly mutants on code that changes no behaviour.
+- 24 of 24 planted defects caught, 0 escapes (no planted defect marked auto-ready). 4 of 8 control and bait cases drew a false alarm, mostly mutants on code that changes no behaviour.
 - 94 % of the largest change routed away from human reading.
 - Questions per change fell from 0.50 to 0.28 on the same 18 cases once answers were in the ledger, none repeated.
 - The security lens caught 0 of 4 on its own; tests from the logic-edge lens caught all 4.
@@ -32,7 +32,7 @@ Trust per code area rises after 5 correct verdicts in a row and resets after an 
 
 **We attacked our own reviewer.** An adversarial pass found loose verification, API keys reaching untrusted builds, and ambiguity detection that flipped on wording. All fixed with regression tests.
 
-**Code never leaves the company: measured on Verda.** The same pipeline runs on Verda's EU-hosted Inference API with the open-weight Kimi K3.1 Pro in every role. Same verdict on all four Tieto changes, 0 escapes, EUR 4.25 for the four changes against $8.06 on Anthropic. Its generated tests rarely behave as planned (6 of 77; Anthropic 34 of 93), so it caught 18 of 24 plants, not 21. A weaker model shows up as more "not checked", never as a false green.
+**Code never leaves the company: measured on Verda.** The same pipeline runs on Verda's EU-hosted Inference API with the open-weight Kimi K3.1 Pro in every role. Same verdict on all four Tieto changes, 0 escapes, EUR 4.25 for the four changes against $8.06 on Anthropic. Its generated tests rarely behave as planned (6 of 77; Anthropic 34 of 93), so it caught 18 of 24 plants on the 14 Nov run, against 21 for Anthropic on that run. A weaker model shows up as more "not checked", never as a false green.
 
 **Built with:** Python 3.12, Claude Opus 5.5 and Sonnet 5.5 or Kimi K3.1 Pro on Verda, the Jev router, a .NET 8 sandbox (xUnit, mutation, byte diff, Roslyn call sites, coverlet), a throwaway-Postgres SQL sandbox, and a Next.js dashboard. Every model call is recorded, so the demo replays offline.
 
@@ -48,6 +48,6 @@ Trust per code area rises after 5 correct verdicts in a row and resets after an 
 - Video: to be recorded (max 2 minutes)
 
 ## Tech challenges genuinely used
-- **Verda Compute Track (56).** Verda's Inference API (open-weight Kimi K3.1 Pro, hosted in Germany) is a second model provider behind the pipeline's single model interface (`LLM_PROVIDER=verda`). We ran the four Tieto reviews, 2297 round 2 and the 36-case bench on it: same verdict on all four changes, 18 of 24 plants caught (Anthropic 21), 0 escapes, EUR 25.00 of a EUR 40 cap over 372 calls. Write-up: `docs/verda.md`. Post its link in Verda's Discord channel.
+- **Verda Compute Track (56).** Verda's Inference API (open-weight Kimi K3.1 Pro, hosted in Germany) is a second model provider behind the pipeline's single model interface (`LLM_PROVIDER=verda`). We ran the four Tieto reviews, 2297 round 2 and the 36-case bench on it: same verdict on all four changes, 18 of 24 plants caught (Anthropic 21 on the same 14 Nov run; 24 after the 15 Nov fixes), 0 escapes, EUR 25.00 of a EUR 40 cap over 372 calls. Write-up: `docs/verda.md`. Post its link in Verda's Discord channel.
 
 Not ticked, because not used: CRACI (no CI runs on it), Modal, Codex, Entire.

@@ -4,7 +4,7 @@ State at Sat 14 Nov, 23:40 EET. Section 1 is resolved and kept as history. Secti
 
 ## 1. Anthropic API usage limit reached (blocked every new model call) — Sat 14 Nov ~09:10
 **Resolved 23:15:** limit raised; bench re-run on the final pipeline through the Message Batches API (cold 36 cases + warm 2283/2234, $15.12 this pass, ledger total $16.51 of the $20 cap; see PROGRESS.md). Both waiting items are done:
-1. **Bench re-run on the final pipeline: done.** Cold 21/24 caught, 0 escapes; `metrics/` and `metrics/README.md` regenerated.
+1. **Bench re-run on the final pipeline: done.** Cold 24/24 caught, 0 escapes (the three 14 Nov misses re-run after PRs #63-#65 on 15 Nov); `metrics/` and `metrics/README.md` regenerated.
 2. **Round 2 of 2297: done, on Verda only** (`runs/ju26-issue-2297-r2@verda/20261114T111141Z`, `docs/verda.md`). It was not re-run on Anthropic.
 
 History: from ~09:10 every Anthropic call returned HTTP 400 ("You have reached your specified API usage limits"), a spend limit set on the account. Spend up to then: the full $100 limit (three bench passes about $55, real reviews recorded twice about $17, A/B variants about $8, prompt iteration and router comparison the rest).
