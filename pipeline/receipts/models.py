@@ -149,6 +149,8 @@ class Evidence(BaseModel):
         "row-preservation",
         # blast radius: a characterization test that passes on base, then passes / fails on head
         "behaviour-preserved", "behaviour-changed",
+        # a test the change deletes, with coverage of what only it executed (testremoval.py)
+        "test-removal",
     ]
     title: str
     result: Literal["pass", "fail", "partial", "error", "skipped"]

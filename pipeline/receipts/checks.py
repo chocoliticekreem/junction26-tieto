@@ -5,6 +5,7 @@
                      survivors re-run against the full test project
   regeneration       generated snapshot files mapped to the SourceGenerator tests that verify them
   byte-diff          compat.run_compat when the runtime/annotations or a compatibility hunk changed
+  test-removal       tests the change deletes, with a coverage receipt (testremoval.py)
 
 Then lens findings whose receipt_plan matches a positive artifact become verified. A finding is
 never verified without an executed artifact that shows the problem.
@@ -20,7 +21,7 @@ generated_tests contract (filled by run_lenses, or by --req-tests-fixture):
 import re
 from pathlib import Path
 
-from . import compat, config, sandbox
+from . import compat, config, sandbox, testremoval
 from .intake import classify
 from .models import Evidence, Finding, Mutant, NotChecked, ReceiptPlan, TestRun
 from .mutants import OPERATORS, MutantSpec, generate
@@ -653,6 +654,12 @@ def run_receipt_checks(ctx: ReviewContext) -> StageResult:
     if ran_regen:
         res.ran.append("regeneration")
 
+    ev, removal_findings, gaps, ran_removal = testremoval.run(ctx)
+    res.evidence += ev
+    res.not_checked += gaps
+    if ran_removal:
+        res.ran.append("test-removal")
+
     ev, compat_findings, gaps, ran_compat = run_compatibility(ctx)
     res.evidence += ev
     res.not_checked += gaps
@@ -674,5 +681,6 @@ def run_receipt_checks(ctx: ReviewContext) -> StageResult:
                          and "compat-bytes" in f.evidence_ids for f in ctx.findings)
     res.findings = [*ctx.findings,
                     *mutation_findings([m for m in res.mutants if m.id not in claimed]),
+                    *removal_findings,
                     *([] if compat_claimed else compat_findings)]
     return res
