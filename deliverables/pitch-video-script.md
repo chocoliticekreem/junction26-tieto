@@ -1,44 +1,35 @@
-# PullReceipts: 2-minute pitch video script
+# PullReceipts: 2-minute demo video script
 
-Deck: "PullReceipts: AI review you can sign" (12 slides). The spoken words below are the deck's
-speaker notes, word for word: 283 words, ending at 1:57 at about 145 words per minute. Dashboard:
-https://pullreceipts.vercel.app (pages named in the Screen column).
+Structure: hook → punchline → how it works (two deck slides) → the user journey (live product) → proof and what's next → closing line. Deck: "PullReceipts: AI review you can sign". Live product: https://pullreceipts.vercel.app (sign in with your name top right; your clicks stay in your browser, reset with https://pullreceipts.vercel.app/api/demo-reset).
 
-Numbers come from `metrics/summary.json`, `notes/jev.md`, `notes/blast-radius.md`, `docs/verda.md`
-and `runs/ju26-issue-*/<latest>/impact.json`. Do not round them up on camera.
+Numbers come from `metrics/summary.json` and `runs/ju26-issue-*/<latest>/impact.json`. Do not round them up on camera.
 
 ## 2:00 version
 
-| Time | Screen | Words |
+| Time | Screen | Say |
 |---|---|---|
-| 0:00-0:05 | Deck 1, cover (Slip waving) | AI wrote the pull request, so we wrote the pull receipt. Here is how it works, ticket to signature. |
-| 0:05-0:14 | Deck 2, "Don’t take the AI’s word." | An AI reviewer’s opinion is not evidence. Someone still signs the merge and needs proof they can read, and a name on it. |
-| 0:14-0:17 | Deck 3, "One change, start to end." (eight-stage map, dots flowing) | Eight stages; a named human at the end. |
-| 0:17-0:29 | Deck 4, product context. Optional cut: dashboard `/context` (the product context doc, status draft, area tags) | Product context: the repo’s README, analyzer docs and git history, summarised by area with sources. A named human confirms it; answered questions grow it. Deliberate conventions are cited, not flagged. |
-| 0:29-0:43 | Deck 5, the funnel (237 → 222 generated → 15 read → floors → Jev → deep/light) | Depth follows a rule. On the biggest change, 222 of 237 files were generated: regenerated, never read. Rule floors cover the risky areas; Jev scores each remaining hunk one to ten. Floors never drop. |
-| 0:43-0:54 | Deck 6, sandbox and the six lenses | The sandbox runs the real tests. Six independent lenses see only the ticket, its hunks and the context, never the implementer’s reasoning, and write their own tests. |
-| 0:54-1:05 | Deck 7, the receipt printing line by line, EXECUTED stamp | Every finding needs a receipt: tests failing before, passing after, mutants against the full suite, byte diffs, regeneration, migrations. No receipt, no finding. Hunches stay apart. |
-| 1:05-1:18 | Deck 8, blast radius. Optional cut: dashboard `/change/ju26-issue-2297`, step "Impact on other features" (7 modified, 12 callers, 1 untested: the Unity generator) | Shared code is the real fear: new feature works, old caller breaks. A modified member with outside callers gets floor eight, old behaviour is pinned by tests, untested legacy callers are named. |
-| 1:18-1:27 | Deck 9, three readers vote, A and B built, a human picks | When a ticket reads two ways, three readers vote. Both readings are built and checked; a human picks A or B. |
-| 1:27-1:39 | Deck 10, trust receipt 2283 (proven / not checked / signed by) with the fix loop. Optional cut: dashboard `/change/ju26-issue-2283` | The verdict lists what was proven, what was not checked, residual risk. Blocked, the implementer fixes it, round two is re-reviewed, a named human signs. The AI never merges. |
-| 1:39-1:51 | Deck 11, "Measured." (21/24, 0, 94%, 0.50→0.28) | Measured: 24 planted bugs, 21 caught, zero escapes. 94 percent of the biggest change never read. Questions fell 0.50 to 0.28. Same verdicts on an EU-hosted open model. |
-| 1:51-1:57 | Deck 12, "No receipt, no finding." (Slip with the signed slip) | No receipt, no finding. The decision record has a name on it. Thank you. |
+| 0:00-0:10 | Deck 2, thesis | AI already reviews code. The problem isn't the review, it's accountability. "The AI said it was fine" isn't a sign-off. |
+| 0:10-0:15 | Deck 1, cover (Slip waving) | AI wrote the pull request; we wrote the pull receipt. |
+| 0:15-0:32 | Deck 3, workflow map (dots flowing) | Every change goes through eight stages: the product's own context, deciding how deep to look, a real build and tests, independent reviewers, receipts, what else it touches, ambiguity, and a named human at the end. |
+| 0:32-0:46 | Deck 5, the depth funnel | We don't read everything. Generated files are checked by regenerating them, rules protect the risky areas, and a cheap router scores the rest. On the biggest change, 222 of 237 files never needed a human. |
+| 0:46-0:56 | Live: the queue | This is the reviewer's queue: two changes need a decision, two are blocked. |
+| 0:56-1:16 | Live: `/change/ju26-issue-2297`: plain words, then step 2 "Impact on other features", then the trust receipt | Each change explains itself in plain words. Here it found what else the change touches: twelve places call the changed code, and one has no test at all. Every finding has a receipt: a test that actually ran. |
+| 1:16-1:28 | Live: `/decision/ju26-issue-2297` | The ticket reads two ways, so it built both and refuses to guess. Both share a proven defect, so neither can merge. |
+| 1:28-1:40 | Live: `/change/ju26-issue-2283`, click "Sign off", the stamp flips | When it's clean, a named human signs, and the record says what was checked and what wasn't. The AI never merges. |
+| 1:40-1:51 | Deck 11, "Measured." | On 36 changes with planted bugs, it caught 21 of 24 and waved none through. Next: web and mobile, on models that can stay in Europe. |
+| 1:51-1:57 | Deck 12, close | In a world where AI ships pull requests, we ship pull receipts. |
 
 Recording notes:
 
-- The dashboard queue `/` can run under the cover if you want a live frame before 0:05; the three
-  optional dashboard cuts are `/context` (deck 4), step "Impact on other features" on
-  `/change/ju26-issue-2297` (deck 8) and `/change/ju26-issue-2283` (deck 10). Everything else is
-  the deck.
-- Stamps land about 0.7 s after a slide arrives; let EXECUTED (deck 7) and NEEDS SIGN-OFF (deck 10)
-  land before the next line.
-- Everything is in our words; no quotes.
+- Before recording: open the four live pages in tabs (queue, 2297 change scrolled to step 1, 2297 decision, 2283 change), set your name once, and make sure 2283 is not already signed (open `/api/demo-reset` first if it is).
+- Let the receipt finish printing and the stamp land before speaking over it.
+- After recording: open `/api/demo-reset` so your sign-off is cleared (judges never see it anyway; it lives in your browser).
 
 ## 0:30 version (peer-review table)
 
-| Time | Screen | Words |
+| Time | Screen | Say |
 |---|---|---|
-| 0:00-0:07 | Deck 2 | An AI reviewer’s opinion is not evidence. Someone still signs the merge and needs proof they can read, and a name on it. |
-| 0:07-0:15 | Deck 7 | No receipt, no finding: every finding is tied to a test, a mutant or a byte diff that ran, and the verdict lists what was not checked. |
-| 0:15-0:23 | Deck 8 | Modified code with outside callers is high risk by rule. Old behaviour is pinned by tests from the old code, and untested legacy callers are named. |
-| 0:23-0:30 | Deck 12 | 21 of 24 planted bugs, zero escapes. The AI never merges; a named human signs the decision record. |
+| 0:00-0:08 | Deck 2 | AI already reviews code. The problem is accountability: "the AI said it was fine" isn't a sign-off. |
+| 0:08-0:12 | Deck 1 | AI wrote the pull request; we wrote the pull receipt. |
+| 0:12-0:24 | Live: 2297 change page | Every finding has a receipt that actually ran, it shows what else the change can break, and what it didn't check. |
+| 0:24-0:30 | Deck 12 | A named human signs. In a world where AI ships pull requests, we ship pull receipts. |
