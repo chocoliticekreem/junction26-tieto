@@ -34,7 +34,7 @@ When the ticket could mean two things, it doesn't guess. It builds both and lets
 When it's clean, a real person signs, with their name on it. The AI never merges.
 
 **[Deck: proof]**
-We planted bugs in 24 changes. Every logic, edge-case, compatibility and security bug: caught, 16 of 16. And nothing slipped through as approved.
+We planted bugs in 24 changes. It caught all 24. And nothing slipped through as approved.
 
 **[Deck: close]**
 In a world where AI ships the PRs, we make sure you never need a PR team afterwards.
