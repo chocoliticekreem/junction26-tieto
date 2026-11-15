@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The `!NETFRAMEWORK` guard suppresses ExcludeFromCodeCoverage for every .NET Framework build, even though supported .NET Framework 4.x targets provide System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverageAttribute. Generated resolvers and formatters therefore remain uncovered by the requested attribute on those targets; the conditional is broader than necessary to keep compilation working.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt:14",
+        "severity": "medium",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run Receipts.GeneratedTests.ExcludeFromCodeCoverageFrameworkTests.Resolver_HasActiveAttribute_WhenNetFrameworkSymbolIsDefined. It runs the generator with the NETFRAMEWORK preprocessor symbol and requires an active ExcludeFromCodeCoverage attribute in a generated syntax tree; on head the attribute is disabled text and the test fails. The same guard in the other changed templates should receive the same correction."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ExcludeFromCodeCoverageFrameworkTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing FluentAssertions;\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.CSharp.Syntax;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ExcludeFromCodeCoverageFrameworkTests\n{\n    [Fact] public async Task Resolver_HasActiveAttribute_WhenNetFrameworkSymbolIsDefined()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        var parseOptions = new CSharpParseOptions(LanguageVersion.Latest, preprocessorSymbols: new[] { \"NETFRAMEWORK\" });\n        ImmutableArray<MetadataReference> references = await ReferenceAssemblies.Net.Net80.ResolveAsync(LanguageNames.CSharp, CancellationToken.None);\n        references = references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"Receipts\",\n            new[] { CSharpSyntaxTree.ParseText(source, parseOptions) },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            generators: new[] { new MessagePack.SourceGenerator.MessagePackGenerator().AsSourceGenerator() },\n            parseOptions: parseOptions);\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _, CancellationToken.None);\n\n        bool hasActiveAttribute = driver.GetRunResult().GeneratedTrees\n            .SelectMany(tree => tree.GetRoot().DescendantNodes().OfType<AttributeSyntax>())\n            .Any(attribute => attribute.Name.ToString() == \"global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage\");\n\n        hasActiveAttribute.Should().BeTrue(\".NET Framework 4.x provides ExcludeFromCodeCoverageAttribute, so NETFRAMEWORK must not suppress it\");\n    }\n}\n",
+        "test_names": [
+          "Receipts.GeneratedTests.ExcludeFromCodeCoverageFrameworkTests.Resolver_HasActiveAttribute_WhenNetFrameworkSymbolIsDefined"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 6922,
+  "output_tokens": 4681,
+  "ms": 51461,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.090981
+}

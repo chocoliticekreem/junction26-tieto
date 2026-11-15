@@ -1,0 +1,37 @@
+{
+  "purpose": "lens-logic-edge",
+  "model": "kimi-k3-1-pro",
+  "data": {
+    "findings": [
+      {
+        "claim": "The generated resolver remains undecorated. The change adds ExcludeFromCodeCoverage to the enum, object, string-key, and union formatter templates, but not to ResolverTemplate, so a [GeneratedMessagePackResolver] still produces a resolver class without the attribute. This violates the requirement that all generated code, explicitly including resolvers in the discussion, be decorated.",
+        "location": "src/MessagePack.SourceGenerator/Transforms/ResolverTemplate.tt",
+        "severity": "high",
+        "receipt_plan": {
+          "kind": "test",
+          "detail": "Run ResolverCodeCoverageReceiptTests.ResolverIsDecoratedWithExcludeFromCodeCoverage: generate output for a [GeneratedMessagePackResolver] partial class, locate its generated source, and assert that its declaration has global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage. The assertion fails on this change because only the formatter templates were modified."
+        },
+        "verdict_depends_on_intent": false
+      }
+    ],
+    "questions": [],
+    "generated_tests": [
+      {
+        "path": "tests/MessagePack.SourceGenerator.Tests/Receipts/ResolverCodeCoverageReceiptTests.cs",
+        "content": "// Copyright (c) All contributors. All rights reserved.\n// Licensed under the MIT license. See LICENSE file in the project root for full license information.\n\nusing Microsoft.CodeAnalysis;\nusing Microsoft.CodeAnalysis.CSharp;\nusing Microsoft.CodeAnalysis.Testing;\n\nnamespace Receipts.GeneratedTests;\n\npublic class ResolverCodeCoverageReceiptTests\n{\n    [Fact]\n    public async Task ResolverIsDecoratedWithExcludeFromCodeCoverage()\n    {\n        const string source = \"\"\"\n            using MessagePack;\n\n            [MessagePackObject]\n            public class MyObject\n            {\n                [Key(0)]\n                public int Value { get; set; }\n            }\n\n            [GeneratedMessagePackResolver]\n            public partial class TestResolver\n            {\n            }\n            \"\"\";\n\n        SyntaxTree syntaxTree = CSharpSyntaxTree.ParseText(\n            source,\n            new CSharpParseOptions(LanguageVersion.CSharp7_3));\n        ImmutableArray<MetadataReference> references = await ReferenceAssemblies.Net.Net80.ResolveAsync(\n            LanguageNames.CSharp,\n            CancellationToken.None);\n        references = references.AddRange(ReferencesHelper.GetReferences(ReferencesSet.MessagePack));\n\n        CSharpCompilation compilation = CSharpCompilation.Create(\n            \"ResolverCodeCoverageReceipt\",\n            new[] { syntaxTree },\n            references,\n            new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));\n\n        GeneratorDriver driver = CSharpGeneratorDriver.Create(\n            new MessagePack.SourceGenerator.MessagePackGenerator());\n        driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out _, out _);\n\n        GeneratedSourceResult resolverSource = driver.GetRunResult().Results\n            .SelectMany(result => result.GeneratedSources)\n            .Single(generatedSource => generatedSource.SourceText.ToString().Contains(\n                \"partial class TestResolver\",\n                StringComparison.Ordinal));\n\n        Assert.Contains(\n            \"[global::System.Diagnostics.CodeAnalysis.ExcludeFromCodeCoverage]\",\n            resolverSource.SourceText.ToString());\n    }\n}\n",
+        "test_names": [
+          "ResolverIsDecoratedWithExcludeFromCodeCoverage"
+        ],
+        "expects": "fail-on-head"
+      }
+    ]
+  },
+  "input_tokens": 5307,
+  "output_tokens": 3780,
+  "ms": 47932,
+  "prompt_preview": "<requirement id=\"REQ-2297\">\n# REQ-2297: Add ExcludeFromCodeCoverage attribute to generated code.\n\nSource: https://github.com/MessagePack-CSharp/MessagePack-CSharp/issues/2297\nType: feature\n\n## Requirement\n\nMessagePack generated code is not decorated with the `ExcludeFromCodeCoverage` attribute. Because it is very hard to write good coverage for generated MessagePack code, it may skew coverage numb",
+  "provider": "verda",
+  "reasoning_effort": "high",
+  "repaired": false,
+  "cost_eur": 0.072621
+}

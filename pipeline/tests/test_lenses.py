@@ -149,3 +149,13 @@ def test_invalid_lens_output_is_not_checked_not_invented(isolated, monkeypatch):
     assert out.findings == [] and len(out.not_checked) == 6
     assert all(n.why.startswith("invalid") for n in out.not_checked)
     assert out.tokens["security"]["input"] == 5  # tokens were spent and are still reported
+
+
+def test_requirement_tests_prompt_tests_criteria_at_full_scope_and_anchors_gaps_in_code():
+    # A criterion the change leaves out has no changed line. Anchored on a README line, its failing
+    # test cannot back it (checks.test_backs refuses docs locations), so it stays a hunch.
+    from receipts.lenses.requirement_tests import SYSTEM
+
+    assert "acceptance criteria" in SYSTEM and "AS WRITTEN, at its full scope" in SYSTEM
+    assert "even when the diff does not touch that file" in SYSTEM
+    assert "Never put such a claim on a docs or README line" in SYSTEM
